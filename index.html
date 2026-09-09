@@ -136,6 +136,18 @@ svg{display:block;}
 .page-title{font-size:24px;font-weight:700;letter-spacing:-0.3px;}
 .page-subtitle{font-size:13.5px;color:var(--ink-tertiary);margin-top:4px;}
 .brand-rule{width:34px;height:3px;background:linear-gradient(90deg,var(--accent),var(--navy));border-radius:2px;margin:10px 0 2px;}
+
+/* Plain-language "what's happening now" banners */
+.stage-banner{display:flex;align-items:center;gap:10px;padding:13px 16px;border-radius:var(--radius);font-size:13.5px;font-weight:600;margin-bottom:20px;}
+.stage-banner svg{width:17px;height:17px;flex:0 0 auto;}
+.stage-banner span{flex:1;}
+.stage-banner-info{background:var(--accent-soft);color:var(--accent-ink);}
+.stage-banner-info svg{stroke:var(--accent-ink);}
+.stage-banner-action{background:var(--navy);color:#fff;}
+.stage-banner-action svg{stroke:#fff;}
+.stage-banner-success{background:var(--success-soft);color:var(--success);}
+.stage-banner-success svg{stroke:var(--success);}
+.stage-banner .btn{flex:0 0 auto;}
 .page-actions{display:flex;gap:8px;flex-wrap:wrap;}
 .section-title{font-size:15px;font-weight:700;margin-bottom:4px;}
 .section-sub{font-size:12.5px;color:var(--ink-tertiary);margin-bottom:14px;}
@@ -485,8 +497,8 @@ const RFQ_STATUS_META = {
   submitted:{label:'Submitted',cls:'badge-gray'},
   under_review:{label:'Under Review',cls:'badge-blue'},
   sourcing:{label:'Sourcing Suppliers',cls:'badge-blue'},
-  quotes_received:{label:'Quotes Received',cls:'badge-blue'},
-  customer_review:{label:'Customer Review',cls:'badge-amber'},
+  quotes_received:{label:'Comparing Quotes',cls:'badge-blue'},
+  customer_review:{label:'Quotes Ready for Review',cls:'badge-amber'},
   awarded:{label:'Awarded',cls:'badge-green'},
   in_production:{label:'In Production',cls:'badge-green'},
   completed:{label:'Completed',cls:'badge-gray'},
@@ -921,6 +933,65 @@ function timeAgo(d){
   return fmtDate(new Date(d));
 }
 
+/* ---------- Plain-language "what's happening right now" banners ----------
+   Every audience (client / innous / supplier) sees the same underlying status,
+   but framed as a one-line explanation of what it means for THEM and what (if
+   anything) they need to do next — instead of making people decode a badge. */
+function stageBanner(text, tone, cta){
+  const icon = tone==='action' ? 'sparkles' : tone==='success' ? 'check-circle-2' : 'info';
+  return `<div class="stage-banner stage-banner-${tone}"><i data-lucide="${icon}"></i><span>${text}</span>${cta||''}</div>`;
+}
+function rfqStageMessage(p, audience){
+  if(audience==='client'){
+    return ({
+      submitted:"We've received your request and it's in queue for review.",
+      under_review:"INNOUS is reviewing your project details before sourcing suppliers.",
+      sourcing:"INNOUS is matching and inviting manufacturing partners for your project.",
+      quotes_received:"Supplier quotes are in — INNOUS is comparing them to build your shortlist.",
+      customer_review:"Your quotes are ready to review. Select an option below to move forward.",
+      awarded:"You selected an option — INNOUS is finalizing the order with the manufacturing partner.",
+      in_production:"Your order is in production. Track progress on the order page.",
+      completed:"This project is complete and delivered.",
+    })[p.status] || '';
+  }
+  if(audience==='innous'){
+    return ({
+      submitted:"New RFQ — review the details, then approve it to begin sourcing.",
+      under_review:"Approve this RFQ to start matching and inviting suppliers.",
+      sourcing:"Suppliers have been invited. Waiting on their quotes.",
+      quotes_received:"Quotes are in — compare them below and build the customer shortlist.",
+      customer_review:"Shortlist sent to the customer — awaiting their decision.",
+      awarded:"Order confirmed — production is about to begin.",
+      in_production:"Order is in production — track milestones on the order page.",
+      completed:"Project completed and delivered.",
+    })[p.status] || '';
+  }
+  if(audience==='supplier'){
+    if(['awarded','in_production','completed'].includes(p.status)){
+      return p.selectedSupplierId===STATE.supplierId
+        ? "You won this RFQ — see the order for production details."
+        : "This RFQ was awarded to another supplier.";
+    }
+    const q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
+    if(q && q.status==='submitted') return "Your quote has been submitted. INNOUS is comparing it with other suppliers — we'll notify you if you're selected.";
+    return "Review the details below and submit your quote before the deadline.";
+  }
+  return '';
+}
+function orderStageMessage(p, audience){
+  const msgs = {
+    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Order confirmed. Purchase materials to begin."},
+    material_purchased:{client:"Materials have been purchased. Production will begin shortly.", innous:"Materials purchased — production should start soon.", supplier:"Materials purchased. Update to Production Started once work begins."},
+    production_started:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Production is underway. Update once complete."},
+    production_completed:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production complete — confirm quality inspection.", supplier:"Production complete. Awaiting quality inspection."},
+    quality_inspection:{client:"Your order is undergoing quality inspection before shipping.", innous:"Quality inspection in progress.", supplier:"Quality inspection in progress."},
+    ready_to_ship:{client:"Your order passed inspection and is ready to ship.", innous:"Ready to ship — coordinate logistics.", supplier:"Ready to ship. Coordinate pickup with logistics."},
+    shipped:{client:"Your order is on its way.", innous:"Order shipped — track delivery below.", supplier:"Order shipped."},
+    delivered:{client:"Delivered! This order is complete.", innous:"Delivered — order complete.", supplier:"Delivered — order complete."},
+  };
+  return (msgs[p.order.status]||{})[audience] || '';
+}
+
 /* ---------- Nav configs ---------- */
 const NAV = {
   CLIENT: [
@@ -946,8 +1017,8 @@ const NAV = {
   ],
   SUPPLIER: [
     {id:'dashboard', label:'Dashboard', icon:'layout-dashboard', path:'#/supplier/dashboard'},
-    {id:'available-rfqs', label:'Available RFQs', icon:'inbox', path:'#/supplier/rfqs'},
-    {id:'my-quotes', label:'My Quotes', icon:'file-text', path:'#/supplier/quotes'},
+    {id:'rfqs', label:'Available RFQs', icon:'inbox', path:'#/supplier/rfqs'},
+    {id:'quotes', label:'My Quotes', icon:'file-text', path:'#/supplier/quotes'},
     {id:'orders', label:'Active Orders', icon:'package', path:'#/supplier/orders'},
     {id:'production', label:'Production', icon:'cog', path:'#/supplier/production'},
     {id:'documents', label:'Documents', icon:'folder', path:'#/supplier/documents'},
@@ -990,7 +1061,12 @@ function renderShell(){
 
   const nav = NAV[STATE.role];
   const activePath = location.hash || nav[0].path;
-  const activeSeg = activePath.split('/')[2];
+  // a detail page (e.g. "#/supplier/order/IN-2026-00458") should keep its parent
+  // list item highlighted (e.g. "Active Orders"), not go dark — normalize the
+  // singular detail segment to the plural nav id it belongs under.
+  const SEG_ALIAS = {rfq:'rfqs', order:'orders'};
+  const rawSeg = activePath.split('/')[2];
+  const activeSeg = SEG_ALIAS[rawSeg] || rawSeg;
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-section" style="padding-top:16px;">
       ${nav.map(item=>`
@@ -1013,7 +1089,7 @@ function renderShell(){
 function badgeForNav(id){
   if(STATE.role==='CLIENT' && id==='rfqs'){ const n = PROJECTS.filter(p=>p.customerId===STATE.clientId && p.status!=='completed').length; return n?`<span class="nav-badge">${n}</span>`:''; }
   if(STATE.role==='INNOUS' && id==='rfqs'){ const n = PROJECTS.filter(p=>['submitted','under_review'].includes(p.status)).length; return n?`<span class="nav-badge">${n}</span>`:''; }
-  if(STATE.role==='SUPPLIER' && id==='available-rfqs'){ const n = PROJECTS.filter(p=>p.invitedSupplierIds.includes(STATE.supplierId) && !p.supplierQuotes.find(q=>q.supplierId===STATE.supplierId && q.status==='submitted')).length; return n?`<span class="nav-badge">${n}</span>`:''; }
+  if(STATE.role==='SUPPLIER' && id==='rfqs'){ const n = PROJECTS.filter(p=>p.invitedSupplierIds.includes(STATE.supplierId) && !p.supplierQuotes.find(q=>q.supplierId===STATE.supplierId && q.status==='submitted')).length; return n?`<span class="nav-badge">${n}</span>`:''; }
   return '';
 }
 
@@ -1065,6 +1141,7 @@ ROUTES['client/dashboard'] = function(){
   const activeOrders = mine.filter(p=>['awarded','in_production'].includes(p.status));
   const completed = mine.filter(p=>p.status==='completed');
   const recent = mine.flatMap(p=>clientSafeActivity(p.activity).map(a=>({...a, projId:p.id, projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,6);
+  const readyForReview = mine.filter(p=>p.status==='customer_review');
 
   return `
   <div class="content-inner">
@@ -1072,6 +1149,11 @@ ROUTES['client/dashboard'] = function(){
       <div><div class="page-title">Welcome back, ${currentClient().contact.split(' ')[0]}</div><div class="brand-rule"></div><div class="page-subtitle">${currentClient().company} · Client Dashboard</div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/client/new-rfq')"><i data-lucide="plus"></i>New RFQ</button></div>
     </div>
+    ${readyForReview.map(p=>stageBanner(
+      `Quotes have arrived for <strong>${p.projectName}</strong> (${p.id}) — ${p.shortlist.length} manufacturing options are ready for your review.`,
+      'action',
+      `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`
+    )).join('')}
     <div class="grid grid-4" style="margin-bottom:24px;">
       ${kpiCard('Active RFQs', activeRfqs.length, 'in the sourcing pipeline','file-text')}
       ${kpiCard('Quotes Received', quotesReceived, 'awaiting your decision','file-diff')}
@@ -1203,6 +1285,7 @@ ROUTES['client/rfq'] = function(id){
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
+    ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
     <div class="grid grid-2">
       <div class="card card-pad">
@@ -1311,6 +1394,7 @@ ROUTES['client/order'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/client/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>${orderStatusBadge(p.order.status)}</div>
+    ${stageBanner(orderStageMessage(p,'client'), p.order.status==='delivered'?'success':'info')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-2">
       <div class="card card-pad">
@@ -1452,6 +1536,7 @@ ROUTES['innous/rfq'] = function(id){
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
+    ${stageBanner(rfqStageMessage(p,'innous'), ['submitted','under_review'].includes(p.status)?'action':'info')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
 
     <div class="grid grid-2" style="margin-bottom:20px;">
@@ -1700,6 +1785,7 @@ ROUTES['innous/order'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>${orderStatusBadge(p.order.status)}</div>
+    ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':'info')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
@@ -2016,6 +2102,7 @@ ROUTES['supplier/rfq'] = function(id){
   <div class="content-inner" style="max-width:900px;">
     <div class="breadcrumb"><a href="#/supplier/rfqs">Available RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${submitted?'<span class="badge badge-green">Quote Submitted</span>':'<span class="badge badge-amber">Awaiting Your Quote</span>'}</div>
+    ${stageBanner(rfqStageMessage(p,'supplier'), submitted?'info':'action')}
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
         <div class="section-title">RFQ Specifications</div>
@@ -2138,6 +2225,7 @@ ROUTES['supplier/order'] = function(id){
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>
       <div class="page-actions">${orderStatusBadge(p.order.status)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${ORDER_STATUS_META[nextStatus].label}</button>`:''}</div>
     </div>
+    ${stageBanner(orderStageMessage(p,'supplier'), nextStatus?'action':'success')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-2">
       <div class="card card-pad">
