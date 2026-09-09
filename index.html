@@ -1248,7 +1248,7 @@ function rfqStageMessage(p, audience){
   if(audience==='innous'){
     return ({
       submitted:"New RFQ — review the details, then approve it to begin sourcing.",
-      under_review:"Approve this RFQ to start matching and inviting suppliers.",
+      under_review:"Pick suppliers from the recommended list below and send the RFQ to get quoting started.",
       sourcing:"Suppliers have been invited. Waiting on their quotes.",
       quotes_received:"Quotes are in — compare them below and build the customer shortlist.",
       customer_review:"Shortlist sent to the customer — awaiting their decision.",
@@ -1419,7 +1419,7 @@ function pendingItems(){
       items.push({navId:'rfqs', icon:'eye', text:`New RFQ to review — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='under_review').forEach(p=>{
-      items.push({navId:'rfqs', icon:'search', text:`Approve & match suppliers — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'search', text:`Invite suppliers to quote — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')).forEach(p=>{
       const n = p.supplierQuotes.filter(q=>q.status==='submitted').length;
@@ -2072,7 +2072,6 @@ ROUTES['innous/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
-        ${p.status==='under_review'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','sourcing')"><i data-lucide="search"></i>Approve &amp; Match Suppliers</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
@@ -2116,14 +2115,21 @@ ROUTES['innous/rfq'] = function(id){
 };
 
 function supplierMatchingSection(p){
-  if(p.status!=='sourcing' && p.invitedSupplierIds.length>0) return '';
-  const eligible = SUPPLIERS.filter(s=>s.capabilities.includes(p.process));
-  const candidates = eligible.length ? eligible : SUPPLIERS;
+  // Only relevant while INNOUS could still be inviting suppliers — once the RFQ
+  // has moved into comparing/shortlisting quotes (or further), this no longer
+  // applies. A supplier already invited (whether they've quoted yet or not) is
+  // never shown here again — there's nothing left to "recommend".
+  if(!['under_review','sourcing'].includes(p.status)) return '';
+  const notYetInvited = s => !p.invitedSupplierIds.includes(s.id);
+  const eligible = SUPPLIERS.filter(s=>s.capabilities.includes(p.process) && notYetInvited(s));
+  const candidates = eligible.length ? eligible : SUPPLIERS.filter(notYetInvited);
+  if(!candidates.length) return p.invitedSupplierIds.length ? `<div class="card card-pad" style="margin-bottom:20px;"><div class="section-title">Recommended Suppliers</div><div class="section-sub">Every verified supplier for this process has already been invited.</div></div>` : '';
   const selected = STATE.ui.selectedInviteSuppliers;
+  const already = p.invitedSupplierIds.length;
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div><div class="section-title">Recommended Suppliers</div><div class="section-sub">Matched by manufacturing process, capacity and quality history.</div></div>
+      <div><div class="section-title">Recommended Suppliers</div><div class="section-sub">Matched by manufacturing process, capacity and quality history.${already?` ${already} already invited.`:''}</div></div>
       <div style="font-size:13px;font-weight:600;">${selected.length} suppliers selected</div>
     </div>
     <div class="grid grid-3">
@@ -3290,12 +3296,16 @@ const App = {
   },
   sendRfqToSuppliers(pid){
     const p = findProject(pid);
-    p.invitedSupplierIds = STATE.ui.selectedInviteSuppliers.slice();
-    p.supplierQuotes = p.invitedSupplierIds.map(sid=>makeQuoteStub(p, sid, false));
-    p.status = 'sourcing';
-    logActivity(p,'INNOUS', `RFQ sent to ${p.invitedSupplierIds.length} suppliers.`);
+    // Add to the existing invite list rather than replacing it — this used to
+    // wipe out any suppliers (and their already-submitted quotes!) invited in an
+    // earlier round the moment INNOUS invited anyone new.
+    const newIds = STATE.ui.selectedInviteSuppliers.filter(sid=>!p.invitedSupplierIds.includes(sid));
+    p.invitedSupplierIds = [...p.invitedSupplierIds, ...newIds];
+    newIds.forEach(sid=>{ p.supplierQuotes.push(makeQuoteStub(p, sid, false)); });
+    if(p.status==='submitted' || p.status==='under_review') p.status = 'sourcing';
+    logActivity(p,'INNOUS', `RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}.`);
     STATE.ui.selectedInviteSuppliers = [];
-    showToast(`RFQ sent to ${p.invitedSupplierIds.length} suppliers`, 'success');
+    showToast(`RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}`, 'success');
     route();
   },
 
