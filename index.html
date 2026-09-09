@@ -1026,6 +1026,29 @@ function setOrderState(proj, orderStatus){
   proj.order.milestones = ORDER_STATUS_FLOW.map((st,i)=>({key:st,label:ORDER_STATUS_META[st].label,done:i<=stageIdx,date: i<=stageIdx? addDays(proj.createdAt, 10+i*4):null}));
 }
 
+/* A supplier's Rating / On-Time % / Quality % are earned, not fixed — recomputed
+   from their own completed order history every time something that feeds into it
+   changes (an order gets delivered, INNOUS approves/rejects quality). A supplier
+   with no completed orders yet keeps whatever baseline it started with (0 for a
+   real new sign-up, the curated seed number for example data) until it actually
+   completes its first order. */
+function recalcSupplierMetrics(supplierId){
+  const s = SUPPLIERS.find(x=>x.id===supplierId);
+  if(!s) return;
+  const completed = PROJECTS.filter(p=>p.selectedSupplierId===supplierId && p.status==='completed' && p.order);
+  if(!completed.length) return;
+  let onTimeCount=0, qualityCount=0;
+  completed.forEach(p=>{
+    const dm = p.order.milestones.find(m=>m.key==='delivered');
+    if(dm && dm.date && new Date(dm.date) <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
+    if(p.order.quality.status==='approved') qualityCount++;
+  });
+  s.onTime = Math.round(onTimeCount/completed.length*100);
+  s.quality = Math.round(qualityCount/completed.length*100);
+  s.rating = Math.round((s.onTime/100*2.5 + s.quality/100*2.5)*10)/10;
+  s.projects = completed.length;
+}
+
 /* ---------- Global App State ---------- */
 const STATE = {
   role: 'INNOUS', // CLIENT | INNOUS | SUPPLIER
@@ -2063,19 +2086,22 @@ function supplierMatchingSection(p){
   </div>`;
 }
 function supplierMatchCard(s, isSelected){
+  const isNew = s.projects===0 && s.rating===0;
   return `
   <div class="supplier-card ${isSelected?'selected':''}">
     <div class="supplier-card-top">
       <div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>
+      ${isNew?'<span class="badge badge-blue">New</span>':''}
     </div>
     <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
-    <div class="td-sub" style="margin:8px 0;">${s.machines.join(' · ')}</div>
+    <div class="td-sub" style="margin:8px 0;">${s.machines.join(' · ')||'No machines listed yet'}</div>
+    ${isNew ? `<div class="field-hint" style="margin:8px 0;">No completed orders yet — rating, on-time % and quality % will populate after their first delivery.</div>` : `
     <div class="mini-stat-grid">
       <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
       <div class="mini-stat"><div class="mini-stat-val">${s.rating}</div><div class="mini-stat-label">Rating</div></div>
       <div class="mini-stat"><div class="mini-stat-val">${s.projects}</div><div class="mini-stat-label">Projects</div></div>
-    </div>
-    <div class="td-sub" style="margin-bottom:10px;">${s.capacity}</div>
+    </div>`}
+    <div class="td-sub" style="margin-bottom:10px;">${s.capacity||'Capacity not set'}</div>
     <button class="btn ${isSelected?'btn-primary':'btn-secondary'} btn-block btn-sm" onclick="App.toggleInviteSupplier('${s.id}')">${isSelected?'<i data-lucide=\'check\'></i>Selected':'Invite to RFQ'}</button>
   </div>`;
 }
@@ -2290,6 +2316,8 @@ function qualityBlock(p){
   <div class="file-list" style="margin-top:8px;">${[...q.documents,...q.certificates].map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
   <div class="td-sub" style="margin-top:8px;">${q.photos} inspection photos on file</div>
   ${q.ncr.length? `<div class="confidential-note" style="margin-top:10px;background:var(--danger-soft);border-color:#F9C6C6;color:var(--danger);"><i data-lucide="alert-triangle"></i><div>${q.ncr.map(n=>`${n.id}: ${n.issue} — ${n.status}`).join('<br>')}</div></div>`:''}
+  ${q.status!=='approved' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;margin-right:8px;color:var(--success);" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check-circle-2"></i>Approve Quality</button>` : ''}
+  ${q.status!=='ncr_open' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;color:var(--danger);" onclick="App.setQualityStatus('${p.id}','ncr_open')"><i data-lucide="alert-triangle"></i>Reject — Open NCR</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:12px;" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check"></i>Resolve NCR &amp; Approve</button>`}
   `;
 }
 function logisticsBlock(p){
@@ -2796,13 +2824,15 @@ ROUTES['supplier/performance'] = function(){
   const submitted = invited.filter(p=>{const q=supplierQuoteFor(p); return q&&q.status==='submitted';});
   const won = invited.filter(p=>p.selectedSupplierId===s.id);
   const winRate = submitted.length? Math.round(won.length/submitted.length*100):0;
+  const isNew = s.projects===0 && s.rating===0;
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Desempeño</div><div class="page-subtitle">Tu historial dentro de la plataforma INNOUS</div></div></div>
+    ${isNew ? stageBanner('Aún no tienes pedidos completados — tu calificación, % a tiempo y % de calidad se calculan automáticamente en cuanto entregues tu primer pedido.', 'info') : ''}
     <div class="grid grid-4" style="margin-bottom:20px;">
-      ${kpiCard('Calificación General', s.rating, 'de 5.0','star')}
-      ${kpiCard('Entregas a Tiempo', s.onTime+'%', 'en todos los pedidos','clock')}
-      ${kpiCard('Índice de Calidad', s.quality+'%', 'tasa de aceptación','shield-check')}
+      ${kpiCard('Calificación General', isNew?'—':s.rating, isNew?'sin historial aún':'de 5.0','star')}
+      ${kpiCard('Entregas a Tiempo', isNew?'—':s.onTime+'%', isNew?'sin historial aún':'en todos los pedidos','clock')}
+      ${kpiCard('Índice de Calidad', isNew?'—':s.quality+'%', isNew?'sin historial aún':'tasa de aceptación','shield-check')}
       ${kpiCard('Tasa de Éxito', winRate+'%', submitted.length+' cotizaciones enviadas','target')}
     </div>
     <div class="card card-pad">
@@ -3350,7 +3380,7 @@ const App = {
     p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08');
     // Payment status is deliberately NOT touched here — production progress is the
     // supplier's call, billing/collection is INNOUS's (see App.setPaymentStatus).
-    if(next==='delivered'){ p.status='completed'; }
+    if(next==='delivered'){ p.status='completed'; recalcSupplierMetrics(p.selectedSupplierId); }
     else if(p.status==='awarded') p.status='in_production';
     logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
@@ -3361,6 +3391,19 @@ const App = {
     p.order.paymentStatus = status;
     logActivity(p, 'INNOUS', `Payment status updated to "${status}".`);
     showToast(`Payment status set to ${status}`, 'success');
+    route();
+  },
+  setQualityStatus(pid, status){
+    const p = findProject(pid);
+    p.order.quality.status = status;
+    if(status==='ncr_open'){
+      p.order.quality.ncr = [{id:'NCR-'+Math.floor(Math.random()*900+100), issue:'Quality issue flagged by INNOUS', status:'Under Review'}];
+    } else if(status==='approved'){
+      p.order.quality.ncr = [];
+    }
+    logActivity(p, 'INNOUS', `Quality inspection ${status==='approved'?'approved':'rejected — NCR opened'}.`);
+    recalcSupplierMetrics(p.selectedSupplierId);
+    showToast(status==='approved' ? 'Quality approved' : 'Quality rejected — NCR opened', status==='approved'?'success':undefined);
     route();
   },
 
