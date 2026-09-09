@@ -1049,9 +1049,36 @@ function closeModal(){
 }
 
 /* ---------- Small render helpers ---------- */
-function statusBadge(status){
-  const meta = RFQ_STATUS_META[status] || {label:status,cls:'badge-gray'};
+function statusBadge(p){
+  // p can be a project object (preferred — lets "Sourcing Suppliers" upgrade to
+  // "Quotes Arriving" the moment a quote lands, instead of waiting for every
+  // supplier to respond) or, for callers that only have the bare string, a status.
+  const status = typeof p==='string' ? p : p.status;
+  let meta = RFQ_STATUS_META[status] || {label:status,cls:'badge-gray'};
+  if(typeof p==='object' && status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')){
+    meta = {label:'Quotes Arriving', cls:'badge-blue'};
+  }
   return `<span class="badge ${meta.cls}"><span class="dot dot-${meta.cls==='badge-green'?'green':meta.cls==='badge-amber'?'amber':meta.cls==='badge-blue'?'blue':'gray'}"></span>${meta.label}</span>`;
+}
+/* Who needs to act next on this RFQ — shown next to the status so it's obvious
+   whether the ball is with the client, INNOUS, or the supplier at any moment. */
+function rfqResponsibility(p){
+  const map = {
+    submitted:'INNOUS', under_review:'INNOUS',
+    sourcing: p.supplierQuotes.some(q=>q.status==='submitted') ? 'INNOUS' : 'SUPPLIER',
+    quotes_received:'INNOUS', customer_review:'CLIENT',
+    awarded:'INNOUS', in_production:'SUPPLIER', completed:null,
+  };
+  return map[p.status] || null;
+}
+function responsibilityChip(p, viewerRole){
+  const who = rfqResponsibility(p);
+  if(!who) return '';
+  const es = viewerRole==='SUPPLIER';
+  const isYou = who===viewerRole;
+  const label = {CLIENT: es?'Cliente':'Client', INNOUS:'INNOUS', SUPPLIER: es?'Proveedor':'Supplier'}[who];
+  const text = isYou ? (es?'Te toca a ti':'Waiting on you') : `${es?'Espera a':'Waiting on'} ${label}`;
+  return `<span class="badge ${isYou?'badge-amber':'badge-gray'}">${text}</span>`;
 }
 function orderStatusBadge(status, es){
   const cls = status==='delivered' ? 'badge-gray' : (status==='quality_inspection'?'badge-amber':'badge-green');
@@ -1579,7 +1606,7 @@ function kpiCard(label,value,sub,icon){
 }
 function rfqMiniTable(list){
   return `<table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Status</th></tr></thead><tbody>
-    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/client/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${statusBadge(p.status)}</td></tr>`).join('')}
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/client/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${statusBadge(p)}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -1657,9 +1684,9 @@ ROUTES['client/rfqs'] = function(){
     <div class="page-header"><div><div class="page-title">My RFQs</div><div class="page-subtitle">${mine.length} requests submitted</div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/client/new-rfq')"><i data-lucide="plus"></i>New RFQ</button></div></div>
     <div class="card">
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Qty</th><th>Material</th><th>Delivery</th><th>Status</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Qty</th><th>Material</th><th>Delivery</th><th>Status</th><th>Waiting On</th></tr></thead><tbody>
         ${mine.map(p=>`<tr class="row-link" onclick="navigate('#/client/rfq/${p.id}')">
-          <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${p.quantity.toLocaleString()}</td><td>${p.material}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td><td>${statusBadge(p.status)}</td>
+          <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${p.quantity.toLocaleString()}</td><td>${p.material}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td><td>${statusBadge(p)}</td><td>${responsibilityChip(p,'CLIENT')}</td>
         </tr>`).join('')}
       </tbody></table></div>
     </div>
@@ -1677,7 +1704,7 @@ ROUTES['client/rfq'] = function(id){
     <div class="page-header">
       <div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · Created ${fmtDate(p.createdAt)}</div></div>
       <div class="page-actions">
-        ${statusBadge(p.status)}
+        ${statusBadge(p)}${responsibilityChip(p,'CLIENT')}
         ${p.status==='customer_review'?`<button class="btn btn-primary" onclick="navigate('#/client/quotes/${p.id}')"><i data-lucide="file-diff"></i>View Quotes</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
@@ -1891,7 +1918,7 @@ ROUTES['innous/overview'] = function(){
 function innousRfqMiniTable(list){
   if(!list.length) return emptyState('inbox','All caught up','No RFQs currently need review.');
   return `<table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Status</th></tr></thead><tbody>
-    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${statusBadge(p.status)}</td></tr>`).join('')}
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -1906,12 +1933,12 @@ ROUTES['innous/rfqs'] = function(){
       <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">All Statuses</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}</select>
     </div>
     <div class="card">
-      <div class="table-wrap"><table class="data-table" id="rfq-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Process</th><th>Qty</th><th>Invited</th><th>Quotes</th><th>Status</th><th>Created</th></tr></thead><tbody>
+      <div class="table-wrap"><table class="data-table" id="rfq-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Process</th><th>Qty</th><th>Invited</th><th>Quotes</th><th>Status</th><th>Waiting On</th><th>Created</th></tr></thead><tbody>
         ${sorted.map(p=>{
           const submitted = p.supplierQuotes.filter(q=>q.status==='submitted').length;
           return `<tr class="row-link" data-status="${p.status}" data-search="${(p.id+' '+customerName(p.customerId)+' '+p.projectName).toLowerCase()}" onclick="navigate('#/innous/rfq/${p.id}')">
           <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${p.process}</td><td>${p.quantity.toLocaleString()}</td>
-          <td>${p.invitedSupplierIds.length||'—'}</td><td>${submitted||'—'}</td><td>${statusBadge(p.status)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td>
+          <td>${p.invitedSupplierIds.length||'—'}</td><td>${submitted||'—'}</td><td>${statusBadge(p)}</td><td>${responsibilityChip(p,'INNOUS')}</td><td class="td-sub">${fmtDate(p.createdAt)}</td>
         </tr>`;}).join('')}
       </tbody></table></div>
     </div>
@@ -1929,7 +1956,7 @@ ROUTES['innous/rfq'] = function(id){
     <div class="page-header">
       <div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${customerName(p.customerId)}</div></div>
       <div class="page-actions">
-        ${statusBadge(p.status)}
+        ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
         ${p.status==='under_review'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','sourcing')"><i data-lucide="search"></i>Approve &amp; Match Suppliers</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
