@@ -213,6 +213,15 @@ table.data-table tbody tr:last-child td{border-bottom:none;}
 .td-strong{font-weight:600;}
 .td-sub{color:var(--ink-tertiary);font-size:12px;}
 .row-link{cursor:pointer;}
+/* Dense comparison table (INNOUS quote comparison): tighter padding + a couple of
+   wrapping columns so 9 columns of pricing data fit without horizontal scroll
+   at normal desktop widths. */
+.comparison-table th,.comparison-table td{padding:9px 6px;font-size:12px;}
+.comparison-table th:first-child,.comparison-table td:first-child{padding-left:10px;}
+.comparison-table td:nth-child(1),.comparison-table td:nth-child(6){white-space:normal;}
+.comparison-table td:nth-child(1){min-width:96px;}
+.comparison-table td:nth-child(6){min-width:110px;max-width:125px;line-height:1.35;}
+.comparison-table td:nth-child(3){line-height:1.4;}
 
 /* ============ FORMS ============ */
 .form-group{margin-bottom:16px;}
@@ -554,6 +563,7 @@ const CITIES = ['Detroit, MI','Houston, TX','Chicago, IL','Wichita, KS','Tulsa, 
 const FIRST_NAMES=['James','Maria','Robert','Linda','David','Susan','Michael','Karen','Chris','Amanda','Brian','Laura'];
 const LAST_NAMES=['Turner','Sanchez','Bennett','Okafor','Mitchell','Reyes','Foster','Grant','Douglas','Palmer'];
 
+function escAttr(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
 function fmtDateShort(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 function fmtMoney(n){return '$'+Math.round(n).toLocaleString('en-US');}
@@ -1009,6 +1019,7 @@ function badgeForNav(id){
 
 /* ---------- Router ---------- */
 const ROUTES = {};
+let lastRoutedHash = null; // tracks the previously rendered hash so an in-place refresh (e.g. editing a field, updating a markup %) doesn't yank scroll back to the top — only an actual navigation to a different page does
 function route(){
   document.getElementById('sidebar-backdrop').classList.remove('open');
   document.getElementById('sidebar').classList.remove('open');
@@ -1024,6 +1035,8 @@ function route(){
   const role = parts[0], page = parts[1], param = parts[2];
   const key = role+'/'+page;
   const el = document.getElementById('app-content');
+  const samePage = (hash === lastRoutedHash);
+  const prevScroll = el.scrollTop;
   try{
     if(ROUTES[key]){ el.innerHTML = ROUTES[key](param); }
     else { el.innerHTML = emptyState('compass','Page not found','This section is not part of the demo yet.'); }
@@ -1031,7 +1044,8 @@ function route(){
     console.error(err);
     el.innerHTML = emptyState('alert-triangle','Something went wrong','Please navigate back and try again.');
   }
-  el.scrollTop = 0;
+  el.scrollTop = samePage ? prevScroll : 0;
+  lastRoutedHash = hash;
   lucide.createIcons();
 }
 function emptyState(icon,title,sub){
@@ -1090,9 +1104,15 @@ function rfqMiniTable(list){
   </tbody></table>`;
 }
 
-/* ---- New RFQ ---- */
+/* ---- New RFQ ----
+   Fields are "controlled": every value is read from STATE.ui.newRfqDraft and
+   every edit writes straight back into it via oninput/onchange (no route()
+   call, so no re-render happens while typing). This means that when some
+   OTHER action on this page does trigger a re-render — picking a process,
+   adding/removing a simulated file — the fields repopulate from state
+   instead of the form resetting to blank. */
 ROUTES['client/new-rfq'] = function(){
-  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining' }; STATE.ui.newRfqFiles = []; }
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:MATERIALS[0], deliveryDate:'', deliveryLocation:'', qualityReq:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
   const d = STATE.ui.newRfqDraft;
   return `
   <div class="content-inner" style="max-width:820px;">
@@ -1101,14 +1121,14 @@ ROUTES['client/new-rfq'] = function(){
       <div class="section-title">Company &amp; Contact</div>
       <div class="section-sub">Pre-filled from your account.</div>
       <div class="form-row">
-        <div class="form-group"><label class="field-label">Company</label><input type="text" value="${currentClient().company}" required></div>
-        <div class="form-group"><label class="field-label">Contact name</label><input type="text" value="${currentClient().contact}" required></div>
+        <div class="form-group"><label class="field-label">Company</label><input type="text" value="${escAttr(currentClient().company)}" required></div>
+        <div class="form-group"><label class="field-label">Contact name</label><input type="text" value="${escAttr(currentClient().contact)}" required></div>
       </div>
-      <div class="form-group"><label class="field-label">Email</label><input type="email" value="${currentClient().email}" required></div>
+      <div class="form-group"><label class="field-label">Email</label><input type="email" value="${escAttr(currentClient().email)}" required></div>
       <hr class="divider">
       <div class="section-title">Project Details</div>
-      <div class="form-group"><label class="field-label">Project name</label><input type="text" name="projectName" placeholder="e.g. Hydraulic Housing" required></div>
-      <div class="form-group"><label class="field-label">Description</label><textarea name="description" placeholder="Describe the part, application, and any critical requirements..." required></textarea></div>
+      <div class="form-group"><label class="field-label">Project name</label><input type="text" name="projectName" value="${escAttr(d.projectName)}" oninput="STATE.ui.newRfqDraft.projectName=this.value" placeholder="e.g. Hydraulic Housing" required></div>
+      <div class="form-group"><label class="field-label">Description</label><textarea name="description" oninput="STATE.ui.newRfqDraft.description=this.value" placeholder="Describe the part, application, and any critical requirements..." required>${escAttr(d.description)}</textarea></div>
       <div class="form-group">
         <label class="field-label">Manufacturing process</label>
         <div class="process-grid">
@@ -1116,15 +1136,15 @@ ROUTES['client/new-rfq'] = function(){
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" placeholder="e.g. 250" required></div>
-        <div class="form-group"><label class="field-label">Material</label><select name="material">${MATERIALS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="field-label">Quantity</label><input type="number" name="quantity" value="${escAttr(d.quantity)}" oninput="STATE.ui.newRfqDraft.quantity=this.value" min="1" placeholder="e.g. 250" required></div>
+        <div class="form-group"><label class="field-label">Material</label><select name="material" onchange="STATE.ui.newRfqDraft.material=this.value">${MATERIALS.map(m=>`<option ${d.material===m?'selected':''}>${m}</option>`).join('')}</select></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="field-label">Required delivery date</label><input type="date" name="deliveryDate" required></div>
-        <div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" placeholder="City, State, Country" required></div>
+        <div class="form-group"><label class="field-label">Required delivery date</label><input type="date" name="deliveryDate" value="${escAttr(d.deliveryDate)}" oninput="STATE.ui.newRfqDraft.deliveryDate=this.value" required></div>
+        <div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" value="${escAttr(d.deliveryLocation)}" oninput="STATE.ui.newRfqDraft.deliveryLocation=this.value" placeholder="City, State, Country" required></div>
       </div>
-      <div class="form-group"><label class="field-label">Quality requirements</label><textarea name="qualityReq" placeholder="e.g. ISO 9001, dimensional reports, material certs..."></textarea></div>
-      <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" placeholder="Packaging, testing, finish, etc."></textarea></div>
+      <div class="form-group"><label class="field-label">Quality requirements</label><textarea name="qualityReq" oninput="STATE.ui.newRfqDraft.qualityReq=this.value" placeholder="e.g. ISO 9001, dimensional reports, material certs...">${escAttr(d.qualityReq)}</textarea></div>
+      <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" oninput="STATE.ui.newRfqDraft.specialReq=this.value" placeholder="Packaging, testing, finish, etc.">${escAttr(d.specialReq)}</textarea></div>
       <hr class="divider">
       <div class="section-title">Upload drawings &amp; project files</div>
       <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG</div>
@@ -1542,7 +1562,7 @@ function quoteComparisonSection(p){
     <div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal.</div>
     <div class="table-wrap">
     <table class="data-table comparison-table"><thead><tr>
-      <th>Supplier</th><th>Unit Price</th><th>Tooling</th><th>Setup</th><th>Shipping</th><th>Total Supplier Cost</th><th>Lead Time</th><th>Terms</th><th>Rating</th><th>Markup</th><th>Customer Price</th><th></th>
+      <th>Supplier</th><th>Unit Price</th><th title="Tooling / Setup / Shipping">Extras</th><th>Total Cost</th><th>Lead</th><th>Terms</th><th>Markup</th><th>Cust. Price</th><th></th>
     </tr></thead><tbody>
       ${submitted.map(q=>{
         const supplier = SUPPLIERS.find(s=>s.id===q.supplierId);
@@ -1550,18 +1570,15 @@ function quoteComparisonSection(p){
         const customerPrice = q.quotedTotal*(1+markup/100);
         const already = shortlisted.has(q.supplierId);
         return `<tr>
-          <td class="td-strong">Supplier ${byId[q.supplierId]}<div class="td-sub">${supplier.city}</div></td>
+          <td class="td-strong">Supplier ${byId[q.supplierId]}<div class="td-sub">${supplier.city} · ${supplier.rating}★</div></td>
           <td>${fmtMoney2(q.unitPrice)}</td>
-          <td>${fmtMoney(q.tooling)}</td>
-          <td>${fmtMoney(q.setup)}</td>
-          <td>${q.shipping?fmtMoney(q.shipping):'Included'}</td>
+          <td class="td-sub" style="line-height:1.5;">T ${fmtMoney(q.tooling)}<br>S ${fmtMoney(q.setup)}<br>Sh ${q.shipping?fmtMoney(q.shipping):'Incl.'}</td>
           <td class="td-strong">${fmtMoney(q.quotedTotal)}</td>
-          <td>${q.leadTimeDays} days</td>
+          <td>${q.leadTimeDays}d</td>
           <td class="td-sub">${q.paymentTerms}</td>
-          <td>${stars(supplier.rating)}</td>
-          <td><input type="number" value="${markup}" min="0" max="100" style="width:64px;padding:6px 8px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)"> %</td>
+          <td><input type="number" value="${markup}" min="0" max="100" style="width:42px;padding:5px 4px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)">%</td>
           <td class="td-strong">${fmtMoney(customerPrice)}</td>
-          <td>${already?`<span class="badge badge-green">In Shortlist</span>`:`<button class="btn btn-secondary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')">Add to Shortlist</button>`}</td>
+          <td>${already?`<span class="badge badge-green">Shortlisted</span>`:`<button class="btn btn-secondary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')">Add</button>`}</td>
         </tr>`;
       }).join('')}
     </tbody></table>
