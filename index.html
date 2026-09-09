@@ -38,7 +38,7 @@
   --shadow-sm:0 1px 2px rgba(24,24,27,0.05);
   --shadow-md:0 6px 20px rgba(24,24,27,0.08);
   --sidebar-w:248px;
-  --topbar-h:60px;
+  --topbar-h:100px;
 }
 html,body{height:100%;}
 body{
@@ -70,8 +70,8 @@ svg{display:block;}
 .mobile-menu-btn{display:none;padding:6px;border-radius:var(--radius-sm);}
 .mobile-menu-btn:hover{background:var(--surface-alt);}
 .logo{display:flex;align-items:center;}
-.logo-svg{height:44px;width:auto;display:block;}
-@media(max-width:480px){.logo-svg{height:32px;}}
+.logo-svg{height:88px;width:auto;display:block;}
+@media(max-width:480px){:root{--topbar-h:64px;} .logo-svg{height:40px;}}
 
 .topbar-right{display:flex;align-items:center;gap:10px;}
 .role-switcher{position:relative;}
@@ -96,6 +96,25 @@ svg{display:block;}
 .role-menu-icon svg{width:15px;height:15px;stroke:var(--ink-secondary);}
 .role-menu-title{font-size:13px;font-weight:600;}
 .role-menu-sub{font-size:11.5px;color:var(--ink-tertiary);margin-top:1px;}
+
+/* "What needs my attention" notification bell */
+.notif-wrap{position:relative;}
+.notif-btn{position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface);}
+.notif-btn:hover{background:var(--surface-alt);}
+.notif-btn svg{width:17px;height:17px;stroke:var(--ink-secondary);}
+.notif-count{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:10px;background:var(--danger);color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);}
+.notif-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);width:340px;max-height:420px;overflow-y:auto;z-index:100;display:none;}
+.notif-menu.open{display:block;}
+.notif-menu-header{padding:12px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:700;}
+.notif-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);width:100%;text-align:left;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--surface-alt);}
+.notif-item-icon{width:28px;height:28px;border-radius:7px;background:var(--warning-soft);color:var(--warning);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.notif-item-icon svg{width:14px;height:14px;}
+.notif-item-text{font-size:12.5px;font-weight:600;line-height:1.4;}
+.notif-item-sub{font-size:11px;color:var(--ink-tertiary);margin-top:2px;}
+.notif-empty{padding:28px 16px;text-align:center;color:var(--ink-tertiary);font-size:12.5px;}
+.notif-empty svg{width:24px;height:24px;margin:0 auto 8px;stroke:var(--success);}
 
 .user-chip{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:20px;border:1px solid var(--border);}
 .avatar{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;}
@@ -407,12 +426,14 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   .info-grid{grid-template-columns:1fr;}
 }
 @media(max-width:480px){
-  .topbar{padding:0 10px;gap:6px;}
+  .topbar{padding:0 8px;gap:4px;}
   .rs-label{display:none;}
-  .role-switcher-btn{padding:7px 9px;font-size:12.5px;gap:5px;}
-  .user-chip{padding:4px;border:none;}
+  .role-switcher-btn{padding:6px 8px;font-size:12px;gap:4px;}
+  .user-chip{padding:2px;border:none;}
   .user-chip-text,.user-chip-sub{display:none;}
-  .topbar-right{gap:6px;}
+  .topbar-right{gap:4px;}
+  .notif-btn{width:32px;height:32px;}
+  .notif-menu{width:min(320px, calc(100vw - 24px));}
 }
 </style>
 </head>
@@ -464,6 +485,13 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </a>
     </div>
     <div class="topbar-right">
+      <div class="notif-wrap">
+        <button class="notif-btn" id="notif-btn" onclick="App.toggleNotifMenu(event)" aria-label="Notifications">
+          <i data-lucide="bell"></i>
+          <span class="notif-count" id="notif-count" hidden></span>
+        </button>
+        <div class="notif-menu" id="notif-menu"></div>
+      </div>
       <div class="role-switcher">
         <button class="role-switcher-btn" onclick="App.toggleRoleMenu(event)">
           <span class="role-dot"></span>
@@ -1107,6 +1135,20 @@ function renderShell(){
       <div><div class="role-menu-title">${it.title}</div><div class="role-menu-sub">${it.sub}</div></div>
     </button>`).join('');
 
+  const pending = pendingItems();
+  const countEl = document.getElementById('notif-count');
+  if(pending.length){ countEl.hidden = false; countEl.textContent = pending.length>9?'9+':pending.length; }
+  else { countEl.hidden = true; }
+  document.getElementById('notif-menu').innerHTML = `
+    <div class="notif-menu-header">${es?'Pendientes':'Needs your attention'}${pending.length?` (${pending.length})`:''}</div>
+    ${pending.length ? pending.map(it=>`
+      <button class="notif-item" onclick="App.gotoNotif('${it.path}')">
+        <div class="notif-item-icon"><i data-lucide="${it.icon}"></i></div>
+        <div><div class="notif-item-text">${it.text}</div><div class="notif-item-sub mono">${it.sub}</div></div>
+      </button>`).join('')
+    : `<div class="notif-empty"><i data-lucide="check-circle-2"></i>${es?'Nada pendiente — estás al día.':'Nothing pending — you\'re all caught up.'}</div>`}
+  `;
+
   const nav = NAV[STATE.role];
   const activePath = location.hash || nav[0].path;
   // a detail page (e.g. "#/supplier/order/IN-2026-00458") should keep its parent
@@ -1134,11 +1176,48 @@ function renderShell(){
     </div>`;
   lucide.createIcons();
 }
+/* ---------- "What needs my attention" — computed fresh per role on every render ----------
+   One list, tagged per item with which sidebar section it belongs to, so the notification
+   bell, its dropdown, and the sidebar nav counters all agree with each other. */
+function pendingItems(){
+  const es = STATE.role==='SUPPLIER';
+  const items = [];
+  if(STATE.role==='CLIENT'){
+    clientProjects().filter(p=>p.status==='customer_review').forEach(p=>{
+      items.push({navId:'rfqs', icon:'file-diff', text:`Quotes ready to review — ${p.projectName}`, sub:p.id, path:'#/client/quotes/'+p.id});
+    });
+  } else if(STATE.role==='INNOUS'){
+    PROJECTS.filter(p=>p.status==='submitted').forEach(p=>{
+      items.push({navId:'rfqs', icon:'eye', text:`New RFQ to review — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+    });
+    PROJECTS.filter(p=>p.status==='under_review').forEach(p=>{
+      items.push({navId:'rfqs', icon:'search', text:`Approve & match suppliers — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+    });
+    PROJECTS.filter(p=>p.status==='quotes_received').forEach(p=>{
+      items.push({navId:'rfqs', icon:'file-diff', text:`Build customer shortlist — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+    });
+    PROJECTS.filter(p=>p.order && p.order.quality.status==='ncr_open').forEach(p=>{
+      items.push({navId:'quality', icon:'alert-triangle', text:`Quality issue open — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+    });
+  } else { // SUPPLIER
+    supplierInvited().filter(p=>{
+      const q = supplierQuoteFor(p);
+      return (!q || q.status!=='submitted') && ['sourcing','quotes_received'].includes(p.status);
+    }).forEach(p=>{
+      items.push({navId:'rfqs', icon:'file-text', text:`Cotizar — ${p.projectName}`, sub:p.id, path:'#/supplier/rfq/'+p.id});
+    });
+    supplierOrders().filter(p=>p.status!=='completed').forEach(p=>{
+      const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+      if(ORDER_STATUS_FLOW[stageIdx+1]){
+        items.push({navId:'orders', icon:'cog', text:`Actualizar producción — ${p.projectName}`, sub:p.id, path:'#/supplier/order/'+p.id});
+      }
+    });
+  }
+  return items;
+}
 function badgeForNav(id){
-  if(STATE.role==='CLIENT' && id==='rfqs'){ const n = PROJECTS.filter(p=>p.customerId===STATE.clientId && p.status!=='completed').length; return n?`<span class="nav-badge">${n}</span>`:''; }
-  if(STATE.role==='INNOUS' && id==='rfqs'){ const n = PROJECTS.filter(p=>['submitted','under_review'].includes(p.status)).length; return n?`<span class="nav-badge">${n}</span>`:''; }
-  if(STATE.role==='SUPPLIER' && id==='rfqs'){ const n = PROJECTS.filter(p=>p.invitedSupplierIds.includes(STATE.supplierId) && !p.supplierQuotes.find(q=>q.supplierId===STATE.supplierId && q.status==='submitted')).length; return n?`<span class="nav-badge">${n}</span>`:''; }
-  return '';
+  const n = pendingItems().filter(it=>it.navId===id).length;
+  return n?`<span class="nav-badge">${n}</span>`:'';
 }
 
 /* ---------- Router ---------- */
@@ -1509,11 +1588,13 @@ ROUTES['innous/overview'] = function(){
   const revenue = allOrders.reduce((s,p)=>s+p.order.customerPrice,0);
   const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost),0);
   const recent = PROJECTS.flatMap(p=>p.activity.map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,7);
+  const pending = pendingItems();
 
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Operations Overview</div><div class="brand-rule"></div><div class="page-subtitle">Platform-wide view across all customers and suppliers</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/innous/rfqs')"><i data-lucide="file-text"></i>All RFQs</button></div></div>
+    ${pending.length ? stageBanner(`You have <strong>${pending.length}</strong> item${pending.length===1?'':'s'} needing action — review, approve, or shortlist to keep RFQs moving.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">View List</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:16px;">
       ${kpiCard('Active RFQs', active.length, 'across full pipeline','file-text')}
       ${kpiCard('Awaiting Quotes', awaitingQuotes.length, 'sourcing suppliers','send')}
@@ -2080,11 +2161,13 @@ ROUTES['supplier/dashboard'] = function(){
   const winRate = submitted.length? Math.round(won/submitted.length*100):0;
   const revenue = [...activeOrders,...completedOrders].reduce((s,p)=>s+p.order.supplierCost,0);
   const recent = invited.flatMap(p=>supplierSafeActivity(p.activity).map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,6);
+  const pending = pendingItems();
 
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Bienvenido de nuevo</div><div class="brand-rule"></div><div class="page-subtitle">${currentSupplier().name} · Panel del Proveedor</div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>Ver RFQs Disponibles</button></div></div>
+    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — cotiza o actualiza producción para no perder oportunidades.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:24px;">
       ${kpiCard('RFQs Disponibles', available.length, 'esperando tu cotización','inbox')}
       ${kpiCard('Cotizaciones Enviadas', submitted.length, 'total enviadas','file-text')}
@@ -2433,7 +2516,9 @@ const App = {
     if(forceClose===true){ sb.classList.remove('open'); bd.classList.remove('open'); return; }
     sb.classList.toggle('open'); bd.classList.toggle('open');
   },
-  toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.toggle('open'); },
+  toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('notif-menu').classList.remove('open'); document.getElementById('role-menu').classList.toggle('open'); },
+  toggleNotifMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.remove('open'); document.getElementById('notif-menu').classList.toggle('open'); },
+  gotoNotif(path){ document.getElementById('notif-menu').classList.remove('open'); navigate(path); },
 
   /* ---- Account settings (name / company / circular 1:1 photo) ---- */
   openAccountModal(){
@@ -2839,7 +2924,10 @@ const App = {
   },
 };
 
-document.addEventListener('click', ()=>{ const m=document.getElementById('role-menu'); if(m) m.classList.remove('open'); });
+document.addEventListener('click', ()=>{
+  const m=document.getElementById('role-menu'); if(m) m.classList.remove('open');
+  const n=document.getElementById('notif-menu'); if(n) n.classList.remove('open');
+});
 
 /* ---------- Init ---------- */
 buildProjects();
