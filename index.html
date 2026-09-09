@@ -774,6 +774,7 @@ function buildProjects(){
   // ---- explicit hero project: IN-2026-00482, matches spec example exactly ----
   const hero = {
     id:'IN-2026-00482',
+    isDemo:true,
     customerId:'c1',
     projectName:'Hydraulic Housing',
     description:'Precision-machined hydraulic housing for mobile equipment application. Requires tight bore tolerances and pressure testing prior to shipment.',
@@ -820,6 +821,7 @@ function buildProjects(){
     const createdOffset = -rnd(5,90);
     const proj = {
       id:'IN-2026-'+String(idNum).padStart(5,'0'),
+      isDemo:true,
       customerId, projectName:tmpl.name, process:tmpl.process, material:tmpl.material, quantity:qty,
       description:`${tmpl.name} manufacturing project — ${qty.toLocaleString()} units, ${tmpl.material}.`,
       deliveryDate: daysFromNow(rnd(20,70)),
@@ -1068,6 +1070,44 @@ function loadAccounts(){ try{ return JSON.parse(localStorage.getItem('innous_acc
 function saveAccounts(list){ try{ localStorage.setItem('innous_accounts', JSON.stringify(list)); }catch(e){} }
 function loadSession(){ try{ return JSON.parse(localStorage.getItem('innous_session')||'null'); }catch(e){ return null; } }
 function saveSession(session){ try{ if(session) localStorage.setItem('innous_session', JSON.stringify(session)); else localStorage.removeItem('innous_session'); }catch(e){} }
+
+/* ---------- Real-data persistence ----------
+   Accounts/sessions already persisted to localStorage, but CUSTOMERS/SUPPLIERS/
+   PROJECTS live purely in memory and get rebuilt from scratch on every load —
+   which used to mean every real client, supplier and RFQ vanished on refresh
+   except whichever single account happened to be logged in at that moment
+   (hydrateAccountRecord only restores the CURRENT session's own record).
+   This layer persists every real (non-example) customer/supplier/project so a
+   refresh — or logging in as a different real account — sees the same world. */
+function reviveDates(obj){
+  if(obj===null || obj===undefined) return obj;
+  if(Array.isArray(obj)) return obj.map(reviveDates);
+  if(typeof obj==='object'){ const out={}; for(const k in obj) out[k]=reviveDates(obj[k]); return out; }
+  if(typeof obj==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(obj)) return new Date(obj);
+  return obj;
+}
+function persistRealData(){
+  try{
+    localStorage.setItem('innous_real_customers', JSON.stringify(CUSTOMERS.filter(c=>String(c.id).startsWith('cacct'))));
+    localStorage.setItem('innous_real_suppliers', JSON.stringify(SUPPLIERS.filter(s=>String(s.id).startsWith('sacct'))));
+    localStorage.setItem('innous_real_projects', JSON.stringify(PROJECTS.filter(p=>!p.isDemo)));
+  }catch(e){}
+}
+function loadRealData(){
+  try{
+    const rc = JSON.parse(localStorage.getItem('innous_real_customers')||'[]');
+    const rs = JSON.parse(localStorage.getItem('innous_real_suppliers')||'[]');
+    const rp = reviveDates(JSON.parse(localStorage.getItem('innous_real_projects')||'[]'));
+    rc.forEach(c=>{ if(!CUSTOMERS.find(x=>x.id===c.id)) CUSTOMERS.push(c); });
+    rs.forEach(s=>{ if(!SUPPLIERS.find(x=>x.id===s.id)) SUPPLIERS.push(s); });
+    rp.forEach(p=>{ if(!PROJECTS.find(x=>x.id===p.id)) PROJECTS.push(p); });
+  }catch(e){}
+}
+function clearRealData(){
+  localStorage.removeItem('innous_real_customers');
+  localStorage.removeItem('innous_real_suppliers');
+  localStorage.removeItem('innous_real_projects');
+}
 let ACCOUNTS = loadAccounts();
 // INNOUS is the platform operator, not something anyone signs up as — provision one
 // shared ops login automatically so there's a genuine way in through the same Log In
@@ -1611,11 +1651,21 @@ function route(){
   el.scrollTop = samePage ? prevScroll : 0;
   lastRoutedHash = hash;
   lucide.createIcons();
+  if(STATE.authMode!=='guest') persistRealData();
 }
 function emptyState(icon,title,sub){
   return `<div class="empty-state"><i data-lucide="${icon}"></i><div class="empty-state-title">${title}</div><div>${sub}</div></div>`;
 }
-function navigate(path){ if(location.hash===path){ route(); } else { location.hash = path; } }
+function navigate(path){
+  // Render synchronously right away rather than relying on the browser's native
+  // 'hashchange' event (which fires on the next tick, not immediately) — otherwise
+  // an action that runs right after a navigate() call (e.g. logging out) can race
+  // ahead of that event and the page it navigated to never actually renders (and,
+  // critically, never persists whatever it just changed). The hashchange listener
+  // stays registered too, purely as a fallback for the browser's own back/forward
+  // buttons, which don't go through this function.
+  if(location.hash===path){ route(); } else { location.hash = path; route(); }
+}
 
 /* =====================================================================
    CLIENT PORTAL
@@ -2946,6 +2996,7 @@ const App = {
     localStorage.removeItem('innous_demo_loaded');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
+    clearRealData();
     location.reload();
   },
   loadExampleData(){
@@ -2953,6 +3004,7 @@ const App = {
     localStorage.setItem('innous_demo_loaded','1');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
+    clearRealData();
     location.reload();
   },
 
@@ -3449,6 +3501,10 @@ if(localStorage.getItem('innous_demo_loaded')==='1'){
   SUPPLIERS.length = 0;
   PROJECTS = [];
 }
+// Real accounts, their customer/supplier records, and their RFQs/orders always
+// persist on top of whichever base above — this is what makes them survive a
+// refresh instead of only the currently-logged-in account's own record.
+loadRealData();
 window.addEventListener('hashchange', ()=>{ if(STATE.authMode!=='guest') route(); });
 let booted = false;
 function boot(){
