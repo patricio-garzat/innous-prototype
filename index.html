@@ -1288,6 +1288,10 @@ function pendingItems(){
     PROJECTS.filter(p=>p.status==='under_review').forEach(p=>{
       items.push({navId:'rfqs', icon:'search', text:`Approve & match suppliers — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
+    PROJECTS.filter(p=>p.status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')).forEach(p=>{
+      const n = p.supplierQuotes.filter(q=>q.status==='submitted').length;
+      items.push({navId:'rfqs', icon:'inbox', text:`${n} new quote${n===1?'':'s'} received — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+    });
     PROJECTS.filter(p=>p.status==='quotes_received').forEach(p=>{
       items.push({navId:'rfqs', icon:'file-diff', text:`Build customer shortlist — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
