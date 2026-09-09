@@ -728,10 +728,14 @@ function hydrateAccountRecord(account){
     if(!CUSTOMERS.find(c=>c.id===account.refId)){
       CUSTOMERS.push({id:account.refId, company:account.company, contact:account.contact, email:account.email, city:'', industry:'', photo:account.photo||null});
     }
-  } else {
+  } else if(account.role==='SUPPLIER'){
     if(!SUPPLIERS.find(s=>s.id===account.refId)){
       SUPPLIERS.push({id:account.refId, name:account.company, contactName:account.contact, city:'Not set', capabilities:['CNC Machining'], machines:[], certs:[], capacity:'Not set', rating:0, onTime:0, quality:0, projects:0, photo:account.photo||null});
     }
+  } else if(account.role==='INNOUS'){
+    // INNOUS is one shared operations identity, not a per-account customer/supplier record
+    INNOUS_USER.name = account.contact || INNOUS_USER.name;
+    INNOUS_USER.photo = account.photo || INNOUS_USER.photo;
   }
 }
 function buildProjects(){
@@ -1011,10 +1015,18 @@ function saveAccounts(list){ try{ localStorage.setItem('innous_accounts', JSON.s
 function loadSession(){ try{ return JSON.parse(localStorage.getItem('innous_session')||'null'); }catch(e){ return null; } }
 function saveSession(session){ try{ if(session) localStorage.setItem('innous_session', JSON.stringify(session)); else localStorage.removeItem('innous_session'); }catch(e){} }
 let ACCOUNTS = loadAccounts();
+// INNOUS is the platform operator, not something anyone signs up as — provision one
+// shared ops login automatically so there's a genuine way in through the same Log In
+// form every other account uses.
+if(!ACCOUNTS.find(a=>a.role==='INNOUS')){
+  ACCOUNTS.push({username:'innous', password:'innous2026', role:'INNOUS', refId:null, company:'', contact:'Ops Team', email:'ops@innous.com.mx', photo:null, tourDone:true});
+  saveAccounts(ACCOUNTS);
+}
 
-// Fall back to an empty placeholder record rather than throwing — matters once demo
-// data can be wiped (see App.resetAllData): the default demo persona ids (c1/s1) then
-// no longer exist until a real account is signed up.
+// Fall back to an empty placeholder record rather than throwing — the app starts with
+// no example data loaded by default (see App.loadExampleData), so the old demo
+// persona ids (c1/s1) don't exist until either example data is loaded or a real
+// account is signed up.
 function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', city:'', industry:'', photo:null}; }
 function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', city:'', capabilities:[], machines:[], certs:[], capacity:'', rating:0, onTime:0, quality:0, projects:0, photo:null}; }
 function findProject(id){ return PROJECTS.find(p=>p.id===id); }
@@ -1394,7 +1406,6 @@ function renderLanding(){
           <div class="how-step"><div class="how-step-num">2</div><div class="how-step-title">Compare Options</div><div class="how-step-sub">We source and vet manufacturing partners, then bring you the best 5 quotes.</div></div>
           <div class="how-step"><div class="how-step-num">3</div><div class="how-step-title">Track to Delivery</div><div class="how-step-sub">Select an option and follow production from confirmation to shipping.</div></div>
         </div>
-        <div class="demo-cta-row">Just exploring? <a class="auth-switch" onclick="App.enterDemo()">View the live demo</a> — no account needed.</div>
       </div>
     </div>
   </div>`;
@@ -1470,7 +1481,6 @@ function renderLoginForm(){
           </form>
         </div>
         <div class="auth-switch">Don't have an account? <a onclick="App.goToSignup()">Sign up</a></div>
-        <div class="auth-switch" style="margin-top:8px;">Part of the INNOUS team? <a onclick="App.enterDemo()">Enter the operations portal</a></div>
       </div>
     </div>
   </div>`;
@@ -2441,15 +2451,16 @@ ROUTES['innous/settings'] = function(){
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox"><span>Weekly analytics summary</span></div></div>
     </div>
     <div class="card card-pad" style="border-color:#F9C6C6;">
-      <div class="section-title" style="color:var(--danger);">Testing &amp; Demo Data</div>
-      <div class="section-sub">${localStorage.getItem('innous_wiped')==='1'
-        ? 'The platform is currently empty — no pre-seeded customers, suppliers or RFQs. Sign up as a client and a supplier on separate accounts to test the full flow from zero.'
-        : 'Wipe every pre-seeded demo customer, supplier and RFQ (and any test accounts on this browser) to try the whole platform — INNOUS, client, and supplier — from a genuinely empty state.'}</div>
+      <div class="section-title" style="color:var(--danger);">Example Data</div>
+      <div class="section-sub">${localStorage.getItem('innous_demo_loaded')==='1'
+        ? 'Example customers, suppliers and RFQs are currently loaded, for exploring the platform\'s full richness.'
+        : 'The platform is running on real accounts only — no example data loaded. You can load a set of example customers, suppliers and RFQs to explore the full platform.'}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
-        ${localStorage.getItem('innous_wiped')==='1'
-          ? `<button class="btn btn-secondary" onclick="App.restoreDemoData()"><i data-lucide="rotate-ccw"></i>Restore Demo Data</button>`
-          : `<button class="btn btn-danger" onclick="App.resetAllData()"><i data-lucide="trash-2"></i>Reset All Data</button>`}
+        ${localStorage.getItem('innous_demo_loaded')==='1'
+          ? `<button class="btn btn-danger" onclick="App.clearExampleData()"><i data-lucide="trash-2"></i>Clear Example Data</button>`
+          : `<button class="btn btn-secondary" onclick="App.loadExampleData()"><i data-lucide="database"></i>Load Example Data</button>`}
       </div>
+      <div class="field-hint" style="margin-top:10px;">Either action also clears any real test accounts signed up on this browser (your INNOUS login is automatically re-provisioned).</div>
     </div>
   </div>`;
 };
@@ -2820,13 +2831,6 @@ const App = {
   goToSignup(){ STATE.authView='role-pick'; renderAuthRoot(); },
   backToLanding(){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); },
   pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; renderAuthRoot(); },
-  enterDemo(){
-    STATE.authMode='demo'; STATE.role='INNOUS';
-    document.getElementById('auth-root').style.display='none';
-    document.getElementById('app-shell').style.display='';
-    navigate('#/innous/overview');
-    showToast('Viewing the live demo — switch portals anytime with "Viewing as"', 'success');
-  },
   submitSignup(e){
     e.preventDefault();
     const f = new FormData(e.target);
@@ -2859,12 +2863,14 @@ const App = {
     hydrateAccountRecord(account);
     STATE.authMode = 'account';
     STATE.role = account.role;
-    if(account.role==='CLIENT') STATE.clientId = account.refId; else STATE.supplierId = account.refId;
+    if(account.role==='CLIENT') STATE.clientId = account.refId;
+    else if(account.role==='SUPPLIER') STATE.supplierId = account.refId;
     saveSession({username:account.username});
     document.getElementById('auth-root').style.display='none';
     document.getElementById('app-shell').style.display='';
     lastRoutedHash = null;
-    navigate(account.role==='CLIENT'?'#/client/dashboard':'#/supplier/dashboard');
+    const home = account.role==='CLIENT'?'#/client/dashboard':account.role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
+    navigate(home);
   },
   logOut(){
     saveSession(null);
@@ -2873,16 +2879,16 @@ const App = {
     document.getElementById('auth-root').style.display='';
     renderAuthRoot();
   },
-  resetAllData(){
-    if(!confirm('This permanently clears every pre-seeded demo customer, supplier and RFQ, plus any test accounts created on this browser. You\'ll start from a completely empty platform. Continue?')) return;
-    localStorage.setItem('innous_wiped','1');
+  clearExampleData(){
+    if(!confirm('This permanently clears every example customer, supplier and RFQ, plus any test accounts created on this browser. The platform will run on real accounts only. Continue?')) return;
+    localStorage.removeItem('innous_demo_loaded');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
     location.reload();
   },
-  restoreDemoData(){
-    if(!confirm('Restore the full pre-seeded demo dataset? This also clears any test accounts created on this browser.')) return;
-    localStorage.removeItem('innous_wiped');
+  loadExampleData(){
+    if(!confirm('Load a set of example customers, suppliers and RFQs? This also clears any real test accounts created on this browser.')) return;
+    localStorage.setItem('innous_demo_loaded','1');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
     location.reload();
@@ -2948,12 +2954,32 @@ const App = {
         </div>
         <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
         ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+        ${STATE.authMode==='account'?`
+        <hr class="divider">
+        <div class="info-item-label" style="margin-bottom:10px;">${es?'Cambiar contraseña (opcional)':'Change password (optional)'}</div>
+        <div class="form-row">
+          <div class="form-group"><label class="field-label">${es?'Nueva contraseña':'New password'}</label><input type="password" id="account-new-password" placeholder="${es?'Dejar en blanco para no cambiar':'Leave blank to keep current'}" autocomplete="new-password"></div>
+          <div class="form-group"><label class="field-label">${es?'Confirmar':'Confirm'}</label><input type="password" id="account-new-password2" autocomplete="new-password"></div>
+        </div>
+        `:''}
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeAccountModal()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveAccount()"><i data-lucide="check"></i>${es?'Guardar':'Save'}</button></div>
     `);
   },
   closeAccountModal(){ STATE.ui.accountDraft = null; closeModal(); },
   saveAccount(){
+    const es = STATE.role==='SUPPLIER';
+    if(STATE.authMode==='account'){
+      const pw1 = document.getElementById('account-new-password')?.value || '';
+      const pw2 = document.getElementById('account-new-password2')?.value || '';
+      if(pw1 || pw2){
+        if(pw1.length<4){ showToast(es?'La contraseña debe tener al menos 4 caracteres':'Password must be at least 4 characters'); return; }
+        if(pw1!==pw2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return; }
+        const session = loadSession();
+        const account = session && ACCOUNTS.find(a=>a.username===session.username);
+        if(account){ account.password = pw1; saveAccounts(ACCOUNTS); showToast(es?'Contraseña actualizada':'Password updated', 'success'); }
+      }
+    }
     const d = STATE.ui.accountDraft;
     if(STATE.role==='CLIENT'){ const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo; }
     else if(STATE.role==='SUPPLIER'){ const rec = currentSupplier(); rec.contactName = d.name.trim()||rec.contactName; rec.name = d.company.trim()||rec.name; rec.photo = d.photo; }
@@ -3337,15 +3363,16 @@ document.addEventListener('click', ()=>{
 });
 
 /* ---------- Init ---------- */
-// A tester can wipe every pre-seeded demo customer/supplier/RFQ (see App.resetAllData,
-// on the INNOUS Settings page) to try the platform genuinely from zero as all three
-// roles. The flag lives in localStorage so the empty state survives a reload.
-if(localStorage.getItem('innous_wiped')==='1'){
+// This is a real portal, not a demo: it starts genuinely empty (no pre-seeded
+// customers/suppliers/RFQs). INNOUS can optionally load a set of example data
+// to explore the platform's full richness — see App.loadExampleData on the
+// Settings page — which persists via this flag until explicitly cleared.
+if(localStorage.getItem('innous_demo_loaded')==='1'){
+  buildProjects();
+} else {
   CUSTOMERS.length = 0;
   SUPPLIERS.length = 0;
   PROJECTS = [];
-} else {
-  buildProjects();
 }
 window.addEventListener('hashchange', ()=>{ if(STATE.authMode!=='guest') route(); });
 let booted = false;
