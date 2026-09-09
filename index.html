@@ -250,8 +250,8 @@ table.data-table tbody tr:last-child td{border-bottom:none;}
 .comparison-table th,.comparison-table td{padding:9px 6px;font-size:12px;}
 .comparison-table th:first-child,.comparison-table td:first-child{padding-left:10px;}
 .comparison-table td:nth-child(1),.comparison-table td:nth-child(6){white-space:normal;}
-.comparison-table td:nth-child(1){min-width:96px;}
-.comparison-table td:nth-child(6){min-width:110px;max-width:125px;line-height:1.35;}
+.comparison-table td:nth-child(1){min-width:128px;max-width:150px;}
+.comparison-table td:nth-child(6){min-width:100px;max-width:112px;line-height:1.35;}
 .comparison-table td:nth-child(3){line-height:1.4;}
 
 /* ============ FORMS ============ */
@@ -1750,9 +1750,9 @@ function supplierResponsesSection(p){
       ${p.invitedSupplierIds.map((sid,i)=>{
         const q = p.supplierQuotes.find(x=>x.supplierId===sid);
         const submitted = q && q.status==='submitted';
-        return `<div class="card card-pad" style="box-shadow:none;">
+        return `<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/suppliers')">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-weight:600;font-size:12.5px;">Supplier ${String.fromCharCode(65+i)}</div>
+            <div style="font-weight:600;font-size:12.5px;">${SUPPLIERS.find(s=>s.id===sid).name}</div>
             <span class="badge ${submitted?'badge-green':'badge-amber'}">${submitted?'Submitted':'Pending'}</span>
           </div>
           <div class="td-sub" style="margin-top:6px;">${SUPPLIERS.find(s=>s.id===sid).city}</div>
@@ -1768,7 +1768,6 @@ function getMarkup(pid,sid){ const k=markupKey(pid,sid); if(STATE.ui.markupDraft
 function quoteComparisonSection(p){
   const submitted = p.supplierQuotes.filter(q=>q.status==='submitted');
   if(!submitted.length) return '';
-  const byId = Object.fromEntries(p.invitedSupplierIds.map((sid,i)=>[sid, String.fromCharCode(65+i)]));
   const shortlisted = new Set(p.shortlist.map(s=>s.supplierId));
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
@@ -1784,7 +1783,7 @@ function quoteComparisonSection(p){
         const customerPrice = q.quotedTotal*(1+markup/100);
         const already = shortlisted.has(q.supplierId);
         return `<tr>
-          <td class="td-strong">Supplier ${byId[q.supplierId]}<div class="td-sub">${supplier.city} · ${supplier.rating}★</div></td>
+          <td class="td-strong">${supplier.name}<div class="td-sub">${supplier.city} · ${supplier.rating}★</div></td>
           <td>${fmtMoney2(q.unitPrice)}</td>
           <td class="td-sub" style="line-height:1.5;">T ${fmtMoney(q.tooling)}<br>S ${fmtMoney(q.setup)}<br>Sh ${q.shipping?fmtMoney(q.shipping):'Incl.'}</td>
           <td class="td-strong">${fmtMoney(q.quotedTotal)}</td>
@@ -1797,7 +1796,7 @@ function quoteComparisonSection(p){
       }).join('')}
     </tbody></table>
     </div>
-    ${p.shortlist.length ? shortlistPreview(p, byId) : ''}
+    ${p.shortlist.length ? shortlistPreview(p) : ''}
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div class="td-sub">${p.shortlist.length} of 5 selected for customer shortlist</div>
@@ -1805,14 +1804,14 @@ function quoteComparisonSection(p){
     </div>
   </div>`;
 }
-function shortlistPreview(p, byId){
+function shortlistPreview(p){
   return `
   <div style="margin:16px 0;">
     <div class="info-item-label" style="margin-bottom:8px;">Customer Shortlist Preview</div>
     <div class="grid grid-5">
       ${p.shortlist.map(s=>`
         <div class="card card-pad" style="box-shadow:none;">
-          <div class="td-sub">Supplier ${byId[s.supplierId]}</div>
+          <div class="td-sub">${supplierName(s.supplierId)}</div>
           <div style="font-weight:700;font-size:16px;">${fmtMoney(s.customerPrice)}</div>
           <div class="td-sub">${s.leadTimeDays} days</div>
           <button class="btn btn-ghost btn-sm" style="color:var(--danger);padding-left:0;" onclick="App.removeFromShortlist('${p.id}','${s.supplierId}')"><i data-lucide="x" style="width:12px;height:12px;"></i>Remove</button>
@@ -1821,13 +1820,12 @@ function shortlistPreview(p, byId){
   </div>`;
 }
 function sentShortlistReadonlySection(p){
-  const byId = Object.fromEntries(p.invitedSupplierIds.map((sid,i)=>[sid, String.fromCharCode(65+i)]));
   return `
   <div class="card card-pad">
     <div class="section-title">Shortlist Sent to Customer</div>
-    <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns remain confidential to INNOUS.</div>
+    <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns are never shown to the customer — this pricing detail is visible only within INNOUS.</div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
-      ${p.shortlist.map(s=>`<tr><td class="td-strong">Supplier ${byId[s.supplierId]}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
+      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
     </tbody></table></div>
   </div>`;
 }
