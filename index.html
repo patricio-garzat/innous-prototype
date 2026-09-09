@@ -1298,6 +1298,9 @@ function pendingItems(){
     PROJECTS.filter(p=>p.order && p.order.quality.status==='ncr_open').forEach(p=>{
       items.push({navId:'quality', icon:'alert-triangle', text:`Quality issue open — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
+    PROJECTS.filter(p=>p.order && p.order.status==='delivered' && p.order.paymentStatus!=='Paid').forEach(p=>{
+      items.push({navId:'orders', icon:'dollar-sign', text:`Collect final payment — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+    });
   } else { // SUPPLIER
     supplierInvited().filter(p=>{
       const q = supplierQuoteFor(p);
@@ -2198,7 +2201,11 @@ ROUTES['innous/order'] = function(id){
     </div>
     <div class="card card-pad">
       <div class="section-title">Payment Status</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice.toLocaleString()>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${fmtMoney(p.order.supplierCost)}</span></div>
+      <div class="section-sub">Billing is between INNOUS and each party — set this as deposits and payouts actually happen. It's independent of the production timeline.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice.toLocaleString()>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${fmtMoney(p.order.supplierCost)}</span></div>
+      <div class="markup-chip-row">
+        ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
+      </div>
     </div>
   </div>`;
 };
@@ -3256,11 +3263,19 @@ const App = {
     if(!next) return;
     p.order.status = next;
     p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08');
-    if(idx+1>2) p.order.paymentStatus = 'Deposit Received';
-    if(next==='delivered'){ p.status='completed'; p.order.paymentStatus='Paid'; }
+    // Payment status is deliberately NOT touched here — production progress is the
+    // supplier's call, billing/collection is INNOUS's (see App.setPaymentStatus).
+    if(next==='delivered'){ p.status='completed'; }
     else if(p.status==='awarded') p.status='in_production';
     logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
+    route();
+  },
+  setPaymentStatus(pid, status){
+    const p = findProject(pid);
+    p.order.paymentStatus = status;
+    logActivity(p, 'INNOUS', `Payment status updated to "${status}".`);
+    showToast(`Payment status set to ${status}`, 'success');
     route();
   },
 
