@@ -1,0 +1,2449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INNOUS — Manufacturing Sourcing Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.js"></script>
+<style>
+/* ============ RESET & TOKENS ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#F7F7F5;
+  --surface:#FFFFFF;
+  --surface-alt:#FAFAFA;
+  --border:#E4E4E7;
+  --border-strong:#D4D4D8;
+  --ink:#18181B;
+  --ink-secondary:#52525B;
+  --ink-tertiary:#A1A1AA;
+  --accent:#2952CC;
+  --accent-ink:#1E3E9E;
+  --accent-soft:#EEF2FF;
+  --success:#15803D;
+  --success-soft:#F0FDF4;
+  --warning:#B45309;
+  --warning-soft:#FFFBEB;
+  --danger:#B91C1C;
+  --danger-soft:#FEF2F2;
+  --radius:10px;
+  --radius-sm:6px;
+  --shadow-sm:0 1px 2px rgba(24,24,27,0.05);
+  --shadow-md:0 6px 20px rgba(24,24,27,0.08);
+  --sidebar-w:248px;
+  --topbar-h:60px;
+}
+html,body{height:100%;}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'JetBrains Mono',monospace;}
+a{color:inherit;text-decoration:none;}
+button{font-family:inherit;font-size:inherit;cursor:pointer;background:none;border:none;color:inherit;}
+input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink);}
+ul{list-style:none;}
+svg{display:block;}
+::selection{background:var(--accent-soft);color:var(--accent-ink);}
+
+/* ============ LAYOUT SHELL ============ */
+.app-shell{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+.topbar{
+  height:var(--topbar-h);flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);z-index:50;
+}
+.topbar-left{display:flex;align-items:center;gap:14px;}
+.mobile-menu-btn{display:none;padding:6px;border-radius:var(--radius-sm);}
+.mobile-menu-btn:hover{background:var(--surface-alt);}
+.logo{display:flex;align-items:center;gap:9px;}
+.logo-mark{width:28px;height:28px;background:var(--ink);border-radius:6px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.logo-mark svg{width:16px;height:16px;stroke:#fff;}
+.logo-word{font-weight:800;font-size:16.5px;letter-spacing:0.5px;color:var(--ink);}
+.logo-tag{font-size:10px;color:var(--ink-tertiary);letter-spacing:1.2px;text-transform:uppercase;margin-left:8px;padding-left:8px;border-left:1px solid var(--border-strong);display:none;}
+@media(min-width:900px){.logo-tag{display:block;}}
+
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.role-switcher{position:relative;}
+.role-switcher-btn{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--border-strong);
+  border-radius:var(--radius-sm);background:var(--surface);font-size:13px;font-weight:500;
+}
+.role-switcher-btn:hover{background:var(--surface-alt);}
+.role-switcher-btn .rs-label{color:var(--ink-tertiary);font-weight:400;}
+.role-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);}
+.role-menu{
+  position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:220px;padding:6px;z-index:100;display:none;
+}
+.role-menu.open{display:block;}
+.role-menu-item{display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:var(--radius-sm);width:100%;text-align:left;}
+.role-menu-item:hover{background:var(--surface-alt);}
+.role-menu-item.active{background:var(--accent-soft);}
+.role-menu-icon{width:30px;height:30px;border-radius:7px;background:var(--surface-alt);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.role-menu-item.active .role-menu-icon{background:var(--accent);border-color:var(--accent);}
+.role-menu-item.active .role-menu-icon svg{stroke:#fff;}
+.role-menu-icon svg{width:15px;height:15px;stroke:var(--ink-secondary);}
+.role-menu-title{font-size:13px;font-weight:600;}
+.role-menu-sub{font-size:11.5px;color:var(--ink-tertiary);margin-top:1px;}
+
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:20px;border:1px solid var(--border);}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;}
+.user-chip-text{font-size:12.5px;font-weight:500;line-height:1.2;}
+.user-chip-sub{font-size:10.5px;color:var(--ink-tertiary);}
+
+.app-body{flex:1;display:flex;min-height:0;}
+
+.sidebar{
+  width:var(--sidebar-w);flex:0 0 auto;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;transition:transform .2s ease;
+}
+.sidebar-section{padding:14px 12px 6px;}
+.sidebar-label{font-size:10.5px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--ink-tertiary);padding:6px 10px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);font-size:13.5px;
+  font-weight:500;color:var(--ink-secondary);width:100%;text-align:left;margin-bottom:1px;
+}
+.nav-item svg{width:16px;height:16px;stroke-width:2px;flex:0 0 auto;}
+.nav-item:hover{background:var(--surface-alt);color:var(--ink);}
+.nav-item.active{background:var(--ink);color:#fff;}
+.nav-item.active svg{stroke:#fff;}
+.nav-badge{margin-left:auto;background:var(--accent-soft);color:var(--accent-ink);font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;}
+.nav-item.active .nav-badge{background:rgba(255,255,255,0.18);color:#fff;}
+.sidebar-footer{margin-top:auto;padding:14px;border-top:1px solid var(--border);}
+.sidebar-footer-card{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+.sidebar-footer-card-title{font-size:12px;font-weight:600;margin-bottom:2px;}
+.sidebar-footer-card-sub{font-size:11px;color:var(--ink-tertiary);line-height:1.4;}
+
+.content{flex:1;overflow-y:auto;padding:28px 32px 60px;}
+.content-inner{max-width:1320px;margin:0 auto;}
+
+/* ============ TYPOGRAPHY / HEADER ============ */
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-tertiary);margin-bottom:10px;}
+.breadcrumb a:hover{color:var(--ink);}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+.page-title{font-size:24px;font-weight:700;letter-spacing:-0.3px;}
+.page-subtitle{font-size:13.5px;color:var(--ink-tertiary);margin-top:4px;}
+.page-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.section-title{font-size:15px;font-weight:700;margin-bottom:4px;}
+.section-sub{font-size:12.5px;color:var(--ink-tertiary);margin-bottom:14px;}
+
+/* ============ BUTTONS ============ */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;border:1px solid transparent;white-space:nowrap;transition:background .12s,border-color .12s;}
+.btn svg{width:15px;height:15px;}
+.btn-primary{background:var(--ink);color:#fff;}
+.btn-primary:hover{background:#000;}
+.btn-primary:disabled{background:var(--border-strong);color:var(--ink-tertiary);cursor:not-allowed;}
+.btn-accent{background:var(--accent);color:#fff;}
+.btn-accent:hover{background:var(--accent-ink);}
+.btn-secondary{background:var(--surface);border-color:var(--border-strong);color:var(--ink);}
+.btn-secondary:hover{background:var(--surface-alt);}
+.btn-ghost{color:var(--ink-secondary);}
+.btn-ghost:hover{background:var(--surface-alt);color:var(--ink);}
+.btn-danger{background:var(--danger-soft);color:var(--danger);}
+.btn-danger:hover{background:#fde2e2;}
+.btn-sm{padding:6px 11px;font-size:12.5px;}
+.btn-block{width:100%;justify-content:center;}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);border:1px solid var(--border-strong);}
+.icon-btn:hover{background:var(--surface-alt);}
+
+/* ============ CARDS / GRID ============ */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+.card-pad{padding:20px;}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
+.card-header h3{font-size:14.5px;font-weight:700;}
+.grid{display:grid;gap:16px;}
+.grid-2{grid-template-columns:repeat(2,1fr);}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-5{grid-template-columns:repeat(5,1fr);}
+@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr);}.grid-5{grid-template-columns:repeat(3,1fr);}.grid-3{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:640px){.grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr;}}
+
+/* ============ KPI ============ */
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.kpi-label{font-size:12px;color:var(--ink-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
+.kpi-icon{width:28px;height:28px;border-radius:7px;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;}
+.kpi-icon svg{width:14px;height:14px;stroke:var(--ink-secondary);}
+.kpi-value{font-size:26px;font-weight:800;letter-spacing:-0.5px;}
+.kpi-sub{font-size:12px;color:var(--ink-tertiary);margin-top:4px;display:flex;align-items:center;gap:4px;}
+.kpi-sub.up{color:var(--success);}
+.kpi-sub.down{color:var(--danger);}
+
+/* ============ BADGES / STATUS ============ */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap;}
+.badge svg{width:10px;height:10px;}
+.badge-gray{background:#F1F1F0;color:var(--ink-secondary);}
+.badge-blue{background:var(--accent-soft);color:var(--accent-ink);}
+.badge-green{background:var(--success-soft);color:var(--success);}
+.badge-amber{background:var(--warning-soft);color:var(--warning);}
+.badge-red{background:var(--danger-soft);color:var(--danger);}
+.badge-dark{background:var(--ink);color:#fff;}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
+.dot-gray{background:var(--ink-tertiary);} .dot-blue{background:var(--accent);} .dot-green{background:var(--success);} .dot-amber{background:var(--warning);} .dot-red{background:var(--danger);}
+
+.tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--surface-alt);border:1px solid var(--border);color:var(--ink-secondary);}
+.award-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:10.5px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;}
+.award-best{background:#18181B;color:#fff;}
+.award-fast{background:var(--accent-soft);color:var(--accent-ink);}
+.award-cheap{background:var(--success-soft);color:var(--success);}
+.award-value{background:var(--warning-soft);color:var(--warning);}
+.award-top{background:#F1F1F0;color:var(--ink-secondary);}
+
+/* ============ TABLE ============ */
+.table-wrap{overflow-x:auto;}
+table.data-table{width:100%;border-collapse:collapse;font-size:13px;}
+table.data-table th{text-align:left;padding:11px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-tertiary);border-bottom:1px solid var(--border);white-space:nowrap;}
+table.data-table td{padding:13px 16px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap;}
+table.data-table tbody tr:hover{background:var(--surface-alt);}
+table.data-table tbody tr:last-child td{border-bottom:none;}
+.td-strong{font-weight:600;}
+.td-sub{color:var(--ink-tertiary);font-size:12px;}
+.row-link{cursor:pointer;}
+
+/* ============ FORMS ============ */
+.form-group{margin-bottom:16px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:640px){.form-row{grid-template-columns:1fr;}}
+label.field-label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:var(--ink);}
+.field-hint{font-size:11.5px;color:var(--ink-tertiary);margin-top:5px;}
+input[type=text],input[type=email],input[type=number],input[type=date],input[type=search],select,textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+textarea{resize:vertical;min-height:90px;}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352525B' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
+.process-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+@media(max-width:768px){.process-grid{grid-template-columns:repeat(2,1fr);}}
+.process-option{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 10px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:600;}
+.process-option:hover{border-color:var(--ink-tertiary);}
+.process-option.selected{border-color:var(--ink);background:var(--ink);color:#fff;}
+.process-option svg{width:18px;height:18px;margin:0 auto 6px;stroke:var(--ink-secondary);}
+.process-option.selected svg{stroke:#fff;}
+
+.file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);}
+.file-drop svg{width:26px;height:26px;stroke:var(--ink-tertiary);margin:0 auto 10px;}
+.file-drop-title{font-size:13.5px;font-weight:600;}
+.file-drop-sub{font-size:12px;color:var(--ink-tertiary);margin-top:3px;}
+.file-list{display:flex;flex-direction:column;gap:6px;margin-top:12px;}
+.file-chip{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;}
+.file-chip .fc-icon{width:28px;height:28px;border-radius:6px;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:9px;font-weight:800;color:var(--ink-secondary);}
+.file-chip .fc-name{font-weight:600;flex:1;}
+.file-chip .fc-size{color:var(--ink-tertiary);font-size:11.5px;}
+.file-chip .fc-remove{color:var(--ink-tertiary);padding:3px;}
+.file-chip .fc-remove:hover{color:var(--danger);}
+
+/* ============ TIMELINE ============ */
+.timeline{display:flex;align-items:flex-start;overflow-x:auto;padding:6px 2px 2px;}
+.timeline-step{display:flex;flex-direction:column;align-items:center;flex:1;min-width:96px;position:relative;}
+.timeline-line{position:absolute;top:13px;left:-50%;width:100%;height:2px;background:var(--border-strong);z-index:0;}
+.timeline-step:first-child .timeline-line{display:none;}
+.timeline-step.done .timeline-line{background:var(--ink);}
+.timeline-dot{width:26px;height:26px;border-radius:50%;background:var(--surface);border:2px solid var(--border-strong);display:flex;align-items:center;justify-content:center;z-index:1;font-size:11px;font-weight:700;color:var(--ink-tertiary);}
+.timeline-step.done .timeline-dot{background:var(--ink);border-color:var(--ink);color:#fff;}
+.timeline-step.current .timeline-dot{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft);}
+.timeline-label{font-size:11px;text-align:center;margin-top:8px;color:var(--ink-tertiary);font-weight:600;padding:0 4px;line-height:1.3;}
+.timeline-step.done .timeline-label,.timeline-step.current .timeline-label{color:var(--ink);}
+
+/* ============ MODAL / TOAST ============ */
+.modal-overlay{position:fixed;inset:0;background:rgba(24,24,27,0.45);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity .15s;padding:20px;}
+.modal-overlay.open{opacity:1;pointer-events:auto;}
+.modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);transform:translateY(8px);transition:transform .15s;}
+.modal-overlay.open .modal{transform:translateY(0);}
+.modal.modal-wide{max-width:900px;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--border);}
+.modal-header h3{font-size:16px;font-weight:700;}
+.modal-body{padding:22px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border);}
+.modal-close{padding:4px;color:var(--ink-tertiary);border-radius:6px;}
+.modal-close:hover{background:var(--surface-alt);color:var(--ink);}
+
+.toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:2000;}
+.toast{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow-md);min-width:260px;animation:toastIn .2s ease;}
+.toast svg{width:16px;height:16px;stroke:#fff;flex:0 0 auto;}
+.toast.success{background:#0F3D22;}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* ============ MISC COMPONENTS ============ */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;}
+.tab-btn{padding:10px 4px;margin-right:20px;font-size:13.5px;font-weight:600;color:var(--ink-tertiary);border-bottom:2px solid transparent;}
+.tab-btn:hover{color:var(--ink);}
+.tab-btn.active{color:var(--ink);border-color:var(--ink);}
+
+.empty-state{text-align:center;padding:50px 20px;color:var(--ink-tertiary);}
+.empty-state svg{width:36px;height:36px;margin:0 auto 12px;stroke:var(--ink-tertiary);}
+.empty-state-title{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;}
+
+.stars{display:inline-flex;gap:1px;}
+.stars svg{width:12.5px;height:12.5px;}
+.star-filled{fill:#F5A524;stroke:#F5A524;}
+.star-empty{fill:none;stroke:var(--border-strong);}
+
+.supplier-card{border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--surface);transition:border-color .12s;}
+.supplier-card.selected{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
+.supplier-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px;}
+.supplier-avatar{width:40px;height:40px;border-radius:9px;background:var(--surface-alt);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:var(--ink-secondary);flex:0 0 auto;}
+.cap-list{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0;}
+.mini-stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+.mini-stat{text-align:center;}
+.mini-stat-val{font-size:14px;font-weight:700;}
+.mini-stat-label{font-size:10px;color:var(--ink-tertiary);text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;}
+
+.quote-card{border:1px solid var(--border);border-radius:var(--radius);padding:20px;background:var(--surface);position:relative;display:flex;flex-direction:column;gap:12px;}
+.quote-card.best{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
+.quote-price{font-size:26px;font-weight:800;letter-spacing:-0.5px;}
+.quote-meta-row{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--ink-secondary);padding:8px 0;border-top:1px solid var(--border);}
+
+.chat-panel{display:flex;height:calc(100vh - 220px);min-height:420px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);}
+.chat-list{width:300px;flex:0 0 auto;border-right:1px solid var(--border);overflow-y:auto;}
+.chat-list-item{display:flex;gap:10px;padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+.chat-list-item:hover{background:var(--surface-alt);}
+.chat-list-item.active{background:var(--accent-soft);}
+.chat-thread{flex:1;display:flex;flex-direction:column;min-width:0;}
+.chat-thread-header{padding:14px 18px;border-bottom:1px solid var(--border);}
+.chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;}
+.chat-bubble{max-width:70%;padding:10px 13px;border-radius:12px;font-size:13px;line-height:1.45;}
+.chat-bubble.out{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:3px;}
+.chat-bubble.in{align-self:flex-start;background:var(--surface-alt);border:1px solid var(--border);border-bottom-left-radius:3px;}
+.chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;}
+.chat-input-row{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border);}
+.chat-input-row input{flex:1;}
+
+.pricing-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
+.pricing-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:13px;}
+.pricing-row.total{border-top:1px solid var(--border-strong);margin-top:6px;padding-top:12px;font-weight:700;font-size:15px;}
+.markup-chip-row{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
+.markup-chip{padding:6px 12px;border-radius:20px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:600;}
+.markup-chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+.confidential-note{display:flex;gap:8px;align-items:flex-start;background:var(--warning-soft);border:1px solid #FDE9C8;border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--warning);}
+.confidential-note svg{width:14px;height:14px;flex:0 0 auto;margin-top:1px;}
+
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:12.5px;}
+.bar-label{width:150px;flex:0 0 auto;color:var(--ink-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bar-track{flex:1;height:8px;background:var(--surface-alt);border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;background:var(--ink);border-radius:4px;}
+.bar-val{width:60px;flex:0 0 auto;text-align:right;font-weight:700;font-size:12px;}
+
+.checklist-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.checklist-item:last-child{border-bottom:none;}
+.step-check{width:20px;height:20px;border-radius:50%;background:var(--success-soft);color:var(--success);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.step-check svg{width:12px;height:12px;}
+.step-pending{width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong);flex:0 0 auto;}
+
+.search-bar{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:8px 12px;}
+.search-bar svg{width:15px;height:15px;stroke:var(--ink-tertiary);flex:0 0 auto;}
+.search-bar input{border:none;outline:none;padding:0;flex:1;}
+.filter-bar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;}
+.filter-bar select{width:auto;padding:8px 30px 8px 12px;font-size:12.5px;}
+
+.info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+@media(max-width:768px){.info-grid{grid-template-columns:1fr 1fr;}}
+.info-item-label{font-size:11px;color:var(--ink-tertiary);text-transform:uppercase;letter-spacing:0.3px;font-weight:700;margin-bottom:4px;}
+.info-item-val{font-size:13.5px;font-weight:600;}
+
+.activity-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.activity-item:last-child{border-bottom:none;}
+.activity-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-tertiary);margin-top:6px;flex:0 0 auto;}
+.activity-text{font-size:13px;}
+.activity-time{font-size:11.5px;color:var(--ink-tertiary);margin-top:2px;}
+
+.checkbox-row{display:flex;align-items:center;gap:9px;}
+.checkbox-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--ink);}
+
+hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
+
+/* Sidebar mobile */
+.sidebar-backdrop{display:none;}
+@media(max-width:900px){
+  .mobile-menu-btn{display:flex;}
+  .sidebar{position:fixed;top:var(--topbar-h);left:0;bottom:0;transform:translateX(-100%);box-shadow:var(--shadow-md);}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-backdrop.open{display:block;position:fixed;inset:var(--topbar-h) 0 0 0;background:rgba(0,0,0,0.3);z-index:40;}
+  .content{padding:20px 16px 50px;}
+  .info-grid{grid-template-columns:1fr;}
+}
+@media(max-width:480px){
+  .topbar{padding:0 10px;gap:6px;}
+  .logo-word{font-size:14px;}
+  .rs-label{display:none;}
+  .role-switcher-btn{padding:7px 9px;font-size:12.5px;gap:5px;}
+  .user-chip{padding:4px;border:none;}
+  .user-chip-text,.user-chip-sub{display:none;}
+  .topbar-right{gap:6px;}
+}
+</style>
+</head>
+<body>
+
+<div id="toast-container" class="toast-container"></div>
+<div id="modal-root"></div>
+
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="mobile-menu-btn" onclick="App.toggleSidebar()"><i data-lucide="menu"></i></button>
+      <div class="logo">
+        <div class="logo-mark"><i data-lucide="hexagon"></i></div>
+        <span class="logo-word">INNOUS</span>
+        <span class="logo-tag">Manufacturing Sourcing</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="role-switcher">
+        <button class="role-switcher-btn" onclick="App.toggleRoleMenu(event)">
+          <span class="role-dot"></span>
+          <span class="rs-label">Viewing as:</span> <span id="rs-current"></span>
+          <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
+        </button>
+        <div class="role-menu" id="role-menu"></div>
+      </div>
+      <div class="user-chip" id="user-chip"></div>
+    </div>
+  </header>
+  <div class="app-body">
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="App.toggleSidebar()"></div>
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="content" id="app-content"></main>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   INNOUS — Manufacturing Sourcing Platform Prototype
+   Single-file demo. All data is mock / in-memory. No backend.
+   ===================================================================== */
+
+/* ---------- Seeded RNG (deterministic mock data) ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rng = mulberry32(20260408);
+function rnd(min,max){return Math.floor(rng()*(max-min+1))+min;}
+function pick(arr){return arr[Math.floor(rng()*arr.length)];}
+function pickN(arr,n){const copy=[...arr];const out=[];while(out.length<n && copy.length){out.push(copy.splice(Math.floor(rng()*copy.length),1)[0]);}return out;}
+
+/* ---------- Constants ---------- */
+const PROCESSES = ['CNC Machining','Conventional Machining','Fabrication / Pailería','Foundry / Casting','Cutting','Stamping','Other'];
+const MATERIALS = ['Aluminum 6061','Aluminum 7075','Stainless Steel 304','Stainless Steel 316','Steel 1018','Steel 4140','Steel A36','Cast Iron','Brass 360','Carbon Steel','Titanium Grade 5','Delrin (Acetal)'];
+const FILE_TYPES = {pdf:{ext:'PDF',color:'#B91C1C'},step:{ext:'STEP',color:'#2952CC'},dwg:{ext:'DWG',color:'#B45309'},dxf:{ext:'DXF',color:'#15803D'},jpg:{ext:'JPG',color:'#7C3AED'},png:{ext:'PNG',color:'#7C3AED'}};
+const CERTS = ['ISO 9001','AS9100','IATF 16949','ISO 14001'];
+
+const RFQ_STATUS_FLOW = ['submitted','under_review','sourcing','quotes_received','customer_review','awarded','in_production','completed'];
+const RFQ_STATUS_META = {
+  submitted:{label:'Submitted',cls:'badge-gray'},
+  under_review:{label:'Under Review',cls:'badge-blue'},
+  sourcing:{label:'Sourcing Suppliers',cls:'badge-blue'},
+  quotes_received:{label:'Quotes Received',cls:'badge-blue'},
+  customer_review:{label:'Customer Review',cls:'badge-amber'},
+  awarded:{label:'Awarded',cls:'badge-green'},
+  in_production:{label:'In Production',cls:'badge-green'},
+  completed:{label:'Completed',cls:'badge-gray'},
+};
+const ORDER_STATUS_FLOW = ['order_confirmed','material_purchased','production_started','production_completed','quality_inspection','ready_to_ship','shipped','delivered'];
+const ORDER_STATUS_META = {
+  order_confirmed:{label:'Order Confirmed'},
+  material_purchased:{label:'Material Purchased'},
+  production_started:{label:'Production Started'},
+  production_completed:{label:'Production Completed'},
+  quality_inspection:{label:'Quality Inspection'},
+  ready_to_ship:{label:'Ready to Ship'},
+  shipped:{label:'Shipped'},
+  delivered:{label:'Delivered'},
+};
+
+/* ---------- Customers ---------- */
+const CUSTOMERS = [
+  {id:'c1',company:'ABC Manufacturing',contact:'Diane Coleman',email:'dcoleman@abcmfg.com',city:'Detroit, MI',industry:'Automotive'},
+  {id:'c2',company:'Titan Hydraulics',contact:'Marcus Reed',email:'mreed@titanhydraulics.com',city:'Houston, TX',industry:'Industrial Equipment'},
+  {id:'c3',company:'Northfield Industrial',contact:'Sara Bianchi',email:'sbianchi@northfieldind.com',city:'Chicago, IL',industry:'Heavy Machinery'},
+  {id:'c4',company:'Apex Aerospace Components',contact:'Julian Osei',email:'josei@apexaero.com',city:'Wichita, KS',industry:'Aerospace'},
+  {id:'c5',company:'Meridian Energy Systems',contact:'Rachel Kim',email:'rkim@meridianenergy.com',city:'Tulsa, OK',industry:'Energy'},
+  {id:'c6',company:'Coastal Marine Fabrication',contact:'Tom Whitfield',email:'twhitfield@coastalmarine.com',city:'Jacksonville, FL',industry:'Marine'},
+  {id:'c7',company:'Precision Robotics Corp',contact:'Elena Vargas',email:'evargas@precisionrobotics.com',city:'San Jose, CA',industry:'Robotics'},
+  {id:'c8',company:'Summit Agricultural Equipment',contact:'Gary Holt',email:'gholt@summitag.com',city:'Des Moines, IA',industry:'Agriculture'},
+  {id:'c9',company:'Vanguard Defense Systems',contact:'Nicole Park',email:'npark@vanguarddefense.com',city:'Arlington, VA',industry:'Defense'},
+  {id:'c10',company:'BrightPath Medical Devices',contact:'Aaron Feldman',email:'afeldman@brightpathmed.com',city:'Minneapolis, MN',industry:'Medical Devices'},
+];
+
+/* ---------- Suppliers ---------- */
+const SUPPLIERS = [
+  {id:'s1',name:'Monterrey Precision Machining',city:'Monterrey, NL',capabilities:['CNC Machining'],machines:['5-axis CNC (Haas)','3-axis CNC','CNC Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 500–5,000 units/mo',rating:4.9,onTime:98,quality:99,projects:214},
+  {id:'s2',name:'Querétaro Advanced Manufacturing',city:'Querétaro, QRO',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'High-volume · 1,000–20,000 units/mo',rating:4.8,onTime:96,quality:98,projects:187},
+  {id:'s3',name:'Bajío Metal Works',city:'León, GTO',capabilities:['Stamping','Fabrication / Pailería'],machines:['400T Press','Progressive Die','Press Brake'],certs:['ISO 9001'],capacity:'High-volume · 5,000–50,000 units/mo',rating:4.6,onTime:92,quality:95,projects:143},
+  {id:'s4',name:'Saltillo Foundry Group',city:'Saltillo, COAH',capabilities:['Foundry / Casting'],machines:['Sand Casting','Die Casting','CNC Finishing'],certs:['ISO 9001','IATF 16949'],capacity:'Mid-volume · 300–8,000 units/mo',rating:4.5,onTime:90,quality:94,projects:98},
+  {id:'s5',name:'Tijuana CNC Solutions',city:'Tijuana, BC',capabilities:['CNC Machining'],machines:['4-axis CNC','3-axis CNC','Swiss Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 200–4,000 units/mo',rating:4.7,onTime:95,quality:97,projects:126},
+  {id:'s6',name:'Guadalajara Industrial Fab',city:'Guadalajara, JAL',capabilities:['Fabrication / Pailería','Cutting'],machines:['Laser Cutting','Plasma Cutting','MIG/TIG Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 100–3,000 units/mo',rating:4.6,onTime:93,quality:95,projects:112},
+  {id:'s7',name:'CDMX Precision Tooling',city:'Ciudad de México',capabilities:['CNC Machining','Conventional Machining'],machines:['3-axis CNC','Manual Lathe','Manual Mill'],certs:['ISO 9001'],capacity:'Low-mid volume · 50–2,000 units/mo',rating:4.8,onTime:97,quality:98,projects:161},
+  {id:'s8',name:'Juárez Manufacturing Partners',city:'Ciudad Juárez, CHIH',capabilities:['Stamping','CNC Machining'],machines:['Progressive Die','300T Press','5-axis CNC'],certs:['IATF 16949','ISO 9001'],capacity:'High-volume · 10,000–100,000 units/mo',rating:4.7,onTime:94,quality:96,projects:203},
+  {id:'s9',name:'Puebla Casting & Foundry',city:'Puebla, PUE',capabilities:['Foundry / Casting'],machines:['Investment Casting','Sand Casting'],certs:['ISO 9001'],capacity:'Low-mid volume · 100–2,500 units/mo',rating:4.4,onTime:89,quality:92,projects:76},
+  {id:'s10',name:'Chihuahua Steel Fabrication',city:'Chihuahua, CHIH',capabilities:['Fabrication / Pailería'],machines:['Plasma Cutting','Press Brake','Robotic Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 50–1,500 units/mo',rating:4.5,onTime:91,quality:94,projects:88},
+  {id:'s11',name:'Mexicali Machining Co.',city:'Mexicali, BC',capabilities:['CNC Machining','Conventional Machining'],machines:['4-axis CNC','Manual Lathe'],certs:['ISO 9001'],capacity:'Mid-volume · 200–5,000 units/mo',rating:4.8,onTime:96,quality:97,projects:154},
+  {id:'s12',name:'San Luis Potosí Metal Cutting',city:'San Luis Potosí, SLP',capabilities:['Cutting','Stamping'],machines:['Laser Cutting','Waterjet','200T Press'],certs:['ISO 9001'],capacity:'High-volume · 5,000–40,000 units/mo',rating:4.6,onTime:93,quality:95,projects:119},
+  {id:'s13',name:'Toluca Precision Works',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',rating:4.9,onTime:97,quality:99,projects:171},
+  {id:'s14',name:'Hermosillo Industrial Group',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',rating:4.5,onTime:90,quality:93,projects:104},
+  {id:'s15',name:'Aguascalientes Advanced CNC',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',rating:4.9,onTime:98,quality:99,projects:196},
+];
+
+/* ---------- Project / RFQ templates ---------- */
+const PROJECT_TEMPLATES = [
+  {name:'Hydraulic Housing',process:'CNC Machining',material:'Aluminum 6061',qty:[100,400]},
+  {name:'Bracket Assembly',process:'Stamping',material:'Steel A36',qty:[2000,8000]},
+  {name:'Pump Impeller',process:'Foundry / Casting',material:'Cast Iron',qty:[300,1200]},
+  {name:'Enclosure Panel',process:'Fabrication / Pailería',material:'Stainless Steel 304',qty:[50,300]},
+  {name:'Shaft Coupling',process:'Conventional Machining',material:'Steel 4140',qty:[200,900]},
+  {name:'Sheet Metal Bracket',process:'Cutting',material:'Aluminum 6061',qty:[1000,5000]},
+  {name:'Valve Body',process:'CNC Machining',material:'Brass 360',qty:[150,600]},
+  {name:'Frame Weldment',process:'Fabrication / Pailería',material:'Steel A36',qty:[30,150]},
+  {name:'Gear Housing',process:'CNC Machining',material:'Aluminum 7075',qty:[100,500]},
+  {name:'Base Plate',process:'Cutting',material:'Steel A36',qty:[500,3000]},
+  {name:'Sensor Mounting Bracket',process:'CNC Machining',material:'Aluminum 6061',qty:[200,1000]},
+  {name:'Compressor Bracket',process:'Stamping',material:'Steel 1018',qty:[3000,15000]},
+  {name:'Manifold Block',process:'CNC Machining',material:'Aluminum 6061',qty:[80,350]},
+  {name:'Turbine Blade Casting',process:'Foundry / Casting',material:'Titanium Grade 5',qty:[50,250]},
+  {name:'Chassis Weldment',process:'Fabrication / Pailería',material:'Steel 4140',qty:[20,100]},
+  {name:'Actuator Housing',process:'CNC Machining',material:'Delrin (Acetal)',qty:[500,2500]},
+  {name:'Support Bracket',process:'Conventional Machining',material:'Stainless Steel 316',qty:[150,700]},
+  {name:'Cover Plate',process:'Cutting',material:'Aluminum 7075',qty:[800,4000]},
+  {name:'Coupling Flange',process:'CNC Machining',material:'Steel 4140',qty:[300,1500]},
+  {name:'Weld Fixture',process:'Fabrication / Pailería',material:'Steel A36',qty:[10,60]},
+];
+const CITIES = ['Detroit, MI','Houston, TX','Chicago, IL','Wichita, KS','Tulsa, OK','Jacksonville, FL','San Jose, CA','Des Moines, IA','Arlington, VA','Minneapolis, MN','El Paso, TX','Charlotte, NC'];
+const FIRST_NAMES=['James','Maria','Robert','Linda','David','Susan','Michael','Karen','Chris','Amanda','Brian','Laura'];
+const LAST_NAMES=['Turner','Sanchez','Bennett','Okafor','Mitchell','Reyes','Foster','Grant','Douglas','Palmer'];
+
+function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fmtDateShort(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function fmtMoney(n){return '$'+Math.round(n).toLocaleString('en-US');}
+function fmtMoney2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
+function daysFromNow(n){return addDays(new Date('2026-09-08'),n);}
+
+function mockFiles(process){
+  const sets = {
+    'CNC Machining':[['drawing.pdf','pdf'],['model.step','step'],['detail.dwg','dwg']],
+    'Conventional Machining':[['drawing.pdf','pdf'],['model.step','step']],
+    'Fabrication / Pailería':[['assembly.pdf','pdf'],['layout.dxf','dxf'],['weld-detail.dwg','dwg']],
+    'Foundry / Casting':[['casting-print.pdf','pdf'],['pattern.step','step']],
+    'Cutting':[['nest-layout.dxf','dxf'],['drawing.pdf','pdf']],
+    'Stamping':[['die-drawing.pdf','pdf'],['part.step','step'],['reference.jpg','jpg']],
+    'Other':[['spec-sheet.pdf','pdf']],
+  };
+  const base = sets[process]||sets['Other'];
+  return base.map(([n,t],i)=>({name:n.replace('.',`_v${1}.`),type:t,size:(rnd(180,4200))+' KB'}));
+}
+
+let PROJECTS = [];
+function buildProjects(){
+  PROJECTS = [];
+  // ---- explicit hero project: IN-2026-00482, matches spec example exactly ----
+  const hero = {
+    id:'IN-2026-00482',
+    customerId:'c1',
+    projectName:'Hydraulic Housing',
+    description:'Precision-machined hydraulic housing for mobile equipment application. Requires tight bore tolerances and pressure testing prior to shipment.',
+    process:'CNC Machining',
+    quantity:250,
+    material:'Aluminum 6061',
+    deliveryDate: daysFromNow(52),
+    deliveryLocation:'Detroit, MI, USA',
+    qualityReq:'ISO 9001 required. Full dimensional report + material certs.',
+    specialReq:'Parts must be pressure-tested to 3000 PSI before shipment. Anodized finish, Type II clear.',
+    files: mockFiles('CNC Machining'),
+    createdAt: daysFromNow(-14),
+    status:'customer_review',
+    invitedSupplierIds:['s1','s2','s5','s7','s11','s13'],
+    supplierQuotes:[],
+    shortlist:[],
+    order:null,
+    activity:[],
+    chatClient:[],
+    chatSupplier:{},
+  };
+  PROJECTS.push(hero);
+  seedHeroQuotesAndShortlist(hero);
+
+  // ---- generator for the remaining 24 projects ----
+  const plan = [
+    {status:'submitted', customerId:'c1'},
+    {status:'under_review', customerId:'c1'},
+    {status:'sourcing', customerId:'c3', forceSupplier:'s1'},
+    {status:'sourcing', customerId:'c4', forceSupplier:'s1'},
+    {status:'sourcing', customerId:'c7'},
+    {status:'quotes_received', customerId:'c1', forceSupplier:'s1'},
+    {status:'quotes_received', customerId:'c5', forceSupplier:'s1'},
+  ];
+  for(let i=0;i<10;i++) plan.push({status:'active', customerId:(i<3?'c1':null), forceSupplier: i===3?'s1':null});
+  for(let i=0;i<10;i++) plan.push({status:'completed', customerId:(i<3?'c1':null)});
+
+  let idNum = 430;
+  plan.forEach((p,i)=>{
+    idNum += rnd(1,4);
+    const tmpl = pick(PROJECT_TEMPLATES);
+    const customerId = p.customerId || pick(CUSTOMERS.filter(c=>c.id!=='c1')).id;
+    const qty = rnd(tmpl.qty[0],tmpl.qty[1]);
+    const createdOffset = -rnd(5,90);
+    const proj = {
+      id:'IN-2026-'+String(idNum).padStart(5,'0'),
+      customerId, projectName:tmpl.name, process:tmpl.process, material:tmpl.material, quantity:qty,
+      description:`${tmpl.name} manufacturing project — ${qty.toLocaleString()} units, ${tmpl.material}.`,
+      deliveryDate: daysFromNow(rnd(20,70)),
+      deliveryLocation: pick(CITIES)+', USA',
+      qualityReq:'ISO 9001 required. Dimensional report on first article.',
+      specialReq: rng()>0.5 ? 'Parts must be packaged individually to prevent surface damage.' : '—',
+      files: mockFiles(tmpl.process),
+      createdAt: daysFromNow(createdOffset),
+      status:'submitted',
+      invitedSupplierIds:[],
+      supplierQuotes:[],
+      shortlist:[],
+      order:null,
+      activity:[],
+      chatClient:[],
+      chatSupplier:{},
+    };
+    const eligible = SUPPLIERS.filter(s=>s.capabilities.includes(tmpl.process));
+    const pool = eligible.length>=3 ? eligible : SUPPLIERS;
+
+    if(p.status==='submitted'){ proj.status='submitted'; }
+    else if(p.status==='under_review'){ proj.status='under_review'; }
+    else if(p.status==='sourcing'){
+      proj.status='sourcing';
+      proj.invitedSupplierIds = pickN(pool, Math.min(6,pool.length)).map(s=>s.id);
+      if(p.forceSupplier && !proj.invitedSupplierIds.includes(p.forceSupplier)) proj.invitedSupplierIds[0] = p.forceSupplier;
+      proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>makeQuoteStub(proj,sid, sid===p.forceSupplier ? false : rng()>0.4));
+    }
+    else if(p.status==='quotes_received'){
+      proj.status='quotes_received';
+      proj.invitedSupplierIds = pickN(pool, Math.min(6,pool.length)).map(s=>s.id);
+      if(p.forceSupplier && !proj.invitedSupplierIds.includes(p.forceSupplier)) proj.invitedSupplierIds[0] = p.forceSupplier;
+      proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>makeQuoteStub(proj,sid, sid===p.forceSupplier ? false : rng()>0.15));
+    }
+    else if(p.status==='active'){
+      proj.invitedSupplierIds = pickN(pool, Math.min(6,pool.length)).map(s=>s.id);
+      if(p.forceSupplier && !proj.invitedSupplierIds.includes(p.forceSupplier)) proj.invitedSupplierIds[0] = p.forceSupplier;
+      proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>makeQuoteStub(proj,sid,true));
+      buildShortlistAndAward(proj);
+      if(p.forceSupplier){
+        const q = proj.supplierQuotes.find(x=>x.supplierId===p.forceSupplier);
+        proj.selectedSupplierId = p.forceSupplier;
+        proj.selectedQuote = proj.shortlist.find(s=>s.supplierId===p.forceSupplier) || {supplierId:p.forceSupplier, supplierCost:q.quotedTotal, markupPct:15, customerPrice:q.quotedTotal*1.15, leadTimeDays:q.leadTimeDays, rating:q.rating};
+      }
+      proj.status = rng()>0.2 ? 'in_production':'awarded';
+      const stageIdx = proj.status==='awarded'?0:rnd(1,6);
+      setOrderState(proj, ORDER_STATUS_FLOW[stageIdx]);
+    }
+    else if(p.status==='completed'){
+      proj.invitedSupplierIds = pickN(pool, Math.min(6,pool.length)).map(s=>s.id);
+      proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>makeQuoteStub(proj,sid,true));
+      buildShortlistAndAward(proj);
+      proj.status='completed';
+      setOrderState(proj,'delivered');
+    }
+    PROJECTS.push(proj);
+  });
+}
+
+function makeQuoteStub(proj, supplierId, submitted){
+  const supplier = SUPPLIERS.find(s=>s.id===supplierId);
+  const unit = +(rnd(30,400) + rng()).toFixed(2);
+  const tooling = rnd(0,3)*500 + rnd(0,900);
+  const setup = rnd(300,2200);
+  const shipping = rng()>0.5 ? rnd(400,2200) : 0;
+  const quotedTotal = unit*proj.quantity + tooling + setup + shipping;
+  return {
+    supplierId,
+    status: submitted ? 'submitted':'pending',
+    unitPrice: unit, tooling, setup, shipping,
+    quotedTotal,
+    leadTimeDays: rnd(14,45),
+    paymentTerms: pick(['50% deposit / 50% on delivery','Net 30','30% deposit / 70% on shipment','Net 45']),
+    validity: '30 days',
+    notes: submitted ? 'Quote includes standard packaging. Tooling amortized over first order.' : '',
+    documents: submitted ? ['cost-breakdown.pdf'] : [],
+    submittedAt: submitted ? addDays(proj.createdAt, rnd(2,6)) : null,
+    rating: supplier.rating, onTime: supplier.onTime,
+  };
+}
+
+/* ---------- Badge assignment for a shortlist (max 5) ---------- */
+function computeBadges(shortlist){
+  const badges = {};
+  if(!shortlist.length) return badges;
+  const byPrice=[...shortlist].sort((a,b)=>a.customerPrice-b.customerPrice);
+  const byLead=[...shortlist].sort((a,b)=>a.leadTimeDays-b.leadTimeDays);
+  const byRating=[...shortlist].sort((a,b)=>b.rating-a.rating);
+  const scored = shortlist.map(q=>{
+    const priceScore = 1-(q.customerPrice-byPrice[0].customerPrice)/((byPrice[byPrice.length-1].customerPrice-byPrice[0].customerPrice)||1);
+    const leadScore = 1-(q.leadTimeDays-byLead[0].leadTimeDays)/((byLead[byLead.length-1].leadTimeDays-byLead[0].leadTimeDays)||1);
+    const ratingScore = (q.rating-3)/2;
+    return {id:q.supplierId, score: priceScore*0.4+leadScore*0.3+ratingScore*0.3};
+  }).sort((a,b)=>b.score-a.score);
+  badges[scored[0].id]='BEST OVERALL';
+  if(!badges[byPrice[0].supplierId]) badges[byPrice[0].supplierId]='LOWEST PRICE';
+  if(!badges[byLead[0].supplierId]) badges[byLead[0].supplierId]='FASTEST';
+  if(!badges[byRating[0].supplierId]) badges[byRating[0].supplierId]='TOP RATED';
+  shortlist.forEach(q=>{ if(!badges[q.supplierId]) badges[q.supplierId]='BEST VALUE'; });
+  return badges;
+}
+const BADGE_CLASS = {'BEST OVERALL':'award-best','LOWEST PRICE':'award-cheap','FASTEST':'award-fast','TOP RATED':'award-top','BEST VALUE':'award-value'};
+
+function logActivity(proj, actor, text){
+  proj.activity.unshift({ts:new Date(),actor,text});
+}
+
+function seedHeroQuotesAndShortlist(proj){
+  const specs = {
+    s1:{unit:185,tooling:1200,setup:500,shipping:0,lead:28,terms:'50% deposit / 50% on delivery'},
+    s2:{unit:178,tooling:2000,setup:800,shipping:1500,lead:21,terms:'Net 30'},
+    s5:{unit:165,tooling:1000,setup:600,shipping:2000,lead:35,terms:'30% deposit / 70% on shipment'},
+    s7:{unit:196,tooling:900,setup:450,shipping:0,lead:24,terms:'Net 30'},
+    s11:{unit:172,tooling:1500,setup:700,shipping:1100,lead:26,terms:'50% deposit / 50% on delivery'},
+    s13:{unit:190,tooling:1100,setup:520,shipping:0,lead:19,terms:'Net 45'},
+  };
+  proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>{
+    const sp = specs[sid]; const supplier = SUPPLIERS.find(s=>s.id===sid);
+    const quotedTotal = sp.unit*proj.quantity+sp.tooling+sp.setup+sp.shipping;
+    return {supplierId:sid,status:'submitted',unitPrice:sp.unit,tooling:sp.tooling,setup:sp.setup,shipping:sp.shipping,
+      quotedTotal, leadTimeDays:sp.lead, paymentTerms:sp.terms, validity:'30 days',
+      notes:'Quote includes standard export packaging.', documents:['cost-breakdown.pdf'],
+      submittedAt: addDays(proj.createdAt, rnd(3,7)), rating:supplier.rating, onTime:supplier.onTime};
+  });
+  const markup = 0.15;
+  const allOptions = proj.supplierQuotes.map(q=>({
+    supplierId:q.supplierId, supplierCost:q.quotedTotal, markupPct:15,
+    customerPrice: q.quotedTotal*(1+markup), leadTimeDays:q.leadTimeDays,
+    rating:q.rating, addedAt: addDays(proj.createdAt, 9),
+  }));
+  proj.shortlist = allOptions.sort((a,b)=>a.customerPrice-b.customerPrice).slice(0,5);
+  const badges = computeBadges(proj.shortlist);
+  proj.shortlist.forEach(s=> s.badge = badges[s.supplierId]);
+  proj.activity = [
+    {ts:addDays(proj.createdAt,9),actor:'INNOUS', text:'5 supplier quotes reviewed and shortlisted. Sent to customer for decision.'},
+    {ts:addDays(proj.createdAt,7),actor:'INNOUS', text:'All supplier quotes received.'},
+    {ts:addDays(proj.createdAt,1),actor:'INNOUS', text:'RFQ sent to 6 suppliers.'},
+    {ts:addDays(proj.createdAt,0),actor:'INNOUS', text:'RFQ reviewed and approved for sourcing.'},
+    {ts:proj.createdAt,actor:'ABC Manufacturing', text:'RFQ submitted.'},
+  ];
+  proj.chatClient = [
+    {from:'client',text:'Hi team, wanted to check on timing for the hydraulic housing quotes.',ts:addDays(proj.createdAt,6)},
+    {from:'innous',text:'Hi Diane — quotes are in from all 6 suppliers, our team is finalizing the top options now. You should have your shortlist within 2 business days.',ts:addDays(proj.createdAt,6)},
+    {from:'innous',text:'Your shortlist of 5 manufacturing options is ready for review.',ts:addDays(proj.createdAt,9)},
+  ];
+  proj.chatSupplier = {};
+  proj.invitedSupplierIds.forEach(sid=>{
+    proj.chatSupplier[sid] = [
+      {from:'innous',text:'Thanks for the quick turnaround on this quote. A couple questions on tooling amortization — can you confirm it is a one-time cost?',ts:addDays(proj.createdAt,5)},
+      {from:'supplier',text:'Yes, tooling is a one-time cost, amortized fully in this quote and not carried into repeat orders.',ts:addDays(proj.createdAt,5)},
+    ];
+  });
+}
+
+function buildShortlistAndAward(proj){
+  const submittedQuotes = proj.supplierQuotes.filter(q=>q.status==='submitted');
+  const chosenCount = Math.min(5, submittedQuotes.length);
+  const chosen = pickN(submittedQuotes, chosenCount);
+  const markup = 0.15;
+  proj.shortlist = chosen.map(q=>({
+    supplierId:q.supplierId, supplierCost:q.quotedTotal, markupPct:15,
+    customerPrice:q.quotedTotal*(1+markup), leadTimeDays:q.leadTimeDays, rating:q.rating,
+    addedAt: addDays(proj.createdAt,8),
+  }));
+  const badges = computeBadges(proj.shortlist);
+  proj.shortlist.forEach(s=> s.badge = badges[s.supplierId]);
+  const winner = [...proj.shortlist].sort((a,b)=>a.customerPrice-b.customerPrice)[0] || proj.shortlist[0];
+  proj.selectedSupplierId = winner ? winner.supplierId : (proj.invitedSupplierIds[0]||null);
+  proj.selectedQuote = winner || null;
+  proj.activity = [
+    {ts:addDays(proj.createdAt,12),actor:'ABC Manufacturing', text:'Customer selected manufacturing option.'},
+    {ts:addDays(proj.createdAt,8),actor:'INNOUS', text:'Shortlist sent to customer for review.'},
+    {ts:addDays(proj.createdAt,6),actor:'INNOUS', text:'Supplier quotes received and compared.'},
+    {ts:addDays(proj.createdAt,1),actor:'INNOUS', text:'RFQ sent to suppliers.'},
+    {ts:proj.createdAt,actor: CUSTOMERS.find(c=>c.id===proj.customerId).company, text:'RFQ submitted.'},
+  ];
+}
+
+function setOrderState(proj, orderStatus){
+  const q = proj.selectedQuote;
+  proj.order = {
+    status: orderStatus,
+    supplierId: proj.selectedSupplierId,
+    supplierCost: q ? q.supplierCost : 0,
+    customerPrice: q ? q.customerPrice : 0,
+    markupPct: q ? q.markupPct : 15,
+    paymentStatus: orderStatus==='delivered' ? 'Paid' : (ORDER_STATUS_FLOW.indexOf(orderStatus)>2 ? 'Deposit Received':'Awaiting Deposit'),
+    quality:{ inspectionRequired:true, status: ORDER_STATUS_FLOW.indexOf(orderStatus)>=4 ? (rng()>0.12?'approved':'ncr_open') : 'pending', documents:['first-article-report.pdf','dimensional-report.pdf'], certificates:['material-cert.pdf'], photos:3, ncr:[] },
+    logistics:{ origin: SUPPLIERS.find(s=>s.id===proj.selectedSupplierId)?.city+', Mexico', destination: proj.deliveryLocation, carrier: pick(['Estafeta Freight','FedEx Freight','Daxxo Logistics','R+L Carriers']), tracking: 'TRK-'+rnd(100000,999999), pickupDate: addDays(proj.deliveryDate,-14), estimatedDelivery: proj.deliveryDate, documents:['bill-of-lading.pdf','commercial-invoice.pdf'] },
+  };
+  if(proj.order.quality.status==='ncr_open'){ proj.order.quality.ncr=[{id:'NCR-'+rnd(100,999),issue:'Minor surface finish deviation on batch 2',status:'Under Review'}]; }
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(orderStatus);
+  proj.order.milestones = ORDER_STATUS_FLOW.map((st,i)=>({key:st,label:ORDER_STATUS_META[st].label,done:i<=stageIdx,date: i<=stageIdx? addDays(proj.createdAt, 10+i*4):null}));
+}
+
+/* ---------- Global App State ---------- */
+const STATE = {
+  role: 'INNOUS', // CLIENT | INNOUS | SUPPLIER
+  clientId: 'c1',
+  supplierId: 's1',
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[] },
+};
+
+function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId); }
+function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId); }
+function findProject(id){ return PROJECTS.find(p=>p.id===id); }
+function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Unknown Supplier'; }
+function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Unknown Customer'; }
+
+/* ---------- Toast ---------- */
+function showToast(msg, kind){
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast'+(kind==='success'?' success':'');
+  el.innerHTML = `<i data-lucide="${kind==='success'?'check-circle':'bell'}"></i><span>${msg}</span>`;
+  container.appendChild(el);
+  lucide.createIcons();
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(6px)'; el.style.transition='all .2s'; setTimeout(()=>el.remove(),200); }, 3400);
+}
+
+/* ---------- Modal ---------- */
+function openModal(innerHtml, wide){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-overlay" id="modal-overlay"><div class="modal ${wide?'modal-wide':''}">${innerHtml}</div></div>`;
+  requestAnimationFrame(()=>document.getElementById('modal-overlay').classList.add('open'));
+  document.getElementById('modal-overlay').addEventListener('click',(e)=>{ if(e.target.id==='modal-overlay') closeModal(); });
+  lucide.createIcons();
+}
+function closeModal(){
+  const ov = document.getElementById('modal-overlay');
+  if(!ov) return;
+  ov.classList.remove('open');
+  setTimeout(()=>{ document.getElementById('modal-root').innerHTML=''; }, 150);
+}
+
+/* ---------- Small render helpers ---------- */
+function statusBadge(status){
+  const meta = RFQ_STATUS_META[status] || {label:status,cls:'badge-gray'};
+  return `<span class="badge ${meta.cls}"><span class="dot dot-${meta.cls==='badge-green'?'green':meta.cls==='badge-amber'?'amber':meta.cls==='badge-blue'?'blue':'gray'}"></span>${meta.label}</span>`;
+}
+function orderStatusBadge(status){
+  const meta = ORDER_STATUS_META[status]||{label:status};
+  const cls = status==='delivered' ? 'badge-gray' : (status==='quality_inspection'?'badge-amber':'badge-green');
+  return `<span class="badge ${cls}">${meta.label}</span>`;
+}
+function stars(rating){
+  let out = '<span class="stars">';
+  for(let i=1;i<=5;i++){
+    const filled = i<=Math.round(rating);
+    out += `<svg viewBox="0 0 24 24" class="${filled?'star-filled':'star-empty'}" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>`;
+  }
+  out += `</span>`;
+  return out;
+}
+function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+function fileIconChip(f){
+  const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
+  return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
+}
+function timelineComp(steps, currentIdx){
+  return `<div class="timeline">${steps.map((label,i)=>{
+    const cls = i<currentIdx ? 'done' : (i===currentIdx?'current':'');
+    return `<div class="timeline-step ${cls}"><div class="timeline-line"></div><div class="timeline-dot">${i<currentIdx?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':(i+1)}</div><div class="timeline-label">${label}</div></div>`;
+  }).join('')}</div>`;
+}
+function timeAgo(d){
+  const diff = Math.round((new Date('2026-09-08') - new Date(d))/(1000*60*60*24));
+  if(diff<=0) return 'today';
+  if(diff===1) return '1 day ago';
+  if(diff<30) return diff+' days ago';
+  return fmtDate(new Date(d));
+}
+
+/* ---------- Nav configs ---------- */
+const NAV = {
+  CLIENT: [
+    {id:'dashboard', label:'Dashboard', icon:'layout-dashboard', path:'#/client/dashboard'},
+    {id:'new-rfq', label:'Request a Quote', icon:'plus-circle', path:'#/client/new-rfq'},
+    {id:'rfqs', label:'My RFQs', icon:'file-text', path:'#/client/rfqs'},
+    {id:'orders', label:'Orders', icon:'package', path:'#/client/orders'},
+    {id:'messages', label:'Messages', icon:'message-square', path:'#/client/messages'},
+  ],
+  INNOUS: [
+    {id:'overview', label:'Overview', icon:'layout-dashboard', path:'#/innous/overview'},
+    {id:'rfqs', label:'RFQs', icon:'file-text', path:'#/innous/rfqs'},
+    {id:'customers', label:'Customers', icon:'building-2', path:'#/innous/customers'},
+    {id:'suppliers', label:'Suppliers', icon:'factory', path:'#/innous/suppliers'},
+    {id:'quotes', label:'Quotes', icon:'file-diff', path:'#/innous/quotes'},
+    {id:'orders', label:'Orders', icon:'package', path:'#/innous/orders'},
+    {id:'production', label:'Production', icon:'cog', path:'#/innous/production'},
+    {id:'quality', label:'Quality', icon:'shield-check', path:'#/innous/quality'},
+    {id:'logistics', label:'Logistics', icon:'truck', path:'#/innous/logistics'},
+    {id:'analytics', label:'Analytics', icon:'bar-chart-3', path:'#/innous/analytics'},
+    {id:'messages', label:'Messages', icon:'message-square', path:'#/innous/messages'},
+    {id:'settings', label:'Settings', icon:'settings', path:'#/innous/settings'},
+  ],
+  SUPPLIER: [
+    {id:'dashboard', label:'Dashboard', icon:'layout-dashboard', path:'#/supplier/dashboard'},
+    {id:'available-rfqs', label:'Available RFQs', icon:'inbox', path:'#/supplier/rfqs'},
+    {id:'my-quotes', label:'My Quotes', icon:'file-text', path:'#/supplier/quotes'},
+    {id:'orders', label:'Active Orders', icon:'package', path:'#/supplier/orders'},
+    {id:'production', label:'Production', icon:'cog', path:'#/supplier/production'},
+    {id:'documents', label:'Documents', icon:'folder', path:'#/supplier/documents'},
+    {id:'messages', label:'Messages', icon:'message-square', path:'#/supplier/messages'},
+    {id:'performance', label:'Performance', icon:'trending-up', path:'#/supplier/performance'},
+    {id:'profile', label:'Company Profile', icon:'building', path:'#/supplier/profile'},
+  ],
+};
+const ROLE_META = {
+  CLIENT:{label:'Client', sub:currentClient, icon:'building-2'},
+  INNOUS:{label:'INNOUS', sub:()=>({company:'INNOUS Operations'}), icon:'hexagon'},
+  SUPPLIER:{label:'Supplier', sub:currentSupplier, icon:'factory'},
+};
+
+/* ---------- Shell rendering: topbar user chip + role menu + sidebar ---------- */
+function renderShell(){
+  document.getElementById('rs-current').textContent = STATE.role==='CLIENT'?'Client':STATE.role==='SUPPLIER'?'Supplier':'INNOUS';
+  const chip = document.getElementById('user-chip');
+  if(STATE.role==='CLIENT'){
+    const c = currentClient();
+    chip.innerHTML = `<div class="avatar">${initials(c.contact)}</div><div><div class="user-chip-text">${c.contact}</div><div class="user-chip-sub">${c.company}</div></div>`;
+  } else if(STATE.role==='SUPPLIER'){
+    const s = currentSupplier();
+    chip.innerHTML = `<div class="avatar">${initials(s.name)}</div><div><div class="user-chip-text">${s.name.split(' ')[0]} Team</div><div class="user-chip-sub">${s.name}</div></div>`;
+  } else {
+    chip.innerHTML = `<div class="avatar" style="background:var(--accent);">IN</div><div><div class="user-chip-text">Ops Team</div><div class="user-chip-sub">INNOUS Platform</div></div>`;
+  }
+
+  const menu = document.getElementById('role-menu');
+  const items = [
+    {role:'CLIENT', title:'Client Portal', sub:currentClient().company, icon:'building-2'},
+    {role:'INNOUS', title:'INNOUS Portal', sub:'Sourcing operations team', icon:'hexagon'},
+    {role:'SUPPLIER', title:'Supplier Portal', sub:currentSupplier().name, icon:'factory'},
+  ];
+  menu.innerHTML = items.map(it=>`
+    <button class="role-menu-item ${STATE.role===it.role?'active':''}" onclick="App.switchRole('${it.role}')">
+      <div class="role-menu-icon"><i data-lucide="${it.icon}" style="width:15px;height:15px;"></i></div>
+      <div><div class="role-menu-title">${it.title}</div><div class="role-menu-sub">${it.sub}</div></div>
+    </button>`).join('');
+
+  const nav = NAV[STATE.role];
+  const activePath = location.hash || nav[0].path;
+  const activeSeg = activePath.split('/')[2];
+  document.getElementById('sidebar').innerHTML = `
+    <div class="sidebar-section" style="padding-top:16px;">
+      ${nav.map(item=>`
+        <a href="${item.path}" class="nav-item ${activeSeg===item.id?'active':''}" onclick="App.toggleSidebar(true)">
+          <i data-lucide="${item.icon}"></i>${item.label}${badgeForNav(item.id)}
+        </a>`).join('')}
+    </div>
+    <div class="sidebar-footer">
+      <div class="sidebar-footer-card">
+        <div class="sidebar-footer-card-title">${STATE.role==='INNOUS'?'Need help scaling sourcing?':STATE.role==='CLIENT'?'Have a new project?':'Grow with INNOUS'}</div>
+        <div class="sidebar-footer-card-sub">${STATE.role==='INNOUS'?'Invite more verified suppliers to your network.':STATE.role==='CLIENT'?'Submit an RFQ and get quotes in days, not weeks.':'Keep your profile and capabilities up to date to win more RFQs.'}</div>
+      </div>
+    </div>`;
+  lucide.createIcons();
+}
+function badgeForNav(id){
+  if(STATE.role==='CLIENT' && id==='rfqs'){ const n = PROJECTS.filter(p=>p.customerId===STATE.clientId && p.status!=='completed').length; return n?`<span class="nav-badge">${n}</span>`:''; }
+  if(STATE.role==='INNOUS' && id==='rfqs'){ const n = PROJECTS.filter(p=>['submitted','under_review'].includes(p.status)).length; return n?`<span class="nav-badge">${n}</span>`:''; }
+  if(STATE.role==='SUPPLIER' && id==='available-rfqs'){ const n = PROJECTS.filter(p=>p.invitedSupplierIds.includes(STATE.supplierId) && !p.supplierQuotes.find(q=>q.supplierId===STATE.supplierId && q.status==='submitted')).length; return n?`<span class="nav-badge">${n}</span>`:''; }
+  return '';
+}
+
+/* ---------- Router ---------- */
+const ROUTES = {};
+function route(){
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+  document.getElementById('sidebar').classList.remove('open');
+  renderShell();
+  let hash = location.hash || (STATE.role==='CLIENT'?'#/client/dashboard':STATE.role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview');
+  const roleForHash = {client:'CLIENT', innous:'INNOUS', supplier:'SUPPLIER'}[hash.replace('#/','').split('/')[0]];
+  if(roleForHash && roleForHash!==STATE.role){
+    // stale link from a different portal (e.g. after switching roles) — send back to this role's home
+    hash = STATE.role==='CLIENT'?'#/client/dashboard':STATE.role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
+    history.replaceState(null,'',hash);
+  }
+  const parts = hash.replace('#/','').split('/');
+  const role = parts[0], page = parts[1], param = parts[2];
+  const key = role+'/'+page;
+  const el = document.getElementById('app-content');
+  try{
+    if(ROUTES[key]){ el.innerHTML = ROUTES[key](param); }
+    else { el.innerHTML = emptyState('compass','Page not found','This section is not part of the demo yet.'); }
+  }catch(err){
+    console.error(err);
+    el.innerHTML = emptyState('alert-triangle','Something went wrong','Please navigate back and try again.');
+  }
+  el.scrollTop = 0;
+  lucide.createIcons();
+}
+function emptyState(icon,title,sub){
+  return `<div class="empty-state"><i data-lucide="${icon}"></i><div class="empty-state-title">${title}</div><div>${sub}</div></div>`;
+}
+function navigate(path){ if(location.hash===path){ route(); } else { location.hash = path; } }
+
+/* =====================================================================
+   CLIENT PORTAL
+   ===================================================================== */
+function clientProjects(){ return PROJECTS.filter(p=>p.customerId===STATE.clientId); }
+
+ROUTES['client/dashboard'] = function(){
+  const mine = clientProjects();
+  const activeRfqs = mine.filter(p=>['submitted','under_review','sourcing','quotes_received','customer_review'].includes(p.status));
+  const quotesReceived = mine.reduce((sum,p)=> sum + (p.status==='customer_review' ? p.shortlist.length : 0), 0);
+  const activeOrders = mine.filter(p=>['awarded','in_production'].includes(p.status));
+  const completed = mine.filter(p=>p.status==='completed');
+  const recent = mine.flatMap(p=>p.activity.map(a=>({...a, projId:p.id, projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,6);
+
+  return `
+  <div class="content-inner">
+    <div class="page-header">
+      <div><div class="page-title">Welcome back, ${currentClient().contact.split(' ')[0]}</div><div class="page-subtitle">${currentClient().company} · Client Dashboard</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/client/new-rfq')"><i data-lucide="plus"></i>New RFQ</button></div>
+    </div>
+    <div class="grid grid-4" style="margin-bottom:24px;">
+      ${kpiCard('Active RFQs', activeRfqs.length, 'in the sourcing pipeline','file-text')}
+      ${kpiCard('Quotes Received', quotesReceived, 'awaiting your decision','file-diff')}
+      ${kpiCard('Active Orders', activeOrders.length, 'in production or confirmed','package')}
+      ${kpiCard('Completed', completed.length, 'delivered projects','check-circle-2')}
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-header"><h3>Your RFQs</h3><a href="#/client/rfqs" class="btn btn-ghost btn-sm">View all</a></div>
+        <div class="table-wrap">${mine.length?rfqMiniTable(mine.slice(0,6)):emptyState('file-text','No RFQs yet','Submit your first request for quote to get started.')}</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Recent Activity</h3></div>
+        <div class="card-pad">
+          ${recent.length? recent.map(a=>`
+            <div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>
+          `).join('') : emptyState('activity','No activity yet','Activity on your projects will appear here.')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+
+function kpiCard(label,value,sub,icon){
+  return `<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">${label}</span><div class="kpi-icon"><i data-lucide="${icon}"></i></div></div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+}
+function rfqMiniTable(list){
+  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Status</th></tr></thead><tbody>
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/client/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${statusBadge(p.status)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+/* ---- New RFQ ---- */
+ROUTES['client/new-rfq'] = function(){
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining' }; STATE.ui.newRfqFiles = []; }
+  const d = STATE.ui.newRfqDraft;
+  return `
+  <div class="content-inner" style="max-width:820px;">
+    <div class="page-header"><div><div class="page-title">Request a Quote</div><div class="page-subtitle">Tell us about your project — INNOUS will match you with the right manufacturing partners.</div></div></div>
+    <form id="rfq-form" class="card card-pad" onsubmit="return App.submitRfq(event)">
+      <div class="section-title">Company &amp; Contact</div>
+      <div class="section-sub">Pre-filled from your account.</div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Company</label><input type="text" value="${currentClient().company}" required></div>
+        <div class="form-group"><label class="field-label">Contact name</label><input type="text" value="${currentClient().contact}" required></div>
+      </div>
+      <div class="form-group"><label class="field-label">Email</label><input type="email" value="${currentClient().email}" required></div>
+      <hr class="divider">
+      <div class="section-title">Project Details</div>
+      <div class="form-group"><label class="field-label">Project name</label><input type="text" name="projectName" placeholder="e.g. Hydraulic Housing" required></div>
+      <div class="form-group"><label class="field-label">Description</label><textarea name="description" placeholder="Describe the part, application, and any critical requirements..." required></textarea></div>
+      <div class="form-group">
+        <label class="field-label">Manufacturing process</label>
+        <div class="process-grid">
+          ${PROCESSES.map(p=>`<div class="process-option ${d.process===p?'selected':''}" onclick="App.setNewRfqProcess('${p}')">${p}</div>`).join('')}
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" placeholder="e.g. 250" required></div>
+        <div class="form-group"><label class="field-label">Material</label><select name="material">${MATERIALS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Required delivery date</label><input type="date" name="deliveryDate" required></div>
+        <div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" placeholder="City, State, Country" required></div>
+      </div>
+      <div class="form-group"><label class="field-label">Quality requirements</label><textarea name="qualityReq" placeholder="e.g. ISO 9001, dimensional reports, material certs..."></textarea></div>
+      <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" placeholder="Packaging, testing, finish, etc."></textarea></div>
+      <hr class="divider">
+      <div class="section-title">Upload drawings &amp; project files</div>
+      <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG</div>
+      <div class="file-drop">
+        <i data-lucide="upload-cloud"></i>
+        <div class="file-drop-title">Drop files here or click to simulate an upload</div>
+        <div class="file-drop-sub">This is a prototype — files are simulated, not uploaded.</div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          ${['pdf','step','dwg','dxf','jpg','png'].map(t=>`<button type="button" class="btn btn-secondary btn-sm" onclick="App.addMockFile('${t}')">+ ${FILE_TYPES[t].ext}</button>`).join('')}
+        </div>
+      </div>
+      <div class="file-list" id="new-rfq-file-list">${STATE.ui.newRfqFiles.map((f,i)=>fileChipRemovable(f,i)).join('')}</div>
+      <hr class="divider">
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="btn btn-secondary" onclick="navigate('#/client/dashboard')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Submit RFQ</button>
+      </div>
+    </form>
+  </div>`;
+};
+function fileChipRemovable(f,i){
+  const meta = FILE_TYPES[f.type];
+  return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span><button type="button" class="fc-remove" onclick="App.removeMockFile(${i})"><i data-lucide="x" style="width:14px;height:14px;"></i></button></div>`;
+}
+
+/* ---- Client RFQ List ---- */
+ROUTES['client/rfqs'] = function(){
+  const mine = clientProjects().slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">My RFQs</div><div class="page-subtitle">${mine.length} requests submitted</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/client/new-rfq')"><i data-lucide="plus"></i>New RFQ</button></div></div>
+    <div class="card">
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Qty</th><th>Material</th><th>Delivery</th><th>Status</th></tr></thead><tbody>
+        ${mine.map(p=>`<tr class="row-link" onclick="navigate('#/client/rfq/${p.id}')">
+          <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td>${p.quantity.toLocaleString()}</td><td>${p.material}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td><td>${statusBadge(p.status)}</td>
+        </tr>`).join('')}
+      </tbody></table></div>
+    </div>
+  </div>`;
+};
+
+/* ---- Client RFQ Detail ---- */
+ROUTES['client/rfq'] = function(id){
+  const p = findProject(id); if(!p) return emptyState('search','RFQ not found','');
+  const flowLabels = RFQ_STATUS_FLOW.map(s=>RFQ_STATUS_META[s].label);
+  const curIdx = RFQ_STATUS_FLOW.indexOf(p.status);
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/client/rfqs">My RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header">
+      <div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · Created ${fmtDate(p.createdAt)}</div></div>
+      <div class="page-actions">
+        ${statusBadge(p.status)}
+        ${p.status==='customer_review'?`<button class="btn btn-primary" onclick="navigate('#/client/quotes/${p.id}')"><i data-lucide="file-diff"></i>View Quotes</button>`:''}
+        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
+    <div class="grid grid-2">
+      <div class="card card-pad">
+        <div class="section-title">Project Information</div>
+        <div class="info-grid" style="margin-top:12px;">
+          ${infoItem('Manufacturing Process', p.process)}
+          ${infoItem('Quantity', p.quantity.toLocaleString()+' units')}
+          ${infoItem('Material', p.material)}
+          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
+          ${infoItem('Delivery Location', p.deliveryLocation)}
+          ${infoItem('Quality Requirements', p.qualityReq)}
+        </div>
+        <hr class="divider">
+        <div class="info-item-label">Description</div>
+        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        ${p.specialReq&&p.specialReq!=='—'?`<div class="info-item-label" style="margin-top:14px;">Special Requirements</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.specialReq}</div>`:''}
+      </div>
+      <div>
+        <div class="card card-pad" style="margin-bottom:16px;">
+          <div class="section-title">Files</div>
+          <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
+        </div>
+        <div class="card card-pad">
+          <div class="section-title">Activity</div>
+          <div style="margin-top:8px;">${p.activity.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text">${a.text}</div><div class="activity-time">${a.actor} · ${timeAgo(a.ts)}</div></div></div>`).join('')}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+function infoItem(label,val){ return `<div><div class="info-item-label">${label}</div><div class="info-item-val">${val}</div></div>`; }
+
+/* ---- Client Quotes View ---- */
+ROUTES['client/quotes'] = function(id){
+  const p = findProject(id); if(!p) return emptyState('search','RFQ not found','');
+  if(p.status!=='customer_review' && !['awarded','in_production','completed'].includes(p.status)) return emptyState('clock','Quotes not ready yet','Check back once INNOUS has finished sourcing.');
+  const sorted = [...p.shortlist].sort((a,b)=>a.customerPrice-b.customerPrice);
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/client/rfqs">My RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><a href="#/client/rfq/${p.id}">${p.id}</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Quotes</span></div>
+    <div class="page-header"><div><div class="page-title">Quotes for RFQ ${p.id}</div><div class="page-subtitle">${p.projectName} · ${sorted.length} manufacturing options selected by INNOUS</div></div></div>
+    <div class="grid grid-3">
+      ${sorted.map((s,i)=>quoteCard(p,s,i)).join('')}
+    </div>
+  </div>`;
+};
+function quoteCard(p, s, idx){
+  const isAwarded = p.selectedSupplierId === s.supplierId && ['awarded','in_production','completed'].includes(p.status);
+  return `
+  <div class="quote-card ${idx===0?'best':''}">
+    ${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}" style="align-self:flex-start;">${s.badge}</span>`:''}
+    <div>
+      <div class="td-sub" style="margin-bottom:4px;">Supplier Option ${String(idx+1).padStart(2,'0')}</div>
+      <div class="quote-price">${fmtMoney(s.customerPrice)} <span style="font-size:13px;font-weight:600;color:var(--ink-tertiary);">USD</span></div>
+    </div>
+    <div class="cap-list">
+      <span class="tag"><i data-lucide="clock" style="width:11px;height:11px;"></i>&nbsp;${s.leadTimeDays} days</span>
+      <span class="tag">ISO 9001</span>
+    </div>
+    <div style="font-size:12.5px;color:var(--ink-secondary);">Verified manufacturing partner in INNOUS's Mexico supplier network, matched for this process and quantity.</div>
+    <div class="quote-meta-row"><span>Supplier Rating</span>${stars(s.rating)}</div>
+    <div class="quote-meta-row"><span>Delivery</span><span class="td-strong">${p.deliveryLocation}</span></div>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="App.viewQuoteDetail('${p.id}','${s.supplierId}')">View Details</button>
+      ${isAwarded ? `<button class="btn btn-sm" style="flex:1;background:var(--success-soft);color:var(--success);" disabled><i data-lucide="check"></i>Selected</button>`
+        : p.status==='customer_review' ? `<button class="btn btn-primary btn-sm" style="flex:1;" onclick="App.openSelectQuoteModal('${p.id}','${s.supplierId}')">Select Quote</button>`
+        : `<button class="btn btn-secondary btn-sm" style="flex:1;" disabled>Not Selected</button>`}
+    </div>
+  </div>`;
+}
+
+/* ---- Client Orders List ---- */
+ROUTES['client/orders'] = function(){
+  const mine = clientProjects().filter(p=>p.order);
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Orders</div><div class="page-subtitle">${mine.length} projects in production or completed</div></div></div>
+    <div class="grid grid-2">
+      ${mine.length? mine.map(orderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','No orders yet','Once you select a quote, your order will appear here.')}</div>`}
+    </div>
+  </div>`;
+};
+function orderCard(p){
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  return `
+  <div class="card card-pad row-link" onclick="navigate('#/client/order/${p.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="page-subtitle mono" style="margin:0;">Order ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
+      ${orderStatusBadge(p.order.status)}
+    </div>
+    <div style="display:flex;gap:22px;margin-top:12px;">
+      ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
+      ${infoItem('Total Price', fmtMoney(p.order.customerPrice))}
+      ${infoItem('Est. Delivery', fmtDate(p.order.logistics.estimatedDelivery))}
+    </div>
+    <div style="margin-top:16px;"><div class="bar-track"><div class="bar-fill" style="width:${((stageIdx+1)/ORDER_STATUS_FLOW.length*100)}%;"></div></div></div>
+  </div>`;
+}
+
+/* ---- Client Order Detail ---- */
+ROUTES['client/order'] = function(id){
+  const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/client/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>${orderStatusBadge(p.order.status)}</div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
+    <div class="grid grid-2">
+      <div class="card card-pad">
+        <div class="section-title">Order Summary</div>
+        <div class="info-grid" style="margin-top:12px;">
+          ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
+          ${infoItem('Total Price', fmtMoney(p.order.customerPrice))}
+          ${infoItem('Manufacturing Partner', 'INNOUS Verified Partner')}
+          ${infoItem('Est. Delivery', fmtDate(p.order.logistics.estimatedDelivery))}
+          ${infoItem('Destination', p.order.logistics.destination)}
+          ${infoItem('Payment Status', p.order.paymentStatus)}
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Need something?</div>
+        <div class="section-sub">Message INNOUS directly about this order.</div>
+        <button class="btn btn-secondary btn-block" onclick="navigate('#/client/messages')"><i data-lucide="message-square"></i>Message INNOUS</button>
+        <hr class="divider">
+        <div class="section-title">Documents</div>
+        <div class="file-list" style="margin-top:8px;">
+          ${p.order.logistics.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- Client Messages ---- */
+ROUTES['client/messages'] = function(){
+  const mine = clientProjects().filter(p=>p.chatClient && p.chatClient.length || ['customer_review','awarded','in_production','completed'].includes(p.status));
+  if(!STATE.ui.activeChatKey && mine.length) STATE.ui.activeChatKey = mine[0].id;
+  const active = findProject(STATE.ui.activeChatKey) || mine[0];
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div></div>
+    <div class="chat-panel">
+      <div class="chat-list">
+        ${mine.map(p=>`<div class="chat-list-item ${active&&active.id===p.id?'active':''}" onclick="App.openClientChat('${p.id}')">
+          <div class="avatar" style="background:var(--accent);">IN</div>
+          <div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id}</div></div>
+        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+      </div>
+      <div class="chat-thread">
+        ${active ? `
+        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
+        <div class="chat-messages" id="chat-messages">${(active.chatClient||[]).map(m=>`<div class="chat-bubble ${m.from==='client'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='client'?'You':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet. Say hello!</div>`}</div>
+        <div class="chat-input-row"><input type="text" id="client-chat-input" placeholder="Message INNOUS about ${active.projectName}..." onkeydown="if(event.key==='Enter')App.sendClientMessage('${active.id}')"><button class="btn btn-primary" onclick="App.sendClientMessage('${active.id}')"><i data-lucide="send"></i></button></div>
+        ` : emptyState('message-square','No conversations yet','Messages appear once your RFQ is under review.')}
+      </div>
+    </div>
+  </div>`;
+};
+
+/* =====================================================================
+   INNOUS PORTAL
+   ===================================================================== */
+ROUTES['innous/overview'] = function(){
+  const active = PROJECTS.filter(p=>!['completed'].includes(p.status));
+  const awaitingQuotes = PROJECTS.filter(p=>['sourcing'].includes(p.status));
+  const readyForCustomer = PROJECTS.filter(p=>p.status==='quotes_received');
+  const activeOrders = PROJECTS.filter(p=>['awarded','in_production'].includes(p.status));
+  const completedOrders = PROJECTS.filter(p=>p.status==='completed');
+  const allOrders = [...activeOrders, ...completedOrders];
+  const revenue = allOrders.reduce((s,p)=>s+p.order.customerPrice,0);
+  const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost),0);
+  const recent = PROJECTS.flatMap(p=>p.activity.map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,7);
+
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Operations Overview</div><div class="page-subtitle">Platform-wide view across all customers and suppliers</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/innous/rfqs')"><i data-lucide="file-text"></i>All RFQs</button></div></div>
+    <div class="grid grid-4" style="margin-bottom:16px;">
+      ${kpiCard('Active RFQs', active.length, 'across full pipeline','file-text')}
+      ${kpiCard('Awaiting Quotes', awaitingQuotes.length, 'sourcing suppliers','send')}
+      ${kpiCard('Ready for Customer', readyForCustomer.length, 'quotes need shortlisting','file-diff')}
+      ${kpiCard('Active Orders', activeOrders.length, 'in production','package')}
+    </div>
+    <div class="grid grid-3" style="margin-bottom:24px;">
+      ${kpiCard('Revenue (Portfolio)', fmtMoney(revenue), 'across active + completed orders','dollar-sign')}
+      ${kpiCard('Gross Margin', fmtMoney(margin), (margin/revenue*100).toFixed(1)+'% average margin','trending-up')}
+      ${kpiCard('Supplier Network', SUPPLIERS.length, 'verified manufacturing partners','factory')}
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-header"><h3>RFQs Needing Attention</h3><a href="#/innous/rfqs" class="btn btn-ghost btn-sm">View all</a></div>
+        <div class="table-wrap">${innousRfqMiniTable(PROJECTS.filter(p=>['submitted','under_review','quotes_received'].includes(p.status)).slice(0,6))}</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Recent Activity</h3></div>
+        <div class="card-pad">${recent.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>`).join('')}</div>
+      </div>
+    </div>
+  </div>`;
+};
+function innousRfqMiniTable(list){
+  if(!list.length) return emptyState('inbox','All caught up','No RFQs currently need review.');
+  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Status</th></tr></thead><tbody>
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${statusBadge(p.status)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+/* ---- INNOUS RFQ List ---- */
+ROUTES['innous/rfqs'] = function(){
+  const sorted = [...PROJECTS].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} total requests across the platform</div></div></div>
+    <div class="filter-bar">
+      <div class="search-bar" style="max-width:280px;"><i data-lucide="search"></i><input type="text" placeholder="Search RFQ, customer, project..." id="rfq-search" onkeyup="App.filterRfqTable()"></div>
+      <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">All Statuses</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}</select>
+    </div>
+    <div class="card">
+      <div class="table-wrap"><table class="data-table" id="rfq-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Process</th><th>Qty</th><th>Invited</th><th>Quotes</th><th>Status</th><th>Created</th></tr></thead><tbody>
+        ${sorted.map(p=>{
+          const submitted = p.supplierQuotes.filter(q=>q.status==='submitted').length;
+          return `<tr class="row-link" data-status="${p.status}" data-search="${(p.id+' '+customerName(p.customerId)+' '+p.projectName).toLowerCase()}" onclick="navigate('#/innous/rfq/${p.id}')">
+          <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${p.process}</td><td>${p.quantity.toLocaleString()}</td>
+          <td>${p.invitedSupplierIds.length||'—'}</td><td>${submitted||'—'}</td><td>${statusBadge(p.status)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td>
+        </tr>`;}).join('')}
+      </tbody></table></div>
+    </div>
+  </div>`;
+};
+
+/* ---- INNOUS RFQ Detail (the core workflow screen) ---- */
+ROUTES['innous/rfq'] = function(id){
+  const p = findProject(id); if(!p) return emptyState('search','RFQ not found','');
+  const flowLabels = RFQ_STATUS_FLOW.map(s=>RFQ_STATUS_META[s].label);
+  const curIdx = RFQ_STATUS_FLOW.indexOf(p.status);
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/innous/rfqs">RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header">
+      <div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${customerName(p.customerId)}</div></div>
+      <div class="page-actions">
+        ${statusBadge(p.status)}
+        ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
+        ${p.status==='under_review'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','sourcing')"><i data-lucide="search"></i>Approve &amp; Match Suppliers</button>`:''}
+        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
+
+    <div class="grid grid-2" style="margin-bottom:20px;">
+      <div class="card card-pad">
+        <div class="section-title">RFQ Information</div>
+        <div class="info-grid" style="margin-top:12px;">
+          ${infoItem('Customer', customerName(p.customerId))}
+          ${infoItem('Process', p.process)}
+          ${infoItem('Quantity', p.quantity.toLocaleString())}
+          ${infoItem('Material', p.material)}
+          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
+          ${infoItem('Delivery Location', p.deliveryLocation)}
+        </div>
+        <hr class="divider">
+        <div class="info-item-label">Specifications</div>
+        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        <div class="info-item-label" style="margin-top:12px;">Quality Requirements</div>
+        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.qualityReq}</div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Files</div>
+        <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
+        <hr class="divider">
+        <div class="section-title">Customer Contact</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <div class="avatar">${initials(CUSTOMERS.find(c=>c.id===p.customerId).contact)}</div>
+          <div><div style="font-weight:600;font-size:13px;">${CUSTOMERS.find(c=>c.id===p.customerId).contact}</div><div class="td-sub">${CUSTOMERS.find(c=>c.id===p.customerId).email}</div></div>
+        </div>
+      </div>
+    </div>
+
+    ${p.status==='sourcing' || p.status==='under_review' ? supplierMatchingSection(p) : ''}
+    ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? supplierResponsesSection(p) : ''}
+    ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? quoteComparisonSection(p) : ''}
+    ${p.status==='customer_review' ? sentShortlistReadonlySection(p) : ''}
+  </div>`;
+};
+
+function supplierMatchingSection(p){
+  if(p.status!=='sourcing' && p.invitedSupplierIds.length>0) return '';
+  const eligible = SUPPLIERS.filter(s=>s.capabilities.includes(p.process));
+  const candidates = eligible.length ? eligible : SUPPLIERS;
+  const selected = STATE.ui.selectedInviteSuppliers;
+  return `
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><div class="section-title">Recommended Suppliers</div><div class="section-sub">Matched by manufacturing process, capacity and quality history.</div></div>
+      <div style="font-size:13px;font-weight:600;">${selected.length} suppliers selected</div>
+    </div>
+    <div class="grid grid-3">
+      ${candidates.map(s=>supplierMatchCard(s, selected.includes(s.id))).join('')}
+    </div>
+    <hr class="divider">
+    <div style="display:flex;justify-content:flex-end;">
+      <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="App.sendRfqToSuppliers('${p.id}')"><i data-lucide="send"></i>Send RFQ to ${selected.length||''} Supplier${selected.length===1?'':'s'}</button>
+    </div>
+  </div>`;
+}
+function supplierMatchCard(s, isSelected){
+  return `
+  <div class="supplier-card ${isSelected?'selected':''}">
+    <div class="supplier-card-top">
+      <div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>
+    </div>
+    <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
+    <div class="td-sub" style="margin:8px 0;">${s.machines.join(' · ')}</div>
+    <div class="mini-stat-grid">
+      <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
+      <div class="mini-stat"><div class="mini-stat-val">${s.rating}</div><div class="mini-stat-label">Rating</div></div>
+      <div class="mini-stat"><div class="mini-stat-val">${s.projects}</div><div class="mini-stat-label">Projects</div></div>
+    </div>
+    <div class="td-sub" style="margin-bottom:10px;">${s.capacity}</div>
+    <button class="btn ${isSelected?'btn-primary':'btn-secondary'} btn-block btn-sm" onclick="App.toggleInviteSupplier('${s.id}')">${isSelected?'<i data-lucide=\'check\'></i>Selected':'Invite to RFQ'}</button>
+  </div>`;
+}
+function supplierResponsesSection(p){
+  return `
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div class="section-title">Supplier Responses</div>
+    <div class="section-sub">${p.invitedSupplierIds.length} suppliers invited</div>
+    <div class="grid grid-4">
+      ${p.invitedSupplierIds.map((sid,i)=>{
+        const q = p.supplierQuotes.find(x=>x.supplierId===sid);
+        const submitted = q && q.status==='submitted';
+        return `<div class="card card-pad" style="box-shadow:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:600;font-size:12.5px;">Supplier ${String.fromCharCode(65+i)}</div>
+            <span class="badge ${submitted?'badge-green':'badge-amber'}">${submitted?'Submitted':'Pending'}</span>
+          </div>
+          <div class="td-sub" style="margin-top:6px;">${SUPPLIERS.find(s=>s.id===sid).city}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function markupKey(pid,sid){ return pid+'::'+sid; }
+function getMarkup(pid,sid){ const k=markupKey(pid,sid); if(STATE.ui.markupDrafts[k]===undefined) STATE.ui.markupDrafts[k]=15; return STATE.ui.markupDrafts[k]; }
+
+function quoteComparisonSection(p){
+  const submitted = p.supplierQuotes.filter(q=>q.status==='submitted');
+  if(!submitted.length) return '';
+  const byId = Object.fromEntries(p.invitedSupplierIds.map((sid,i)=>[sid, String.fromCharCode(65+i)]));
+  const shortlisted = new Set(p.shortlist.map(s=>s.supplierId));
+  return `
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div class="section-title">Compare Supplier Quotes</div>
+    <div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal.</div>
+    <div class="table-wrap">
+    <table class="data-table comparison-table"><thead><tr>
+      <th>Supplier</th><th>Unit Price</th><th>Tooling</th><th>Setup</th><th>Shipping</th><th>Total Supplier Cost</th><th>Lead Time</th><th>Terms</th><th>Rating</th><th>Markup</th><th>Customer Price</th><th></th>
+    </tr></thead><tbody>
+      ${submitted.map(q=>{
+        const supplier = SUPPLIERS.find(s=>s.id===q.supplierId);
+        const markup = getMarkup(p.id,q.supplierId);
+        const customerPrice = q.quotedTotal*(1+markup/100);
+        const already = shortlisted.has(q.supplierId);
+        return `<tr>
+          <td class="td-strong">Supplier ${byId[q.supplierId]}<div class="td-sub">${supplier.city}</div></td>
+          <td>${fmtMoney2(q.unitPrice)}</td>
+          <td>${fmtMoney(q.tooling)}</td>
+          <td>${fmtMoney(q.setup)}</td>
+          <td>${q.shipping?fmtMoney(q.shipping):'Included'}</td>
+          <td class="td-strong">${fmtMoney(q.quotedTotal)}</td>
+          <td>${q.leadTimeDays} days</td>
+          <td class="td-sub">${q.paymentTerms}</td>
+          <td>${stars(supplier.rating)}</td>
+          <td><input type="number" value="${markup}" min="0" max="100" style="width:64px;padding:6px 8px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)"> %</td>
+          <td class="td-strong">${fmtMoney(customerPrice)}</td>
+          <td>${already?`<span class="badge badge-green">In Shortlist</span>`:`<button class="btn btn-secondary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')">Add to Shortlist</button>`}</td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>
+    </div>
+    ${p.shortlist.length ? shortlistPreview(p, byId) : ''}
+    <hr class="divider">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="td-sub">${p.shortlist.length} of 5 selected for customer shortlist</div>
+      <button class="btn btn-primary" ${p.shortlist.length?'':'disabled'} onclick="App.sendQuotesToCustomer('${p.id}')"><i data-lucide="send"></i>Send Quotes to Customer</button>
+    </div>
+  </div>`;
+}
+function shortlistPreview(p, byId){
+  return `
+  <div style="margin:16px 0;">
+    <div class="info-item-label" style="margin-bottom:8px;">Customer Shortlist Preview</div>
+    <div class="grid grid-5">
+      ${p.shortlist.map(s=>`
+        <div class="card card-pad" style="box-shadow:none;">
+          <div class="td-sub">Supplier ${byId[s.supplierId]}</div>
+          <div style="font-weight:700;font-size:16px;">${fmtMoney(s.customerPrice)}</div>
+          <div class="td-sub">${s.leadTimeDays} days</div>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger);padding-left:0;" onclick="App.removeFromShortlist('${p.id}','${s.supplierId}')"><i data-lucide="x" style="width:12px;height:12px;"></i>Remove</button>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+function sentShortlistReadonlySection(p){
+  const byId = Object.fromEntries(p.invitedSupplierIds.map((sid,i)=>[sid, String.fromCharCode(65+i)]));
+  return `
+  <div class="card card-pad">
+    <div class="section-title">Shortlist Sent to Customer</div>
+    <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns remain confidential to INNOUS.</div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
+      ${p.shortlist.map(s=>`<tr><td class="td-strong">Supplier ${byId[s.supplierId]}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
+    </tbody></table></div>
+  </div>`;
+}
+
+/* ---- INNOUS Customers ---- */
+ROUTES['innous/customers'] = function(){
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Customers</div><div class="page-subtitle">${CUSTOMERS.length} active accounts</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Company</th><th>Contact</th><th>Industry</th><th>Location</th><th>RFQs</th><th>Active Orders</th><th>Completed</th></tr></thead><tbody>
+      ${CUSTOMERS.map(c=>{
+        const proj = PROJECTS.filter(p=>p.customerId===c.id);
+        const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
+        const completed = proj.filter(p=>p.status==='completed').length;
+        return `<tr><td class="td-strong">${c.company}</td><td>${c.contact}<div class="td-sub">${c.email}</div></td><td>${c.industry}</td><td class="td-sub">${c.city}</td><td>${proj.length}</td><td>${activeOrders}</td><td>${completed}</td></tr>`;
+      }).join('')}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Suppliers ---- */
+ROUTES['innous/suppliers'] = function(){
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Suppliers</div><div class="page-subtitle">${SUPPLIERS.length} verified manufacturing partners across Mexico</div></div></div>
+    <div class="grid grid-3">
+      ${SUPPLIERS.map(s=>{
+        const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
+        const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
+        return `<div class="supplier-card">
+          <div class="supplier-card-top"><div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>${stars(s.rating)}</div>
+          <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
+          <div class="mini-stat-grid">
+            <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
+            <div class="mini-stat"><div class="mini-stat-val">${won}</div><div class="mini-stat-label">Won</div></div>
+            <div class="mini-stat"><div class="mini-stat-val">${proj.length}</div><div class="mini-stat-label">Invited</div></div>
+          </div>
+          <div class="td-sub">${s.capacity}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+};
+
+/* ---- INNOUS Quotes (all quotes across platform) ---- */
+ROUTES['innous/quotes'] = function(){
+  const rows = PROJECTS.flatMap(p=>p.supplierQuotes.filter(q=>q.status==='submitted').map(q=>({p,q})));
+  rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Quotes</div><div class="page-subtitle">${rows.length} supplier quotes submitted across all RFQs</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Supplier</th><th>Total Cost</th><th>Lead Time</th><th>Submitted</th><th>Shortlisted</th></tr></thead><tbody>
+      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')">
+        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMoney(q.quotedTotal)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td>${p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Yes</span>':'<span class="badge badge-gray">No</span>'}</td>
+      </tr>`).join('')}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Orders List ---- */
+ROUTES['innous/orders'] = function(){
+  const orders = PROJECTS.filter(p=>p.order);
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Orders</div><div class="page-subtitle">${orders.length} orders — active and completed</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Supplier Cost</th><th>Customer Price</th><th>Margin</th><th>Production</th><th>Payment</th></tr></thead><tbody>
+      ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
+        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
+        <td>${fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost)}</td>
+        <td>${orderStatusBadge(p.order.status)}</td><td class="td-sub">${p.order.paymentStatus}</td>
+      </tr>`).join('')}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Order Detail ---- */
+ROUTES['innous/order'] = function(id){
+  const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  const margin = p.order.customerPrice-p.order.supplierCost;
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>${orderStatusBadge(p.order.status)}</div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
+    <div class="grid grid-3" style="margin-bottom:20px;">
+      ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
+      ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId), 'dollar-sign')}
+      ${kpiCard('Gross Margin', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margin ('+p.order.markupPct+'% markup)', 'trending-up')}
+    </div>
+    <div class="grid grid-2" style="margin-bottom:20px;">
+      <div class="card card-pad">
+        <div class="section-title">Quality</div>
+        ${qualityBlock(p)}
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Logistics</div>
+        ${logisticsBlock(p)}
+      </div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Payment Status</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice.toLocaleString()>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${fmtMoney(p.order.supplierCost)}</span></div>
+    </div>
+  </div>`;
+};
+function qualityBlock(p){
+  const q = p.order.quality;
+  const statusMap = {pending:['badge-gray','Pending'],approved:['badge-green','Approved'],ncr_open:['badge-red','NCR Open']};
+  const [cls,label] = statusMap[q.status]||['badge-gray',q.status];
+  return `
+  <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
+    ${infoItem('Inspection Required', q.inspectionRequired?'Yes':'No')}
+    ${infoItem('Inspection Status', `<span class="badge ${cls}">${label}</span>`)}
+  </div>
+  <div class="info-item-label" style="margin-top:12px;">Documents &amp; Certificates</div>
+  <div class="file-list" style="margin-top:8px;">${[...q.documents,...q.certificates].map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
+  <div class="td-sub" style="margin-top:8px;">${q.photos} inspection photos on file</div>
+  ${q.ncr.length? `<div class="confidential-note" style="margin-top:10px;background:var(--danger-soft);border-color:#F9C6C6;color:var(--danger);"><i data-lucide="alert-triangle"></i><div>${q.ncr.map(n=>`${n.id}: ${n.issue} — ${n.status}`).join('<br>')}</div></div>`:''}
+  `;
+}
+function logisticsBlock(p){
+  const l = p.order.logistics;
+  return `
+  <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
+    ${infoItem('Origin', l.origin)}
+    ${infoItem('Destination', l.destination)}
+    ${infoItem('Carrier', l.carrier)}
+    ${infoItem('Tracking #', l.tracking)}
+    ${infoItem('Pickup Date', fmtDate(l.pickupDate))}
+    ${infoItem('Est. Delivery', fmtDate(l.estimatedDelivery))}
+  </div>
+  <div class="info-item-label" style="margin-top:12px;">Shipping Documents</div>
+  <div class="file-list" style="margin-top:8px;">${l.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#2952CC;background:#2952CC18;">DOC</div><span class="fc-name">${d}</span></div>`).join('')}</div>
+  `;
+}
+
+/* ---- INNOUS Production board ---- */
+ROUTES['innous/production'] = function(){
+  const orders = PROJECTS.filter(p=>p.order && p.status!=='completed');
+  const groups = ORDER_STATUS_FLOW.map(st=>({st, items: orders.filter(p=>p.order.status===st)}));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Production</div><div class="page-subtitle">${orders.length} orders in active production</div></div></div>
+    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;">
+      ${groups.map(g=>`
+        <div style="min-width:230px;flex:0 0 230px;">
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-tertiary);margin-bottom:10px;display:flex;justify-content:space-between;">${ORDER_STATUS_META[g.st].label}<span>${g.items.length}</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${g.items.map(p=>`<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/order/${p.id}')">
+              <div style="font-weight:700;font-size:12.5px;">${p.projectName}</div>
+              <div class="td-sub mono">${p.id}</div>
+              <div class="td-sub" style="margin-top:6px;">${supplierName(p.selectedSupplierId)}</div>
+            </div>`).join('') || `<div class="td-sub" style="padding:10px 0;">Empty</div>`}
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+};
+
+/* ---- INNOUS Quality ---- */
+ROUTES['innous/quality'] = function(){
+  const orders = PROJECTS.filter(p=>p.order);
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Quality</div><div class="page-subtitle">Inspection status across all orders</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Inspection Required</th><th>Status</th><th>NCR</th></tr></thead><tbody>
+      ${orders.map(p=>{
+        const q=p.order.quality; const statusMap={pending:['badge-gray','Pending'],approved:['badge-green','Approved'],ncr_open:['badge-red','NCR Open']}; const [cls,label]=statusMap[q.status]||['badge-gray',q.status];
+        return `<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td><td>${q.inspectionRequired?'Yes':'No'}</td><td><span class="badge ${cls}">${label}</span></td><td>${q.ncr.length?`<span class="badge badge-red">${q.ncr.length} open</span>`:'—'}</td></tr>`;
+      }).join('')}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Logistics ---- */
+ROUTES['innous/logistics'] = function(){
+  const orders = PROJECTS.filter(p=>p.order);
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Logistics</div><div class="page-subtitle">Shipping and delivery across all orders</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Origin</th><th>Destination</th><th>Carrier</th><th>Tracking</th><th>Est. Delivery</th><th>Status</th></tr></thead><tbody>
+      ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.order.logistics.origin}</td><td>${p.order.logistics.destination}</td><td>${p.order.logistics.carrier}</td><td class="mono">${p.order.logistics.tracking}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td><td>${orderStatusBadge(p.order.status)}</td></tr>`).join('')}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Analytics ---- */
+ROUTES['innous/analytics'] = function(){
+  const withOrder = PROJECTS.filter(p=>p.order);
+  const thisMonth = PROJECTS.filter(p=> new Date(p.createdAt) > daysFromNow(-30)).length;
+  const awarded = PROJECTS.filter(p=>p.order).length;
+  const totalShortlisted = PROJECTS.filter(p=>p.shortlist.length>0).length;
+  const winRate = totalShortlisted? Math.round(awarded/totalShortlisted*100) : 0;
+  const avgMarkup = withOrder.length? (withOrder.reduce((s,p)=>s+p.order.markupPct,0)/withOrder.length).toFixed(1) : 0;
+  const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+p.order.customerPrice,0)/withOrder.length : 0;
+  const revenue = withOrder.reduce((s,p)=>s+p.order.customerPrice,0);
+  const margin = withOrder.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost),0);
+
+  const custCounts = {}; withOrder.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+p.order.customerPrice; });
+  const topCustomers = Object.entries(custCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxCust = topCustomers.length? topCustomers[0][1] : 1;
+
+  const supCounts = {}; withOrder.forEach(p=>{ supCounts[p.selectedSupplierId]=(supCounts[p.selectedSupplierId]||0)+1; });
+  const topSuppliers = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxSup = topSuppliers.length? topSuppliers[0][1] : 1;
+
+  const procCounts = {}; PROJECTS.forEach(p=>{ procCounts[p.process]=(procCounts[p.process]||0)+1; });
+  const topProcess = Object.entries(procCounts).sort((a,b)=>b[1]-a[1]);
+  const maxProc = topProcess.length? topProcess[0][1] : 1;
+
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Analytics</div><div class="page-subtitle">Platform performance across sourcing and fulfillment</div></div></div>
+    <div class="grid grid-4" style="margin-bottom:16px;">
+      ${kpiCard('RFQs This Month', thisMonth, 'new requests submitted','file-text')}
+      ${kpiCard('Win Rate', winRate+'%', 'shortlist → awarded order','target')}
+      ${kpiCard('Avg. Markup', avgMarkup+'%', 'across all awarded orders','percent')}
+      ${kpiCard('Avg. Project Value', fmtMoney(avgValue), 'per awarded order','dollar-sign')}
+    </div>
+    <div class="grid grid-2" style="margin-bottom:16px;">
+      ${kpiCard('Revenue', fmtMoney(revenue), 'across active + completed orders','trending-up')}
+      ${kpiCard('Gross Margin', fmtMoney(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% blended margin','wallet')}
+    </div>
+    <div class="grid grid-2">
+      <div class="card card-pad">
+        <div class="section-title">Top Customers by Revenue</div>
+        <div style="margin-top:14px;">${topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtMoney(val)}</div></div>`).join('')}</div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Top Suppliers by Orders Won</div>
+        <div style="margin-top:14px;">${topSuppliers.map(([sid,val])=>`<div class="bar-row"><div class="bar-label">${supplierName(sid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxSup*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:16px;">
+      <div class="card card-pad">
+        <div class="section-title">Most Requested Manufacturing Process</div>
+        <div style="margin-top:14px;">${topProcess.map(([proc,val])=>`<div class="bar-row"><div class="bar-label">${proc}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxProc*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Response Times</div>
+        <div style="margin-top:14px;">
+          <div class="pricing-row"><span>Average supplier response time</span><span class="td-strong">3.4 days</span></div>
+          <div class="pricing-row"><span>Average customer decision time</span><span class="td-strong">2.1 days</span></div>
+          <div class="pricing-row"><span>Average time to first quote</span><span class="td-strong">4.8 days</span></div>
+          <div class="pricing-row"><span>Average time RFQ → award</span><span class="td-strong">11.6 days</span></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- INNOUS Messages ---- */
+ROUTES['innous/messages'] = function(){
+  const threads = [];
+  PROJECTS.forEach(p=>{
+    if(p.chatClient && p.chatClient.length) threads.push({type:'client', pid:p.id, name:customerName(p.customerId), proj:p.projectName, key:'c:'+p.id});
+    Object.keys(p.chatSupplier||{}).forEach(sid=>{ if(p.chatSupplier[sid].length) threads.push({type:'supplier', pid:p.id, sid, name:supplierName(sid), proj:p.projectName, key:'s:'+p.id+':'+sid}); });
+  });
+  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = threads[0].key;
+  const active = threads.find(t=>t.key===STATE.ui.activeChatKey) || threads[0];
+  const p = active ? findProject(active.pid) : null;
+  const msgs = active ? (active.type==='client' ? p.chatClient : p.chatSupplier[active.sid]) : [];
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Customer and supplier conversations. INNOUS mediates all communication.</div></div></div>
+    <div class="chat-panel">
+      <div class="chat-list">
+        ${threads.map(t=>`<div class="chat-list-item ${active&&active.key===t.key?'active':''}" onclick="App.openInnousChat('${t.key}')">
+          <div class="avatar" style="background:${t.type==='client'?'var(--accent)':'var(--ink)'};">${initials(t.name)}</div>
+          <div><div style="font-weight:600;font-size:13px;">${t.name}</div><div class="td-sub">${t.type==='client'?'Customer':'Supplier'} · ${t.proj}</div></div>
+        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+      </div>
+      <div class="chat-thread">
+        ${active? `
+        <div class="chat-thread-header"><div style="font-weight:700;">${active.name}</div><div class="td-sub">${active.type==='client'?'Customer':'Supplier'} · ${active.proj} · ${active.pid}</div></div>
+        <div class="chat-messages">${msgs.map(m=>`<div class="chat-bubble ${m.from==='innous'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='innous'?'INNOUS':active.name} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet.</div>`}</div>
+        <div class="chat-input-row"><input type="text" placeholder="Message ${active.name}..." onkeydown="if(event.key==='Enter')App.sendInnousMessage('${active.key}')" id="innous-chat-input"><button class="btn btn-primary" onclick="App.sendInnousMessage('${active.key}')"><i data-lucide="send"></i></button></div>
+        ` : emptyState('message-square','No conversations yet','')}
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- INNOUS Settings ---- */
+ROUTES['innous/settings'] = function(){
+  return `
+  <div class="content-inner" style="max-width:680px;">
+    <div class="page-header"><div><div class="page-title">Settings</div><div class="page-subtitle">Platform configuration</div></div></div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Company</div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="INNOUS Sourcing LLC" disabled></div>
+        <div class="form-group"><label class="field-label">Region</label><input type="text" value="United States ↔ Mexico" disabled></div>
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Default Pricing</div>
+      <div class="section-sub">Applied as a starting point when comparing new supplier quotes.</div>
+      <div class="form-group" style="margin-top:12px;"><label class="field-label">Default Markup</label>
+        <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<span class="markup-chip ${m===15?'active':''}">${m}%</span>`).join('')}</div>
+      </div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Notifications</div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>New RFQ submitted</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Supplier quote received</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Customer selects a quote</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox"><span>Weekly analytics summary</span></div></div>
+    </div>
+  </div>`;
+};
+
+/* =====================================================================
+   SUPPLIER PORTAL
+   Never exposes: INNOUS markup, other suppliers' prices/names, customer shortlist, customer final price.
+   ===================================================================== */
+function supplierInvited(){ return PROJECTS.filter(p=>p.invitedSupplierIds.includes(STATE.supplierId)); }
+function supplierQuoteFor(p){ return p.supplierQuotes.find(q=>q.supplierId===STATE.supplierId); }
+
+ROUTES['supplier/dashboard'] = function(){
+  const invited = supplierInvited();
+  const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || q.status!=='submitted'; }).filter(p=>['sourcing','quotes_received'].includes(p.status));
+  const submitted = invited.filter(p=>{ const q=supplierQuoteFor(p); return q && q.status==='submitted'; });
+  const activeOrders = invited.filter(p=>p.order && p.selectedSupplierId===STATE.supplierId && ['awarded','in_production'].includes(p.status));
+  const completedOrders = invited.filter(p=>p.order && p.selectedSupplierId===STATE.supplierId && p.status==='completed');
+  const won = invited.filter(p=>p.selectedSupplierId===STATE.supplierId).length;
+  const winRate = submitted.length? Math.round(won/submitted.length*100):0;
+  const revenue = [...activeOrders,...completedOrders].reduce((s,p)=>s+p.order.supplierCost,0);
+  const recent = invited.flatMap(p=>p.activity.filter(a=>a.actor!=='INNOUS'||true).map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,6);
+
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Welcome back</div><div class="page-subtitle">${currentSupplier().name} · Supplier Dashboard</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>View Available RFQs</button></div></div>
+    <div class="grid grid-4" style="margin-bottom:24px;">
+      ${kpiCard('Available RFQs', available.length, 'awaiting your quote','inbox')}
+      ${kpiCard('Quotes Submitted', submitted.length, 'total submitted','file-text')}
+      ${kpiCard('Active Orders', activeOrders.length, 'in production','package')}
+      ${kpiCard('Win Rate', winRate+'%', 'of quotes submitted','target')}
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-header"><h3>Available RFQs</h3><a href="#/supplier/rfqs" class="btn btn-ghost btn-sm">View all</a></div>
+        <div class="table-wrap">${available.length? supplierRfqMiniTable(available.slice(0,6)) : emptyState('inbox','No RFQs waiting','New opportunities will appear here as INNOUS matches you to projects.')}</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Recent Activity</h3></div>
+        <div class="card-pad">${recent.length? recent.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>`).join('') : emptyState('activity','No activity yet','')}</div>
+      </div>
+    </div>
+  </div>`;
+};
+function supplierRfqMiniTable(list){
+  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Due</th></tr></thead><tbody>
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+/* ---- Supplier Available RFQs ---- */
+ROUTES['supplier/rfqs'] = function(){
+  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Available RFQs</div><div class="page-subtitle">Requests INNOUS has invited you to quote</div></div></div>
+    <div class="grid grid-3">
+      ${invited.length? invited.map(supplierRfqCard).join('') : `<div style="grid-column:1/-1;">${emptyState('inbox','No RFQs available right now','Check back soon — INNOUS matches new projects to your capabilities regularly.')}</div>`}
+    </div>
+  </div>`;
+};
+function supplierRfqCard(p){
+  const q = supplierQuoteFor(p);
+  const submitted = q && q.status==='submitted';
+  return `
+  <div class="card card-pad">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="td-sub mono">${p.id}</div><div style="font-weight:700;font-size:14.5px;margin-top:2px;">${p.projectName}</div></div>
+      ${submitted?'<span class="badge badge-green">Quote Submitted</span>':'<span class="badge badge-amber">Action Needed</span>'}
+    </div>
+    <div class="cap-list">${[p.process,p.material].map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    <div class="info-grid" style="grid-template-columns:1fr 1fr;margin:12px 0;">
+      ${infoItem('Quantity', p.quantity.toLocaleString())}
+      ${infoItem('Due Date', fmtDate(p.deliveryDate))}
+      ${infoItem('Location', p.deliveryLocation)}
+      ${infoItem('Files', p.files.length+' attached')}
+    </div>
+    <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Deadline to quote: ${fmtDate(addDays(p.createdAt,10))}</div>
+    <button class="btn ${submitted?'btn-secondary':'btn-primary'} btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">${submitted?'View Submitted Quote':'View RFQ'}</button>
+  </div>`;
+}
+
+/* ---- Supplier RFQ Detail / Quote Form ---- */
+ROUTES['supplier/rfq'] = function(id){
+  const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','RFQ not available','This RFQ was not sent to your company.');
+  const q = supplierQuoteFor(p);
+  const submitted = q && q.status==='submitted';
+  return `
+  <div class="content-inner" style="max-width:900px;">
+    <div class="breadcrumb"><a href="#/supplier/rfqs">Available RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${submitted?'<span class="badge badge-green">Quote Submitted</span>':'<span class="badge badge-amber">Awaiting Your Quote</span>'}</div>
+    <div class="grid grid-2" style="margin-bottom:20px;">
+      <div class="card card-pad">
+        <div class="section-title">RFQ Specifications</div>
+        <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
+          ${infoItem('Process', p.process)}
+          ${infoItem('Quantity', p.quantity.toLocaleString())}
+          ${infoItem('Material', p.material)}
+          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
+          ${infoItem('Delivery Location', p.deliveryLocation)}
+          ${infoItem('Quote Deadline', fmtDate(addDays(p.createdAt,10)))}
+        </div>
+        <hr class="divider">
+        <div class="info-item-label">Description</div>
+        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        <div class="info-item-label" style="margin-top:12px;">Quality Requirements</div>
+        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.qualityReq}</div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Files</div>
+        <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
+        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>Buyer identity, other supplier quotes, and final pricing to the buyer are managed by INNOUS and not shared with suppliers.</div></div>
+      </div>
+    </div>
+    ${submitted ? supplierSubmittedQuoteCard(q) : supplierQuoteForm(p)}
+  </div>`;
+};
+function supplierSubmittedQuoteCard(q){
+  return `
+  <div class="card card-pad">
+    <div class="section-title">Your Submitted Quote</div>
+    <div class="info-grid" style="margin-top:12px;">
+      ${infoItem('Unit Price', fmtMoney2(q.unitPrice))}
+      ${infoItem('Tooling', fmtMoney(q.tooling))}
+      ${infoItem('Setup', fmtMoney(q.setup))}
+      ${infoItem('Shipping', q.shipping?fmtMoney(q.shipping):'Included')}
+      ${infoItem('Lead Time', q.leadTimeDays+' days')}
+      ${infoItem('Payment Terms', q.paymentTerms)}
+    </div>
+    <hr class="divider">
+    <div style="font-size:12.5px;color:var(--ink-tertiary);">Submitted ${fmtDate(q.submittedAt)} · Valid for ${q.validity}</div>
+  </div>`;
+}
+function supplierQuoteForm(p){
+  return `
+  <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
+    <div class="section-title">Submit Your Quote</div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Unit price (USD)</label><input type="number" step="0.01" name="unitPrice" required placeholder="e.g. 185.00"></div>
+      <div class="form-group"><label class="field-label">Tooling (USD)</label><input type="number" name="tooling" placeholder="0"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Setup (USD)</label><input type="number" name="setup" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Shipping (USD)</label><input type="number" name="shipping" placeholder="0 (leave blank if included)"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Lead time (days)</label><input type="number" name="leadTimeDays" required placeholder="e.g. 28"></div>
+      <div class="form-group"><label class="field-label">Payment terms</label><select name="paymentTerms"><option>50% deposit / 50% on delivery</option><option>Net 30</option><option>30% deposit / 70% on shipment</option><option>Net 45</option></select></div>
+    </div>
+    <div class="form-group"><label class="field-label">Quote validity</label><select name="validity"><option>15 days</option><option selected>30 days</option><option>45 days</option><option>60 days</option></select></div>
+    <div class="form-group"><label class="field-label">Notes</label><textarea name="notes" placeholder="Any assumptions, exclusions, or clarifications..."></textarea></div>
+    <div class="form-group"><label class="field-label">Documents</label><button type="button" class="btn btn-secondary btn-sm" onclick="showToast('cost-breakdown.pdf attached')"><i data-lucide="paperclip"></i>Attach cost-breakdown.pdf</button></div>
+    <hr class="divider">
+    <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Submit Quote</button></div>
+  </form>`;
+}
+
+/* ---- Supplier My Quotes ---- */
+ROUTES['supplier/quotes'] = function(){
+  const rows = supplierInvited().map(p=>({p,q:supplierQuoteFor(p)})).filter(r=>r.q && r.q.status==='submitted');
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">My Quotes</div><div class="page-subtitle">${rows.length} quotes submitted</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Unit Price</th><th>Lead Time</th><th>Submitted</th><th>Status</th></tr></thead><tbody>
+      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')">
+        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td>${p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Won</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">Under Review</span>':'<span class="badge badge-gray">Not Selected</span>'}</td>
+      </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','No quotes submitted yet','')}</td></tr>`}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- Supplier Active Orders ---- */
+function supplierOrders(){ return PROJECTS.filter(p=>p.selectedSupplierId===STATE.supplierId && p.order); }
+ROUTES['supplier/orders'] = function(){
+  const orders = supplierOrders().filter(p=>p.status!=='completed');
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Active Orders</div><div class="page-subtitle">${orders.length} orders in progress</div></div></div>
+    <div class="grid grid-2">
+      ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','No active orders yet','Orders appear here once a customer selects your quote.')}</div>`}
+    </div>
+  </div>`;
+};
+function supplierOrderCard(p){
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  return `
+  <div class="card card-pad row-link" onclick="navigate('#/supplier/order/${p.id}')">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="page-subtitle mono" style="margin:0;">Order ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
+      ${orderStatusBadge(p.order.status)}
+    </div>
+    <div style="display:flex;gap:22px;margin-top:12px;">
+      ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
+      ${infoItem('Agreed Price', fmtMoney(p.order.supplierCost))}
+      ${infoItem('Delivery', fmtDate(p.deliveryDate))}
+    </div>
+    <div style="margin-top:16px;"><div class="bar-track"><div class="bar-fill" style="width:${((stageIdx+1)/ORDER_STATUS_FLOW.length*100)}%;"></div></div></div>
+  </div>`;
+}
+
+/* ---- Supplier Order Detail (can update production status) ---- */
+ROUTES['supplier/order'] = function(id){
+  const p = findProject(id); if(!p || p.selectedSupplierId!==STATE.supplierId || !p.order) return emptyState('search','Order not found','');
+  const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/supplier/orders">Active Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>
+      <div class="page-actions">${orderStatusBadge(p.order.status)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${ORDER_STATUS_META[nextStatus].label}</button>`:''}</div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
+    <div class="grid grid-2">
+      <div class="card card-pad">
+        <div class="section-title">Order Details</div>
+        <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
+          ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
+          ${infoItem('Agreed Price', fmtMoney(p.order.supplierCost))}
+          ${infoItem('Material', p.material)}
+          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
+        </div>
+        <hr class="divider">
+        <div class="section-title">Production Milestones</div>
+        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${m.label}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
+      </div>
+      <div class="card card-pad">
+        <div class="section-title">Supplier Documents</div>
+        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
+        <div style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="showToast('Document uploaded')"><i data-lucide="upload"></i>Upload Document</button></div>
+        <hr class="divider">
+        <div class="section-title">Messages</div>
+        <button class="btn btn-secondary btn-block" onclick="navigate('#/supplier/messages')"><i data-lucide="message-square"></i>Message INNOUS</button>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- Supplier Production (list view of all active orders w/ update) ---- */
+ROUTES['supplier/production'] = function(){
+  const orders = supplierOrders().filter(p=>p.status!=='completed');
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Production</div><div class="page-subtitle">Update your production status as work progresses</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Project</th><th>Quantity</th><th>Current Status</th><th></th></tr></thead><tbody>
+      ${orders.map(p=>{
+        const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status); const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
+        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p.order.status)}</td>
+        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Mark: ${ORDER_STATUS_META[nextStatus].label}</button>`:'<span class="td-sub">Complete</span>'}</td></tr>`;
+      }).join('') || `<tr><td colspan="5">${emptyState('cog','No active production','')}</td></tr>`}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- Supplier Documents ---- */
+ROUTES['supplier/documents'] = function(){
+  const orders = supplierOrders();
+  const docs = orders.flatMap(p=>[...p.order.quality.documents,...p.order.logistics.documents].map(d=>({d,p})));
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Documents</div><div class="page-subtitle">Quality certificates, drawings and shipping paperwork</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Order</th><th>Project</th></tr></thead><tbody>
+      ${docs.length? docs.map(({d,p})=>`<tr><td class="td-strong">${d}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`).join('') : `<tr><td colspan="3">${emptyState('folder','No documents yet','')}</td></tr>`}
+    </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- Supplier Messages ---- */
+ROUTES['supplier/messages'] = function(){
+  const threads = supplierInvited().filter(p=> (p.chatSupplier[STATE.supplierId]||[]).length);
+  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = threads[0].id;
+  const active = threads.find(p=>p.id===STATE.ui.activeChatKey) || threads[0];
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS sourcing manager</div></div></div>
+    <div class="chat-panel">
+      <div class="chat-list">
+        ${threads.map(p=>`<div class="chat-list-item ${active&&active.id===p.id?'active':''}" onclick="App.openSupplierChat('${p.id}')">
+          <div class="avatar" style="background:var(--ink);">IN</div><div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id}</div></div>
+        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+      </div>
+      <div class="chat-thread">
+        ${active? `
+        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Sourcing Team</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
+        <div class="chat-messages">${(active.chatSupplier[STATE.supplierId]||[]).map(m=>`<div class="chat-bubble ${m.from==='supplier'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='supplier'?'You':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet.</div>`}</div>
+        <div class="chat-input-row"><input type="text" placeholder="Message INNOUS..." onkeydown="if(event.key==='Enter')App.sendSupplierMessage('${active.id}')" id="supplier-chat-input"><button class="btn btn-primary" onclick="App.sendSupplierMessage('${active.id}')"><i data-lucide="send"></i></button></div>
+        ` : emptyState('message-square','No conversations yet','Messages appear once you are invited to an RFQ.')}
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- Supplier Performance ---- */
+ROUTES['supplier/performance'] = function(){
+  const s = currentSupplier();
+  const invited = supplierInvited();
+  const submitted = invited.filter(p=>{const q=supplierQuoteFor(p); return q&&q.status==='submitted';});
+  const won = invited.filter(p=>p.selectedSupplierId===s.id);
+  const winRate = submitted.length? Math.round(won.length/submitted.length*100):0;
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Performance</div><div class="page-subtitle">Your track record on the INNOUS platform</div></div></div>
+    <div class="grid grid-4" style="margin-bottom:20px;">
+      ${kpiCard('Overall Rating', s.rating, 'out of 5.0','star')}
+      ${kpiCard('On-Time Delivery', s.onTime+'%', 'across all orders','clock')}
+      ${kpiCard('Quality Score', s.quality+'%', 'acceptance rate','shield-check')}
+      ${kpiCard('Win Rate', winRate+'%', submitted.length+' quotes submitted','target')}
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Completed Projects</div>
+      <div class="section-sub">${s.projects} projects completed with INNOUS customers to date.</div>
+      <div class="table-wrap" style="margin-top:12px;"><table class="data-table"><thead><tr><th>Order</th><th>Project</th><th>Quantity</th><th>Delivered</th></tr></thead><tbody>
+        ${supplierOrders().filter(p=>p.status==='completed').map(p=>`<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('check-circle-2','No completed projects yet','')}</td></tr>`}
+      </tbody></table></div>
+    </div>
+  </div>`;
+};
+
+/* ---- Supplier Company Profile ---- */
+ROUTES['supplier/profile'] = function(){
+  const s = currentSupplier();
+  return `
+  <div class="content-inner" style="max-width:760px;">
+    <div class="page-header"><div><div class="page-title">Company Profile</div><div class="page-subtitle">Keep this up to date to be matched with more RFQs</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="showToast('Profile saved')"><i data-lucide="save"></i>Save Changes</button></div></div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Company Information</div>
+      <div class="form-row" style="margin-top:12px;">
+        <div class="form-group"><label class="field-label">Company Name</label><input type="text" value="${s.name}"></div>
+        <div class="form-group"><label class="field-label">Location</label><input type="text" value="${s.city}"></div>
+      </div>
+      <div class="form-group"><label class="field-label">Capacity</label><input type="text" value="${s.capacity}"></div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Capabilities</div>
+      <div class="cap-list" style="margin-top:10px;">${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="tag" style="${s.capabilities.includes(p)?'background:var(--ink);color:#fff;border-color:var(--ink);':''}">${p}</span>`).join('')}</div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Machines &amp; Equipment</div>
+      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('')}</div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Certifications</div>
+      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
+    </div>
+  </div>`;
+};
+
+/* =====================================================================
+   APP ACTIONS (global handlers used by inline onclick/onsubmit)
+   ===================================================================== */
+const App = {
+  toggleSidebar(forceClose){
+    const sb = document.getElementById('sidebar'), bd = document.getElementById('sidebar-backdrop');
+    if(forceClose===true){ sb.classList.remove('open'); bd.classList.remove('open'); return; }
+    sb.classList.toggle('open'); bd.classList.toggle('open');
+  },
+  toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.toggle('open'); },
+  switchRole(role){
+    STATE.role = role; STATE.ui.activeChatKey = null;
+    document.getElementById('role-menu').classList.remove('open');
+    const home = role==='CLIENT'?'#/client/dashboard':role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
+    if(location.hash===home) route(); else location.hash = home;
+    showToast(`Viewing as ${ROLE_META[role].label}`);
+  },
+
+  /* ---- New RFQ form ---- */
+  setNewRfqProcess(p){ STATE.ui.newRfqDraft.process = p; route(); },
+  addMockFile(type){
+    const meta = FILE_TYPES[type];
+    const names = {pdf:'drawing.pdf',step:'model.step',dwg:'detail.dwg',dxf:'layout.dxf',jpg:'reference.jpg',png:'photo.png'};
+    STATE.ui.newRfqFiles.push({name:names[type], type, size: rnd(150,4000)+' KB'});
+    route();
+  },
+  removeMockFile(i){ STATE.ui.newRfqFiles.splice(i,1); route(); },
+  submitRfq(e){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const idNum = 500 + PROJECTS.length + rnd(1,20);
+    const proj = {
+      id: 'IN-2026-'+String(idNum).padStart(5,'0'),
+      customerId: STATE.clientId,
+      projectName: f.get('projectName'),
+      description: f.get('description'),
+      process: STATE.ui.newRfqDraft.process,
+      quantity: parseInt(f.get('quantity'))||1,
+      material: f.get('material'),
+      deliveryDate: new Date(f.get('deliveryDate')),
+      deliveryLocation: f.get('deliveryLocation'),
+      qualityReq: f.get('qualityReq')||'Standard quality documentation.',
+      specialReq: f.get('specialReq')||'—',
+      files: STATE.ui.newRfqFiles.length ? STATE.ui.newRfqFiles.slice() : mockFiles(STATE.ui.newRfqDraft.process),
+      createdAt: new Date('2026-09-08'),
+      status:'submitted', invitedSupplierIds:[], supplierQuotes:[], shortlist:[], order:null,
+      activity:[{ts:new Date('2026-09-08'),actor:currentClient().company,text:'RFQ submitted.'}],
+      chatClient:[], chatSupplier:{},
+    };
+    PROJECTS.unshift(proj);
+    STATE.ui.newRfqDraft = null; STATE.ui.newRfqFiles = [];
+    showToast(`RFQ ${proj.id} submitted`, 'success');
+    navigate('#/client/rfq/'+proj.id);
+    return false;
+  },
+
+  /* ---- INNOUS RFQ list filter ---- */
+  filterRfqTable(){
+    const q = (document.getElementById('rfq-search').value||'').toLowerCase();
+    const status = document.getElementById('rfq-status-filter').value;
+    document.querySelectorAll('#rfq-table tbody tr').forEach(tr=>{
+      const matchesText = tr.dataset.search.includes(q);
+      const matchesStatus = !status || tr.dataset.status===status;
+      tr.style.display = (matchesText && matchesStatus) ? '' : 'none';
+    });
+  },
+
+  /* ---- Supplier matching / invite ---- */
+  toggleInviteSupplier(sid){
+    const arr = STATE.ui.selectedInviteSuppliers;
+    const idx = arr.indexOf(sid);
+    if(idx>-1) arr.splice(idx,1); else arr.push(sid);
+    route();
+  },
+  sendRfqToSuppliers(pid){
+    const p = findProject(pid);
+    p.invitedSupplierIds = STATE.ui.selectedInviteSuppliers.slice();
+    p.supplierQuotes = p.invitedSupplierIds.map(sid=>makeQuoteStub(p, sid, false));
+    p.status = 'sourcing';
+    logActivity(p,'INNOUS', `RFQ sent to ${p.invitedSupplierIds.length} suppliers.`);
+    STATE.ui.selectedInviteSuppliers = [];
+    showToast(`RFQ sent to ${p.invitedSupplierIds.length} suppliers`, 'success');
+    route();
+  },
+
+  /* ---- Quote comparison / markup / shortlist ---- */
+  setMarkup(pid,sid,val){ STATE.ui.markupDrafts[markupKey(pid,sid)] = parseFloat(val)||0; route(); },
+  addToShortlist(pid,sid){
+    const p = findProject(pid);
+    if(p.shortlist.length>=5){ showToast('Shortlist already has 5 options'); return; }
+    const q = p.supplierQuotes.find(x=>x.supplierId===sid);
+    const markup = getMarkup(pid,sid);
+    p.shortlist.push({supplierId:sid, supplierCost:q.quotedTotal, markupPct:markup, customerPrice:q.quotedTotal*(1+markup/100), leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
+    const badges = computeBadges(p.shortlist);
+    p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
+    if(p.status==='sourcing') p.status='quotes_received';
+    showToast('Added to customer shortlist');
+    route();
+  },
+  removeFromShortlist(pid,sid){
+    const p = findProject(pid);
+    p.shortlist = p.shortlist.filter(s=>s.supplierId!==sid);
+    const badges = computeBadges(p.shortlist);
+    p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
+    route();
+  },
+  sendQuotesToCustomer(pid){
+    const p = findProject(pid);
+    p.status = 'customer_review';
+    logActivity(p,'INNOUS', `${p.shortlist.length} supplier quotes reviewed and shortlisted. Sent to customer for decision.`);
+    showToast(`${p.shortlist.length} quotes sent to ${customerName(p.customerId)}`, 'success');
+    navigate('#/innous/rfq/'+pid);
+  },
+  viewQuoteDetail(pid,sid){
+    const p = findProject(pid); const s = p.shortlist.find(x=>x.supplierId===sid);
+    openModal(`
+      <div class="modal-header"><h3>Manufacturing Option Details</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="quote-price" style="margin-bottom:10px;">${fmtMoney(s.customerPrice)} <span style="font-size:13px;font-weight:600;color:var(--ink-tertiary);">USD total</span></div>
+        <div class="info-grid" style="grid-template-columns:1fr 1fr;">
+          ${infoItem('Lead Time', s.leadTimeDays+' days')}
+          ${infoItem('Quality Rating', s.rating+' / 5.0')}
+          ${infoItem('Certifications', 'ISO 9001')}
+          ${infoItem('Delivery', p.deliveryLocation)}
+        </div>
+        <hr class="divider">
+        <div style="font-size:13px;color:var(--ink-secondary);">This manufacturing option was matched and vetted by INNOUS for your process, quantity, and quality requirements. Manufacturer identity is managed by INNOUS throughout production.</div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>
+    `);
+  },
+  openSelectQuoteModal(pid,sid){
+    const p = findProject(pid); const s = p.shortlist.find(x=>x.supplierId===sid);
+    openModal(`
+      <div class="modal-header"><h3>Select this manufacturing option?</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="pricing-panel">
+          <div class="pricing-row"><span>Project</span><span class="td-strong">${p.projectName}</span></div>
+          <div class="pricing-row"><span>Quantity</span><span class="td-strong">${p.quantity.toLocaleString()} pcs</span></div>
+          <div class="pricing-row"><span>Lead Time</span><span class="td-strong">${s.leadTimeDays} days</span></div>
+          <div class="pricing-row"><span>Delivery</span><span class="td-strong">${p.deliveryLocation}</span></div>
+          <div class="pricing-row total"><span>Final Price</span><span>${fmtMoney(s.customerPrice)}</span></div>
+        </div>
+        <div class="field-hint" style="margin-top:12px;">Once confirmed, INNOUS will close the project with the manufacturing partner and your order will begin.</div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="App.confirmSelectQuote('${pid}','${sid}')"><i data-lucide="check"></i>Confirm Selection</button></div>
+    `);
+  },
+  confirmSelectQuote(pid,sid){
+    const p = findProject(pid);
+    const s = p.shortlist.find(x=>x.supplierId===sid);
+    p.selectedSupplierId = sid; p.selectedQuote = s; p.status = 'awarded';
+    setOrderState(p, 'order_confirmed');
+    logActivity(p, customerName(p.customerId), 'Customer selected manufacturing option. Order confirmed.');
+    closeModal();
+    showToast(`Order created — ${p.id}`, 'success');
+    navigate('#/client/order/'+pid);
+  },
+
+  /* ---- Supplier quote submission ---- */
+  submitSupplierQuote(e,pid){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const p = findProject(pid);
+    const unit = parseFloat(f.get('unitPrice'))||0;
+    const tooling = parseFloat(f.get('tooling'))||0;
+    const setup = parseFloat(f.get('setup'))||0;
+    const shipping = parseFloat(f.get('shipping'))||0;
+    const quotedTotal = unit*p.quantity+tooling+setup+shipping;
+    const supplier = currentSupplier();
+    let q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
+    const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, tooling, setup, shipping, quotedTotal,
+      leadTimeDays: parseInt(f.get('leadTimeDays'))||30, paymentTerms:f.get('paymentTerms'), validity:f.get('validity'),
+      notes:f.get('notes'), documents:['cost-breakdown.pdf'], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
+    if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
+    if(p.status==='sourcing') p.status='sourcing';
+    logActivity(p, supplier.name, 'Supplier submitted a quote.');
+    showToast('Quote submitted successfully', 'success');
+    navigate('#/supplier/rfq/'+pid);
+    return false;
+  },
+
+  /* ---- Status transitions ---- */
+  advanceStatus(pid, status){
+    const p = findProject(pid); p.status = status;
+    logActivity(p,'INNOUS', status==='under_review' ? 'RFQ reviewed and approved for sourcing.' : 'RFQ approved for supplier matching.');
+    showToast('RFQ status updated');
+    route();
+  },
+  advanceOrderStatus(pid){
+    const p = findProject(pid);
+    const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+    const next = ORDER_STATUS_FLOW[idx+1];
+    if(!next) return;
+    p.order.status = next;
+    p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08');
+    if(idx+1>2) p.order.paymentStatus = 'Deposit Received';
+    if(next==='delivered'){ p.status='completed'; p.order.paymentStatus='Paid'; }
+    else if(p.status==='awarded') p.status='in_production';
+    logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
+    showToast(`Order ${p.id} updated to ${ORDER_STATUS_META[next].label}`, 'success');
+    route();
+  },
+
+  /* ---- Messaging ---- */
+  openClientChat(pid){ STATE.ui.activeChatKey = pid; route(); },
+  sendClientMessage(pid){
+    const input = document.getElementById('client-chat-input'); const text = input.value.trim(); if(!text) return;
+    const p = findProject(pid); p.chatClient.push({from:'client', text, ts:new Date('2026-09-08')});
+    route();
+    setTimeout(()=>{ p.chatClient.push({from:'innous', text:'Thanks for the note — our team is on it and will follow up shortly.', ts:new Date('2026-09-08')}); if(location.hash.includes('client/messages')) route(); }, 900);
+  },
+  openInnousChat(key){ STATE.ui.activeChatKey = key; route(); },
+  sendInnousMessage(key){
+    const input = document.getElementById('innous-chat-input'); const text = input.value.trim(); if(!text) return;
+    const [type,pid,sid] = key.split(':'); const p = findProject(pid);
+    if(type==='c') p.chatClient.push({from:'innous', text, ts:new Date('2026-09-08')});
+    else p.chatSupplier[sid].push({from:'innous', text, ts:new Date('2026-09-08')});
+    route();
+  },
+  openSupplierChat(pid){ STATE.ui.activeChatKey = pid; route(); },
+  sendSupplierMessage(pid){
+    const input = document.getElementById('supplier-chat-input'); const text = input.value.trim(); if(!text) return;
+    const p = findProject(pid); p.chatSupplier[STATE.supplierId].push({from:'supplier', text, ts:new Date('2026-09-08')});
+    route();
+    setTimeout(()=>{ p.chatSupplier[STATE.supplierId].push({from:'innous', text:'Got it, thanks for the update.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
+  },
+};
+
+document.addEventListener('click', ()=>{ const m=document.getElementById('role-menu'); if(m) m.classList.remove('open'); });
+
+/* ---------- Init ---------- */
+buildProjects();
+window.addEventListener('hashchange', route);
+window.addEventListener('DOMContentLoaded', ()=>{ if(!location.hash) location.hash = '#/innous/overview'; route(); lucide.createIcons(); });
+if(document.readyState!=='loading'){ if(!location.hash) location.hash='#/innous/overview'; route(); }
+
+/*__APPEND_MARKER__*/
+</script>
+</body>
+</html>
