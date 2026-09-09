@@ -1484,7 +1484,7 @@ function renderSignupForm(){
             <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
             <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
             <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
-            <div class="form-group"><label class="field-label">${es?'Usuario':'Username'}</label><input type="text" name="username" required autocomplete="username"></div>
+            <div class="form-group"><label class="field-label">${es?'Usuario':'Username'}</label><input type="text" name="username" required autocomplete="username" minlength="4" pattern="[a-z0-9]{4,}" title="${es?'Solo minúsculas y números, sin espacios, mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces, at least 4 characters'}" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9]/g,'')"><div class="field-hint">${es?'Solo minúsculas y números, sin espacios · mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces · at least 4 characters'}</div></div>
             <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="4" autocomplete="new-password"></div>
             <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="4" autocomplete="new-password"></div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>${es?'Crear Cuenta':'Create Account'}</button>
@@ -2867,7 +2867,8 @@ const App = {
     const f = new FormData(e.target);
     const role = STATE.signupRole;
     const es = role==='SUPPLIER';
-    const username = f.get('username').trim().toLowerCase();
+    const username = f.get('username').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(username.length<4){ showToast(es?'El usuario debe tener al menos 4 caracteres (solo minúsculas y números)':'Username must be at least 4 characters (lowercase letters and numbers only)'); return false; }
     const password = f.get('password'), password2 = f.get('password2');
     if(password!==password2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return false; }
     if(ACCOUNTS.find(a=>a.username===username)){ showToast(es?'Ese usuario ya existe':'That username is already taken'); return false; }
