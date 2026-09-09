@@ -1012,8 +1012,11 @@ function loadSession(){ try{ return JSON.parse(localStorage.getItem('innous_sess
 function saveSession(session){ try{ if(session) localStorage.setItem('innous_session', JSON.stringify(session)); else localStorage.removeItem('innous_session'); }catch(e){} }
 let ACCOUNTS = loadAccounts();
 
-function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId); }
-function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId); }
+// Fall back to an empty placeholder record rather than throwing — matters once demo
+// data can be wiped (see App.resetAllData): the default demo persona ids (c1/s1) then
+// no longer exist until a real account is signed up.
+function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', city:'', industry:'', photo:null}; }
+function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', city:'', capabilities:[], machines:[], certs:[], capacity:'', rating:0, onTime:0, quality:0, projects:0, photo:null}; }
 function findProject(id){ return PROJECTS.find(p=>p.id===id); }
 function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Unknown Supplier'; }
 function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Unknown Customer'; }
@@ -1192,9 +1195,10 @@ const ROLE_META = {
 function renderShell(){
   const es = STATE.role==='SUPPLIER';
   const isAccount = STATE.authMode==='account';
+  const showLogout = STATE.authMode!=='guest'; // account or demo — either way, there should be a way back to the landing page
   document.getElementById('role-switcher').style.display = isAccount ? 'none' : '';
-  document.getElementById('logout-btn').style.display = isAccount ? '' : 'none';
-  document.getElementById('logout-btn-text').textContent = es ? 'Cerrar Sesión' : 'Log Out';
+  document.getElementById('logout-btn').style.display = showLogout ? '' : 'none';
+  document.getElementById('logout-btn-text').textContent = es ? 'Cerrar Sesión' : (isAccount ? 'Log Out' : 'Exit Demo');
   document.getElementById('rs-current').textContent = STATE.role==='CLIENT'?'Client':STATE.role==='SUPPLIER'?'Proveedor':'INNOUS';
   document.querySelector('.rs-label').textContent = es?'Viendo como:':'Viewing as:';
   const chip = document.getElementById('user-chip');
@@ -2391,12 +2395,23 @@ ROUTES['innous/settings'] = function(){
         <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<span class="markup-chip ${m===15?'active':''}">${m}%</span>`).join('')}</div>
       </div>
     </div>
-    <div class="card card-pad">
+    <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Notifications</div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>New RFQ submitted</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Supplier quote received</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Customer selects a quote</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox"><span>Weekly analytics summary</span></div></div>
+    </div>
+    <div class="card card-pad" style="border-color:#F9C6C6;">
+      <div class="section-title" style="color:var(--danger);">Testing &amp; Demo Data</div>
+      <div class="section-sub">${localStorage.getItem('innous_wiped')==='1'
+        ? 'The platform is currently empty — no pre-seeded customers, suppliers or RFQs. Sign up as a client and a supplier on separate accounts to test the full flow from zero.'
+        : 'Wipe every pre-seeded demo customer, supplier and RFQ (and any test accounts on this browser) to try the whole platform — INNOUS, client, and supplier — from a genuinely empty state.'}</div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        ${localStorage.getItem('innous_wiped')==='1'
+          ? `<button class="btn btn-secondary" onclick="App.restoreDemoData()"><i data-lucide="rotate-ccw"></i>Restore Demo Data</button>`
+          : `<button class="btn btn-danger" onclick="App.resetAllData()"><i data-lucide="trash-2"></i>Reset All Data</button>`}
+      </div>
     </div>
   </div>`;
 };
@@ -2819,6 +2834,20 @@ const App = {
     document.getElementById('app-shell').style.display='none';
     document.getElementById('auth-root').style.display='';
     renderAuthRoot();
+  },
+  resetAllData(){
+    if(!confirm('This permanently clears every pre-seeded demo customer, supplier and RFQ, plus any test accounts created on this browser. You\'ll start from a completely empty platform. Continue?')) return;
+    localStorage.setItem('innous_wiped','1');
+    localStorage.removeItem('innous_accounts');
+    localStorage.removeItem('innous_session');
+    location.reload();
+  },
+  restoreDemoData(){
+    if(!confirm('Restore the full pre-seeded demo dataset? This also clears any test accounts created on this browser.')) return;
+    localStorage.removeItem('innous_wiped');
+    localStorage.removeItem('innous_accounts');
+    localStorage.removeItem('innous_session');
+    location.reload();
   },
 
   /* ---- Post-signup mini tour ---- */
@@ -3262,7 +3291,16 @@ document.addEventListener('click', ()=>{
 });
 
 /* ---------- Init ---------- */
-buildProjects();
+// A tester can wipe every pre-seeded demo customer/supplier/RFQ (see App.resetAllData,
+// on the INNOUS Settings page) to try the platform genuinely from zero as all three
+// roles. The flag lives in localStorage so the empty state survives a reload.
+if(localStorage.getItem('innous_wiped')==='1'){
+  CUSTOMERS.length = 0;
+  SUPPLIERS.length = 0;
+  PROJECTS = [];
+} else {
+  buildProjects();
+}
 window.addEventListener('hashchange', ()=>{ if(STATE.authMode!=='guest') route(); });
 let booted = false;
 function boot(){
