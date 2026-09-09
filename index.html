@@ -70,8 +70,8 @@ svg{display:block;}
 .mobile-menu-btn{display:none;padding:6px;border-radius:var(--radius-sm);}
 .mobile-menu-btn:hover{background:var(--surface-alt);}
 .logo{display:flex;align-items:center;}
-.logo-svg{height:32px;width:auto;display:block;}
-@media(max-width:480px){.logo-svg{height:26px;}}
+.logo-svg{height:44px;width:auto;display:block;}
+@media(max-width:480px){.logo-svg{height:32px;}}
 
 .topbar-right{display:flex;align-items:center;gap:10px;}
 .role-switcher{position:relative;}
@@ -292,6 +292,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .modal-close{padding:4px;color:var(--ink-tertiary);border-radius:6px;}
 .modal-close:hover{background:var(--surface-alt);color:var(--ink);}
 
+/* Account settings + photo cropper */
+.account-photo-row{display:flex;align-items:center;gap:16px;margin-bottom:18px;}
+.crop-viewport{position:relative;width:240px;height:240px;margin:0 auto;overflow:hidden;border-radius:12px;background:var(--ink);cursor:grab;touch-action:none;user-select:none;}
+.crop-viewport:active{cursor:grabbing;}
+.crop-viewport img{position:absolute;left:0;top:0;max-width:none;pointer-events:none;}
+.crop-circle-guide{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 2000px rgba(0,0,0,0.45);pointer-events:none;}
+.crop-zoom-row{display:flex;align-items:center;gap:10px;margin-top:16px;}
+.crop-zoom-row input[type=range]{flex:1;accent-color:var(--accent);}
+
 .toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:2000;}
 .toast{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow-md);min-width:260px;animation:toastIn .2s ease;}
 .toast svg{width:16px;height:16px;stroke:#fff;flex:0 0 auto;}
@@ -488,6 +497,19 @@ function pickN(arr,n){const copy=[...arr];const out=[];while(out.length<n && cop
 
 /* ---------- Constants ---------- */
 const PROCESSES = ['CNC Machining','Conventional Machining','Fabrication / Pailería','Foundry / Casting','Cutting','Stamping','Other'];
+/* Display-only Spanish translation for process names (the Supplier portal is
+   shown in Spanish). Underlying values stay in English everywhere else so
+   capability/process matching logic never has to deal with two languages. */
+const PROCESS_ES = {
+  'CNC Machining':'Maquinado CNC',
+  'Conventional Machining':'Maquinado Convencional',
+  'Fabrication / Pailería':'Fabricación / Pailería',
+  'Foundry / Casting':'Fundición',
+  'Cutting':'Corte',
+  'Stamping':'Estampado',
+  'Other':'Otro',
+};
+function procES(p){ return PROCESS_ES[p] || p; }
 const MATERIALS = ['Aluminum 6061','Aluminum 7075','Stainless Steel 304','Stainless Steel 316','Steel 1018','Steel 4140','Steel A36','Cast Iron','Brass 360','Carbon Steel','Titanium Grade 5','Delrin (Acetal)'];
 const FILE_TYPES = {pdf:{ext:'PDF',color:'#B91C1C'},step:{ext:'STEP',color:'#2952CC'},dwg:{ext:'DWG',color:'#B45309'},dxf:{ext:'DXF',color:'#15803D'},jpg:{ext:'JPG',color:'#7C3AED'},png:{ext:'PNG',color:'#7C3AED'}};
 const CERTS = ['ISO 9001','AS9100','IATF 16949','ISO 14001'];
@@ -514,6 +536,18 @@ const ORDER_STATUS_META = {
   shipped:{label:'Shipped'},
   delivered:{label:'Delivered'},
 };
+/* Spanish labels for the Supplier portal only — same underlying status keys. */
+const ORDER_STATUS_ES = {
+  order_confirmed:'Pedido Confirmado',
+  material_purchased:'Material Comprado',
+  production_started:'Producción Iniciada',
+  production_completed:'Producción Completada',
+  quality_inspection:'Inspección de Calidad',
+  ready_to_ship:'Listo para Enviar',
+  shipped:'Enviado',
+  delivered:'Entregado',
+};
+function orderStatusLabel(status, es){ return es ? (ORDER_STATUS_ES[status]||status) : (ORDER_STATUS_META[status]?.label||status); }
 
 /* ---------- Customers ---------- */
 const CUSTOMERS = [
@@ -860,8 +894,9 @@ const STATE = {
   role: 'INNOUS', // CLIENT | INNOUS | SUPPLIER
   clientId: 'c1',
   supplierId: 's1',
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[] },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null },
 };
+const INNOUS_USER = { name:'Ops Team', photo:null };
 
 function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId); }
 function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId); }
@@ -900,10 +935,9 @@ function statusBadge(status){
   const meta = RFQ_STATUS_META[status] || {label:status,cls:'badge-gray'};
   return `<span class="badge ${meta.cls}"><span class="dot dot-${meta.cls==='badge-green'?'green':meta.cls==='badge-amber'?'amber':meta.cls==='badge-blue'?'blue':'gray'}"></span>${meta.label}</span>`;
 }
-function orderStatusBadge(status){
-  const meta = ORDER_STATUS_META[status]||{label:status};
+function orderStatusBadge(status, es){
   const cls = status==='delivered' ? 'badge-gray' : (status==='quality_inspection'?'badge-amber':'badge-green');
-  return `<span class="badge ${cls}">${meta.label}</span>`;
+  return `<span class="badge ${cls}">${orderStatusLabel(status, es)}</span>`;
 }
 function stars(rating){
   let out = '<span class="stars">';
@@ -915,6 +949,12 @@ function stars(rating){
   return out;
 }
 function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+/* Circular avatar — shows an uploaded (already square-cropped) photo when set, otherwise initials on a solid color. */
+function avatarHtml(photo, initialsText, bg, size){
+  const sizeStyle = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size*0.38)}px;` : '';
+  if(photo) return `<div class="avatar" style="padding:0;overflow:hidden;${sizeStyle}"><img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;"></div>`;
+  return `<div class="avatar" style="${bg?`background:${bg};`:''}${sizeStyle}">${initialsText}</div>`;
+}
 function fileIconChip(f){
   const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
   return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
@@ -969,25 +1009,25 @@ function rfqStageMessage(p, audience){
   if(audience==='supplier'){
     if(['awarded','in_production','completed'].includes(p.status)){
       return p.selectedSupplierId===STATE.supplierId
-        ? "You won this RFQ — see the order for production details."
-        : "This RFQ was awarded to another supplier.";
+        ? "Ganaste este RFQ — consulta el pedido para ver los detalles de producción."
+        : "Este RFQ fue asignado a otro proveedor.";
     }
     const q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
-    if(q && q.status==='submitted') return "Your quote has been submitted. INNOUS is comparing it with other suppliers — we'll notify you if you're selected.";
-    return "Review the details below and submit your quote before the deadline.";
+    if(q && q.status==='submitted') return "Tu cotización fue enviada. INNOUS la está comparando con otros proveedores — te notificaremos si eres seleccionado.";
+    return "Revisa los detalles y envía tu cotización antes de la fecha límite.";
   }
   return '';
 }
 function orderStageMessage(p, audience){
   const msgs = {
-    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Order confirmed. Purchase materials to begin."},
-    material_purchased:{client:"Materials have been purchased. Production will begin shortly.", innous:"Materials purchased — production should start soon.", supplier:"Materials purchased. Update to Production Started once work begins."},
-    production_started:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Production is underway. Update once complete."},
-    production_completed:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production complete — confirm quality inspection.", supplier:"Production complete. Awaiting quality inspection."},
-    quality_inspection:{client:"Your order is undergoing quality inspection before shipping.", innous:"Quality inspection in progress.", supplier:"Quality inspection in progress."},
-    ready_to_ship:{client:"Your order passed inspection and is ready to ship.", innous:"Ready to ship — coordinate logistics.", supplier:"Ready to ship. Coordinate pickup with logistics."},
-    shipped:{client:"Your order is on its way.", innous:"Order shipped — track delivery below.", supplier:"Order shipped."},
-    delivered:{client:"Delivered! This order is complete.", innous:"Delivered — order complete.", supplier:"Delivered — order complete."},
+    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Compra el material para comenzar."},
+    material_purchased:{client:"Materials have been purchased. Production will begin shortly.", innous:"Materials purchased — production should start soon.", supplier:"Material comprado. Actualiza a Producción Iniciada cuando empiece el trabajo."},
+    production_started:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"La producción está en curso. Actualiza el estatus cuando termines."},
+    production_completed:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production complete — confirm quality inspection.", supplier:"Producción completada. En espera de inspección de calidad."},
+    quality_inspection:{client:"Your order is undergoing quality inspection before shipping.", innous:"Quality inspection in progress.", supplier:"Inspección de calidad en curso."},
+    ready_to_ship:{client:"Your order passed inspection and is ready to ship.", innous:"Ready to ship — coordinate logistics.", supplier:"Listo para enviar. Coordina la recolección con logística."},
+    shipped:{client:"Your order is on its way.", innous:"Order shipped — track delivery below.", supplier:"Pedido enviado."},
+    delivered:{client:"Delivered! This order is complete.", innous:"Delivered — order complete.", supplier:"Entregado — pedido completado."},
   };
   return (msgs[p.order.status]||{})[audience] || '';
 }
@@ -1016,15 +1056,15 @@ const NAV = {
     {id:'settings', label:'Settings', icon:'settings', path:'#/innous/settings'},
   ],
   SUPPLIER: [
-    {id:'dashboard', label:'Dashboard', icon:'layout-dashboard', path:'#/supplier/dashboard'},
-    {id:'rfqs', label:'Available RFQs', icon:'inbox', path:'#/supplier/rfqs'},
-    {id:'quotes', label:'My Quotes', icon:'file-text', path:'#/supplier/quotes'},
-    {id:'orders', label:'Active Orders', icon:'package', path:'#/supplier/orders'},
-    {id:'production', label:'Production', icon:'cog', path:'#/supplier/production'},
-    {id:'documents', label:'Documents', icon:'folder', path:'#/supplier/documents'},
-    {id:'messages', label:'Messages', icon:'message-square', path:'#/supplier/messages'},
-    {id:'performance', label:'Performance', icon:'trending-up', path:'#/supplier/performance'},
-    {id:'profile', label:'Company Profile', icon:'building', path:'#/supplier/profile'},
+    {id:'dashboard', label:'Panel', icon:'layout-dashboard', path:'#/supplier/dashboard'},
+    {id:'rfqs', label:'RFQs Disponibles', icon:'inbox', path:'#/supplier/rfqs'},
+    {id:'quotes', label:'Mis Cotizaciones', icon:'file-text', path:'#/supplier/quotes'},
+    {id:'orders', label:'Pedidos Activos', icon:'package', path:'#/supplier/orders'},
+    {id:'production', label:'Producción', icon:'cog', path:'#/supplier/production'},
+    {id:'documents', label:'Documentos', icon:'folder', path:'#/supplier/documents'},
+    {id:'messages', label:'Mensajes', icon:'message-square', path:'#/supplier/messages'},
+    {id:'performance', label:'Desempeño', icon:'trending-up', path:'#/supplier/performance'},
+    {id:'profile', label:'Perfil de la Empresa', icon:'building', path:'#/supplier/profile'},
   ],
 };
 const ROLE_META = {
@@ -1035,20 +1075,28 @@ const ROLE_META = {
 
 /* ---------- Shell rendering: topbar user chip + role menu + sidebar ---------- */
 function renderShell(){
-  document.getElementById('rs-current').textContent = STATE.role==='CLIENT'?'Client':STATE.role==='SUPPLIER'?'Supplier':'INNOUS';
+  const es = STATE.role==='SUPPLIER';
+  document.getElementById('rs-current').textContent = STATE.role==='CLIENT'?'Client':STATE.role==='SUPPLIER'?'Proveedor':'INNOUS';
+  document.querySelector('.rs-label').textContent = es?'Viendo como:':'Viewing as:';
   const chip = document.getElementById('user-chip');
+  chip.onclick = ()=>App.openAccountModal();
+  chip.style.cursor = 'pointer';
   if(STATE.role==='CLIENT'){
     const c = currentClient();
-    chip.innerHTML = `<div class="avatar">${initials(c.contact)}</div><div><div class="user-chip-text">${c.contact}</div><div class="user-chip-sub">${c.company}</div></div>`;
+    chip.innerHTML = `${avatarHtml(c.photo, initials(c.contact))}<div><div class="user-chip-text">${c.contact}</div><div class="user-chip-sub">${c.company}</div></div>`;
   } else if(STATE.role==='SUPPLIER'){
     const s = currentSupplier();
-    chip.innerHTML = `<div class="avatar">${initials(s.name)}</div><div><div class="user-chip-text">${s.name.split(' ')[0]} Team</div><div class="user-chip-sub">${s.name}</div></div>`;
+    chip.innerHTML = `${avatarHtml(s.photo, initials(s.name))}<div><div class="user-chip-text">${s.contactName||'Equipo'}</div><div class="user-chip-sub">${s.name}</div></div>`;
   } else {
-    chip.innerHTML = `<div class="avatar" style="background:var(--accent);">IN</div><div><div class="user-chip-text">Ops Team</div><div class="user-chip-sub">INNOUS Platform</div></div>`;
+    chip.innerHTML = `${avatarHtml(INNOUS_USER.photo, 'IN', 'var(--accent)')}<div><div class="user-chip-text">${INNOUS_USER.name}</div><div class="user-chip-sub">INNOUS Platform</div></div>`;
   }
 
   const menu = document.getElementById('role-menu');
-  const items = [
+  const items = es ? [
+    {role:'CLIENT', title:'Portal del Cliente', sub:currentClient().company, icon:'building-2'},
+    {role:'INNOUS', title:'Portal INNOUS', sub:'Equipo de operaciones de sourcing', icon:'hexagon'},
+    {role:'SUPPLIER', title:'Portal del Proveedor', sub:currentSupplier().name, icon:'factory'},
+  ] : [
     {role:'CLIENT', title:'Client Portal', sub:currentClient().company, icon:'building-2'},
     {role:'INNOUS', title:'INNOUS Portal', sub:'Sourcing operations team', icon:'hexagon'},
     {role:'SUPPLIER', title:'Supplier Portal', sub:currentSupplier().name, icon:'factory'},
@@ -1080,8 +1128,8 @@ function renderShell(){
           <path fill="#fff" d="M834.1,339.1l-237.9,713.8h-238.4l238-713.8h238.3Z"/>
           <path fill="#fff" d="M1582.6,557.1c0,22.6-3.5,44.5-9.8,64.9-1.1,3.4-2.2,6.8-3.4,10.1l-140.2,420.6h-238.1l96.9-290.9,30.8-92.5c1.3-3.4,2.5-6.8,3.5-10.4,0-.3,0-.5.2-.8,1.9-7.7,3-15.7,3-24,0-53-42.9-95.9-95.8-95.9h-105.3l-171.5,514.3h-238.1l171.4-514.3,66.5-199.5h424.6c16.8,1,33.1,3.9,48.7,8.6,84.7,24.9,148,99.9,155.6,190.8.5,6.2.8,12.3.8,18.6Z"/>
         </svg>
-        <div class="sidebar-footer-card-title">${STATE.role==='INNOUS'?'Need help scaling sourcing?':STATE.role==='CLIENT'?'Have a new project?':'Grow with INNOUS'}</div>
-        <div class="sidebar-footer-card-sub">${STATE.role==='INNOUS'?'Invite more verified suppliers to your network.':STATE.role==='CLIENT'?'Submit an RFQ and get quotes in days, not weeks.':'Keep your profile and capabilities up to date to win more RFQs.'}</div>
+        <div class="sidebar-footer-card-title">${STATE.role==='INNOUS'?'Need help scaling sourcing?':STATE.role==='CLIENT'?'Have a new project?':'Crece con INNOUS'}</div>
+        <div class="sidebar-footer-card-sub">${STATE.role==='INNOUS'?'Invite more verified suppliers to your network.':STATE.role==='CLIENT'?'Submit an RFQ and get quotes in days, not weeks.':'Mantén tu perfil y capacidades actualizados para ganar más RFQs.'}</div>
       </div>
     </div>`;
   lucide.createIcons();
@@ -2035,29 +2083,29 @@ ROUTES['supplier/dashboard'] = function(){
 
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Welcome back</div><div class="brand-rule"></div><div class="page-subtitle">${currentSupplier().name} · Supplier Dashboard</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>View Available RFQs</button></div></div>
+    <div class="page-header"><div><div class="page-title">Bienvenido de nuevo</div><div class="brand-rule"></div><div class="page-subtitle">${currentSupplier().name} · Panel del Proveedor</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>Ver RFQs Disponibles</button></div></div>
     <div class="grid grid-4" style="margin-bottom:24px;">
-      ${kpiCard('Available RFQs', available.length, 'awaiting your quote','inbox')}
-      ${kpiCard('Quotes Submitted', submitted.length, 'total submitted','file-text')}
-      ${kpiCard('Active Orders', activeOrders.length, 'in production','package')}
-      ${kpiCard('Win Rate', winRate+'%', 'of quotes submitted','target')}
+      ${kpiCard('RFQs Disponibles', available.length, 'esperando tu cotización','inbox')}
+      ${kpiCard('Cotizaciones Enviadas', submitted.length, 'total enviadas','file-text')}
+      ${kpiCard('Pedidos Activos', activeOrders.length, 'en producción','package')}
+      ${kpiCard('Tasa de Éxito', winRate+'%', 'de cotizaciones enviadas','target')}
     </div>
     <div class="grid grid-2">
       <div class="card">
-        <div class="card-header"><h3>Available RFQs</h3><a href="#/supplier/rfqs" class="btn btn-ghost btn-sm">View all</a></div>
-        <div class="table-wrap">${available.length? supplierRfqMiniTable(available.slice(0,6)) : emptyState('inbox','No RFQs waiting','New opportunities will appear here as INNOUS matches you to projects.')}</div>
+        <div class="card-header"><h3>RFQs Disponibles</h3><a href="#/supplier/rfqs" class="btn btn-ghost btn-sm">Ver todas</a></div>
+        <div class="table-wrap">${available.length? supplierRfqMiniTable(available.slice(0,6)) : emptyState('inbox','Sin RFQs en espera','Nuevas oportunidades aparecerán aquí conforme INNOUS te asigne proyectos.')}</div>
       </div>
       <div class="card">
-        <div class="card-header"><h3>Recent Activity</h3></div>
-        <div class="card-pad">${recent.length? recent.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>`).join('') : emptyState('activity','No activity yet','')}</div>
+        <div class="card-header"><h3>Actividad Reciente</h3></div>
+        <div class="card-pad">${recent.length? recent.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>`).join('') : emptyState('activity','Aún no hay actividad','')}</div>
       </div>
     </div>
   </div>`;
 };
 function supplierRfqMiniTable(list){
-  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Due</th></tr></thead><tbody>
-    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.process}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td></tr>`).join('')}
+  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Proceso</th><th>Fecha límite</th></tr></thead><tbody>
+    ${list.map(p=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${procES(p.process)}</td><td class="td-sub">${fmtDate(p.deliveryDate)}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -2066,9 +2114,9 @@ ROUTES['supplier/rfqs'] = function(){
   const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Available RFQs</div><div class="page-subtitle">Requests INNOUS has invited you to quote</div></div></div>
+    <div class="page-header"><div><div class="page-title">RFQs Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
     <div class="grid grid-3">
-      ${invited.length? invited.map(supplierRfqCard).join('') : `<div style="grid-column:1/-1;">${emptyState('inbox','No RFQs available right now','Check back soon — INNOUS matches new projects to your capabilities regularly.')}</div>`}
+      ${invited.length? invited.map(supplierRfqCard).join('') : `<div style="grid-column:1/-1;">${emptyState('inbox','No hay RFQs disponibles por ahora','Vuelve pronto — INNOUS asigna nuevos proyectos según tus capacidades regularmente.')}</div>`}
     </div>
   </div>`;
 };
@@ -2079,51 +2127,51 @@ function supplierRfqCard(p){
   <div class="card card-pad">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="td-sub mono">${p.id}</div><div style="font-weight:700;font-size:14.5px;margin-top:2px;">${p.projectName}</div></div>
-      ${submitted?'<span class="badge badge-green">Quote Submitted</span>':'<span class="badge badge-amber">Action Needed</span>'}
+      ${submitted?'<span class="badge badge-green">Cotización Enviada</span>':'<span class="badge badge-amber">Acción Requerida</span>'}
     </div>
-    <div class="cap-list">${[p.process,p.material].map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+    <div class="cap-list">${[procES(p.process),p.material].map(t=>`<span class="tag">${t}</span>`).join('')}</div>
     <div class="info-grid" style="grid-template-columns:1fr 1fr;margin:12px 0;">
-      ${infoItem('Quantity', p.quantity.toLocaleString())}
-      ${infoItem('Due Date', fmtDate(p.deliveryDate))}
-      ${infoItem('Location', p.deliveryLocation)}
-      ${infoItem('Files', p.files.length+' attached')}
+      ${infoItem('Cantidad', p.quantity.toLocaleString())}
+      ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
+      ${infoItem('Ubicación', p.deliveryLocation)}
+      ${infoItem('Archivos', p.files.length+' adjuntos')}
     </div>
-    <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Deadline to quote: ${fmtDate(addDays(p.createdAt,10))}</div>
-    <button class="btn ${submitted?'btn-secondary':'btn-primary'} btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">${submitted?'View Submitted Quote':'View RFQ'}</button>
+    <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>
+    <button class="btn ${submitted?'btn-secondary':'btn-primary'} btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">${submitted?'Ver Cotización Enviada':'Ver RFQ'}</button>
   </div>`;
 }
 
 /* ---- Supplier RFQ Detail / Quote Form ---- */
 ROUTES['supplier/rfq'] = function(id){
-  const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','RFQ not available','This RFQ was not sent to your company.');
+  const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','RFQ no disponible','Esta solicitud no fue enviada a tu empresa.');
   const q = supplierQuoteFor(p);
   const submitted = q && q.status==='submitted';
   return `
   <div class="content-inner" style="max-width:900px;">
-    <div class="breadcrumb"><a href="#/supplier/rfqs">Available RFQs</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${submitted?'<span class="badge badge-green">Quote Submitted</span>':'<span class="badge badge-amber">Awaiting Your Quote</span>'}</div>
+    <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${submitted?'<span class="badge badge-green">Cotización Enviada</span>':'<span class="badge badge-amber">Pendiente de Cotizar</span>'}</div>
     ${stageBanner(rfqStageMessage(p,'supplier'), submitted?'info':'action')}
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
-        <div class="section-title">RFQ Specifications</div>
+        <div class="section-title">Especificaciones del RFQ</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
-          ${infoItem('Process', p.process)}
-          ${infoItem('Quantity', p.quantity.toLocaleString())}
+          ${infoItem('Proceso', procES(p.process))}
+          ${infoItem('Cantidad', p.quantity.toLocaleString())}
           ${infoItem('Material', p.material)}
-          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
-          ${infoItem('Delivery Location', p.deliveryLocation)}
-          ${infoItem('Quote Deadline', fmtDate(addDays(p.createdAt,10)))}
+          ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
+          ${infoItem('Ubicación de entrega', p.deliveryLocation)}
+          ${infoItem('Fecha límite de cotización', fmtDate(addDays(p.createdAt,10)))}
         </div>
         <hr class="divider">
-        <div class="info-item-label">Description</div>
+        <div class="info-item-label">Descripción</div>
         <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
-        <div class="info-item-label" style="margin-top:12px;">Quality Requirements</div>
+        <div class="info-item-label" style="margin-top:12px;">Requisitos de Calidad</div>
         <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.qualityReq}</div>
       </div>
       <div class="card card-pad">
-        <div class="section-title">Files</div>
+        <div class="section-title">Archivos</div>
         <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
-        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>Buyer identity, other supplier quotes, and final pricing to the buyer are managed by INNOUS and not shared with suppliers.</div></div>
+        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>La identidad del comprador, las cotizaciones de otros proveedores y el precio final al cliente son gestionados por INNOUS y no se comparten con los proveedores.</div></div>
       </div>
     </div>
     ${submitted ? supplierSubmittedQuoteCard(q) : supplierQuoteForm(p)}
@@ -2132,40 +2180,40 @@ ROUTES['supplier/rfq'] = function(id){
 function supplierSubmittedQuoteCard(q){
   return `
   <div class="card card-pad">
-    <div class="section-title">Your Submitted Quote</div>
+    <div class="section-title">Tu Cotización Enviada</div>
     <div class="info-grid" style="margin-top:12px;">
-      ${infoItem('Unit Price', fmtMoney2(q.unitPrice))}
-      ${infoItem('Tooling', fmtMoney(q.tooling))}
-      ${infoItem('Setup', fmtMoney(q.setup))}
-      ${infoItem('Shipping', q.shipping?fmtMoney(q.shipping):'Included')}
-      ${infoItem('Lead Time', q.leadTimeDays+' days')}
-      ${infoItem('Payment Terms', q.paymentTerms)}
+      ${infoItem('Precio Unitario', fmtMoney2(q.unitPrice))}
+      ${infoItem('Herramental', fmtMoney(q.tooling))}
+      ${infoItem('Preparación', fmtMoney(q.setup))}
+      ${infoItem('Envío', q.shipping?fmtMoney(q.shipping):'Incluido')}
+      ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
+      ${infoItem('Condiciones de Pago', q.paymentTerms)}
     </div>
     <hr class="divider">
-    <div style="font-size:12.5px;color:var(--ink-tertiary);">Submitted ${fmtDate(q.submittedAt)} · Valid for ${q.validity}</div>
+    <div style="font-size:12.5px;color:var(--ink-tertiary);">Enviada el ${fmtDate(q.submittedAt)} · Vigente por ${q.validity}</div>
   </div>`;
 }
 function supplierQuoteForm(p){
   return `
   <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
-    <div class="section-title">Submit Your Quote</div>
+    <div class="section-title">Enviar Tu Cotización</div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Unit price (USD)</label><input type="number" step="0.01" name="unitPrice" required placeholder="e.g. 185.00"></div>
-      <div class="form-group"><label class="field-label">Tooling (USD)</label><input type="number" name="tooling" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Precio unitario (USD)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 185.00"></div>
+      <div class="form-group"><label class="field-label">Herramental (USD)</label><input type="number" name="tooling" placeholder="0"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Setup (USD)</label><input type="number" name="setup" placeholder="0"></div>
-      <div class="form-group"><label class="field-label">Shipping (USD)</label><input type="number" name="shipping" placeholder="0 (leave blank if included)"></div>
+      <div class="form-group"><label class="field-label">Preparación / Setup (USD)</label><input type="number" name="setup" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Envío (USD)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Lead time (days)</label><input type="number" name="leadTimeDays" required placeholder="e.g. 28"></div>
-      <div class="form-group"><label class="field-label">Payment terms</label><select name="paymentTerms"><option>50% deposit / 50% on delivery</option><option>Net 30</option><option>30% deposit / 70% on shipment</option><option>Net 45</option></select></div>
+      <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28"></div>
+      <div class="form-group"><label class="field-label">Condiciones de pago</label><select name="paymentTerms"><option>50% anticipo / 50% contra entrega</option><option>Neto 30</option><option>30% anticipo / 70% contra embarque</option><option>Neto 45</option></select></div>
     </div>
-    <div class="form-group"><label class="field-label">Quote validity</label><select name="validity"><option>15 days</option><option selected>30 days</option><option>45 days</option><option>60 days</option></select></div>
-    <div class="form-group"><label class="field-label">Notes</label><textarea name="notes" placeholder="Any assumptions, exclusions, or clarifications..."></textarea></div>
-    <div class="form-group"><label class="field-label">Documents</label><button type="button" class="btn btn-secondary btn-sm" onclick="showToast('cost-breakdown.pdf attached')"><i data-lucide="paperclip"></i>Attach cost-breakdown.pdf</button></div>
+    <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity"><option>15 días</option><option selected>30 días</option><option>45 días</option><option>60 días</option></select></div>
+    <div class="form-group"><label class="field-label">Notas</label><textarea name="notes" placeholder="Cualquier supuesto, exclusión o aclaración..."></textarea></div>
+    <div class="form-group"><label class="field-label">Documentos</label><button type="button" class="btn btn-secondary btn-sm" onclick="showToast('cost-breakdown.pdf adjuntado')"><i data-lucide="paperclip"></i>Adjuntar cost-breakdown.pdf</button></div>
     <hr class="divider">
-    <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Submit Quote</button></div>
+    <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Enviar Cotización</button></div>
   </form>`;
 }
 
@@ -2174,12 +2222,12 @@ ROUTES['supplier/quotes'] = function(){
   const rows = supplierInvited().map(p=>({p,q:supplierQuoteFor(p)})).filter(r=>r.q && r.q.status==='submitted');
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">My Quotes</div><div class="page-subtitle">${rows.length} quotes submitted</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Unit Price</th><th>Lead Time</th><th>Submitted</th><th>Status</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Mis Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones enviadas</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')">
-        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
-        <td>${p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Won</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">Under Review</span>':'<span class="badge badge-gray">Not Selected</span>'}</td>
-      </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','No quotes submitted yet','')}</td></tr>`}
+        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td>${p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Ganada</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">En Revisión</span>':'<span class="badge badge-gray">No Seleccionada</span>'}</td>
+      </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
@@ -2190,9 +2238,9 @@ ROUTES['supplier/orders'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed');
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Active Orders</div><div class="page-subtitle">${orders.length} orders in progress</div></div></div>
+    <div class="page-header"><div><div class="page-title">Pedidos Activos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div></div>
     <div class="grid grid-2">
-      ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','No active orders yet','Orders appear here once a customer selects your quote.')}</div>`}
+      ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','Aún no tienes pedidos activos','Los pedidos aparecerán aquí cuando un cliente seleccione tu cotización.')}</div>`}
     </div>
   </div>`;
 };
@@ -2201,13 +2249,13 @@ function supplierOrderCard(p){
   return `
   <div class="card card-pad row-link" onclick="navigate('#/supplier/order/${p.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-      <div><div class="page-subtitle mono" style="margin:0;">Order ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
-      ${orderStatusBadge(p.order.status)}
+      <div><div class="page-subtitle mono" style="margin:0;">Pedido ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
+      ${orderStatusBadge(p.order.status, true)}
     </div>
     <div style="display:flex;gap:22px;margin-top:12px;">
-      ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
-      ${infoItem('Agreed Price', fmtMoney(p.order.supplierCost))}
-      ${infoItem('Delivery', fmtDate(p.deliveryDate))}
+      ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
+      ${infoItem('Precio Acordado', fmtMoney(p.order.supplierCost))}
+      ${infoItem('Entrega', fmtDate(p.deliveryDate))}
     </div>
     <div style="margin-top:16px;"><div class="bar-track"><div class="bar-fill" style="width:${((stageIdx+1)/ORDER_STATUS_FLOW.length*100)}%;"></div></div></div>
   </div>`;
@@ -2215,38 +2263,38 @@ function supplierOrderCard(p){
 
 /* ---- Supplier Order Detail (can update production status) ---- */
 ROUTES['supplier/order'] = function(id){
-  const p = findProject(id); if(!p || p.selectedSupplierId!==STATE.supplierId || !p.order) return emptyState('search','Order not found','');
+  const p = findProject(id); if(!p || p.selectedSupplierId!==STATE.supplierId || !p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabel(s, true));
   const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/supplier/orders">Active Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>
-      <div class="page-actions">${orderStatusBadge(p.order.status)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${ORDER_STATUS_META[nextStatus].label}</button>`:''}</div>
+    <div class="breadcrumb"><a href="#/supplier/orders">Pedidos Activos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div>
+      <div class="page-actions">${orderStatusBadge(p.order.status, true)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabel(nextStatus, true)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'supplier'), nextStatus?'action':'success')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-2">
       <div class="card card-pad">
-        <div class="section-title">Order Details</div>
+        <div class="section-title">Detalles del Pedido</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
-          ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
-          ${infoItem('Agreed Price', fmtMoney(p.order.supplierCost))}
+          ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
+          ${infoItem('Precio Acordado', fmtMoney(p.order.supplierCost))}
           ${infoItem('Material', p.material)}
-          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
+          ${infoItem('Fecha de Entrega', fmtDate(p.deliveryDate))}
         </div>
         <hr class="divider">
-        <div class="section-title">Production Milestones</div>
-        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${m.label}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
+        <div class="section-title">Hitos de Producción</div>
+        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${orderStatusLabel(m.key, true)}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
-        <div class="section-title">Supplier Documents</div>
+        <div class="section-title">Documentos del Proveedor</div>
         <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
-        <div style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="showToast('Document uploaded')"><i data-lucide="upload"></i>Upload Document</button></div>
+        <div style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="showToast('Documento cargado')"><i data-lucide="upload"></i>Cargar Documento</button></div>
         <hr class="divider">
-        <div class="section-title">Messages</div>
-        <button class="btn btn-secondary btn-block" onclick="navigate('#/supplier/messages')"><i data-lucide="message-square"></i>Message INNOUS</button>
+        <div class="section-title">Mensajes</div>
+        <button class="btn btn-secondary btn-block" onclick="navigate('#/supplier/messages')"><i data-lucide="message-square"></i>Mensaje a INNOUS</button>
       </div>
     </div>
   </div>`;
@@ -2257,13 +2305,13 @@ ROUTES['supplier/production'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed');
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Production</div><div class="page-subtitle">Update your production status as work progresses</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Project</th><th>Quantity</th><th>Current Status</th><th></th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Actualiza el estatus de producción conforme avance el trabajo</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Estatus Actual</th><th></th></tr></thead><tbody>
       ${orders.map(p=>{
         const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status); const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
-        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p.order.status)}</td>
-        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Mark: ${ORDER_STATUS_META[nextStatus].label}</button>`:'<span class="td-sub">Complete</span>'}</td></tr>`;
-      }).join('') || `<tr><td colspan="5">${emptyState('cog','No active production','')}</td></tr>`}
+        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p.order.status, true)}</td>
+        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabel(nextStatus, true)}</button>`:'<span class="td-sub">Completo</span>'}</td></tr>`;
+      }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
@@ -2274,9 +2322,9 @@ ROUTES['supplier/documents'] = function(){
   const docs = orders.flatMap(p=>[...p.order.quality.documents,...p.order.logistics.documents].map(d=>({d,p})));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Documents</div><div class="page-subtitle">Quality certificates, drawings and shipping paperwork</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Order</th><th>Project</th></tr></thead><tbody>
-      ${docs.length? docs.map(({d,p})=>`<tr><td class="td-strong">${d}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`).join('') : `<tr><td colspan="3">${emptyState('folder','No documents yet','')}</td></tr>`}
+    <div class="page-header"><div><div class="page-title">Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Documento</th><th>Pedido</th><th>Proyecto</th></tr></thead><tbody>
+      ${docs.length? docs.map(({d,p})=>`<tr><td class="td-strong">${d}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`).join('') : `<tr><td colspan="3">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
@@ -2288,19 +2336,19 @@ ROUTES['supplier/messages'] = function(){
   const active = threads.find(p=>p.id===STATE.ui.activeChatKey) || threads[0];
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS sourcing manager</div></div></div>
+    <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div></div>
     <div class="chat-panel">
       <div class="chat-list">
         ${threads.map(p=>`<div class="chat-list-item ${active&&active.id===p.id?'active':''}" onclick="App.openSupplierChat('${p.id}')">
           <div class="avatar" style="background:var(--ink);">IN</div><div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id}</div></div>
-        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+        </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
       <div class="chat-thread">
         ${active? `
-        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Sourcing Team</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
-        <div class="chat-messages">${(active.chatSupplier[STATE.supplierId]||[]).map(m=>`<div class="chat-bubble ${m.from==='supplier'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='supplier'?'You':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet.</div>`}</div>
-        <div class="chat-input-row"><input type="text" placeholder="Message INNOUS..." onkeydown="if(event.key==='Enter')App.sendSupplierMessage('${active.id}')" id="supplier-chat-input"><button class="btn btn-primary" onclick="App.sendSupplierMessage('${active.id}')"><i data-lucide="send"></i></button></div>
-        ` : emptyState('message-square','No conversations yet','Messages appear once you are invited to an RFQ.')}
+        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
+        <div class="chat-messages">${(active.chatSupplier[STATE.supplierId]||[]).map(m=>`<div class="chat-bubble ${m.from==='supplier'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='supplier'?'Tú':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">Aún no hay mensajes.</div>`}</div>
+        <div class="chat-input-row"><input type="text" placeholder="Mensaje a INNOUS..." onkeydown="if(event.key==='Enter')App.sendSupplierMessage('${active.id}')" id="supplier-chat-input"><button class="btn btn-primary" onclick="App.sendSupplierMessage('${active.id}')"><i data-lucide="send"></i></button></div>
+        ` : emptyState('message-square','Aún no hay conversaciones','Los mensajes aparecen una vez que te inviten a cotizar un RFQ.')}
       </div>
     </div>
   </div>`;
@@ -2315,18 +2363,18 @@ ROUTES['supplier/performance'] = function(){
   const winRate = submitted.length? Math.round(won.length/submitted.length*100):0;
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Performance</div><div class="page-subtitle">Your track record on the INNOUS platform</div></div></div>
+    <div class="page-header"><div><div class="page-title">Desempeño</div><div class="page-subtitle">Tu historial dentro de la plataforma INNOUS</div></div></div>
     <div class="grid grid-4" style="margin-bottom:20px;">
-      ${kpiCard('Overall Rating', s.rating, 'out of 5.0','star')}
-      ${kpiCard('On-Time Delivery', s.onTime+'%', 'across all orders','clock')}
-      ${kpiCard('Quality Score', s.quality+'%', 'acceptance rate','shield-check')}
-      ${kpiCard('Win Rate', winRate+'%', submitted.length+' quotes submitted','target')}
+      ${kpiCard('Calificación General', s.rating, 'de 5.0','star')}
+      ${kpiCard('Entregas a Tiempo', s.onTime+'%', 'en todos los pedidos','clock')}
+      ${kpiCard('Índice de Calidad', s.quality+'%', 'tasa de aceptación','shield-check')}
+      ${kpiCard('Tasa de Éxito', winRate+'%', submitted.length+' cotizaciones enviadas','target')}
     </div>
     <div class="card card-pad">
-      <div class="section-title">Completed Projects</div>
-      <div class="section-sub">${s.projects} projects completed with INNOUS customers to date.</div>
-      <div class="table-wrap" style="margin-top:12px;"><table class="data-table"><thead><tr><th>Order</th><th>Project</th><th>Quantity</th><th>Delivered</th></tr></thead><tbody>
-        ${supplierOrders().filter(p=>p.status==='completed').map(p=>`<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('check-circle-2','No completed projects yet','')}</td></tr>`}
+      <div class="section-title">Proyectos Completados</div>
+      <div class="section-sub">${s.projects} proyectos completados con clientes de INNOUS hasta la fecha.</div>
+      <div class="table-wrap" style="margin-top:12px;"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Entregado</th></tr></thead><tbody>
+        ${supplierOrders().filter(p=>p.status==='completed').map(p=>`<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('check-circle-2','Aún no hay proyectos completados','')}</td></tr>`}
       </tbody></table></div>
     </div>
   </div>`;
@@ -2335,28 +2383,36 @@ ROUTES['supplier/performance'] = function(){
 /* ---- Supplier Company Profile ---- */
 ROUTES['supplier/profile'] = function(){
   const s = currentSupplier();
+  if(!STATE.ui.supplierProfileDraft || STATE.ui.supplierProfileDraft._id!==s.id){
+    STATE.ui.supplierProfileDraft = { _id:s.id, name:s.name, city:s.city, capacity:s.capacity };
+  }
+  const d = STATE.ui.supplierProfileDraft;
   return `
   <div class="content-inner" style="max-width:760px;">
-    <div class="page-header"><div><div class="page-title">Company Profile</div><div class="page-subtitle">Keep this up to date to be matched with more RFQs</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="showToast('Profile saved')"><i data-lucide="save"></i>Save Changes</button></div></div>
+    <div class="page-header"><div><div class="page-title">Perfil de la Empresa</div><div class="page-subtitle">Mantenlo actualizado para recibir más solicitudes de cotización (RFQs)</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveSupplierProfile()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Company Information</div>
+      <div class="section-title">Información de la Empresa</div>
       <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label class="field-label">Company Name</label><input type="text" value="${s.name}"></div>
-        <div class="form-group"><label class="field-label">Location</label><input type="text" value="${s.city}"></div>
+        <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.supplierProfileDraft.name=this.value"></div>
+        <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" oninput="STATE.ui.supplierProfileDraft.city=this.value"></div>
       </div>
-      <div class="form-group"><label class="field-label">Capacity</label><input type="text" value="${s.capacity}"></div>
+      <div class="form-group"><label class="field-label">Capacidad</label><input type="text" value="${escAttr(d.capacity)}" oninput="STATE.ui.supplierProfileDraft.capacity=this.value"></div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Capabilities</div>
-      <div class="cap-list" style="margin-top:10px;">${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="tag" style="${s.capabilities.includes(p)?'background:var(--ink);color:#fff;border-color:var(--ink);':''}">${p}</span>`).join('')}</div>
+      <div class="section-title">Servicios que Ofreces</div>
+      <div class="section-sub">Selecciona todos los que apliquen — puedes elegir más de uno.</div>
+      <div class="cap-list" style="margin-top:10px;">${PROCESSES.filter(p=>p!=='Other').map(p=>{
+        const on = s.capabilities.includes(p);
+        return `<button type="button" class="tag" style="cursor:pointer;border:none;${on?'background:var(--navy);color:#fff;':'background:var(--surface-alt);border:1px solid var(--border);color:var(--ink-secondary);'}" onclick="App.toggleSupplierCapability('${p}')">${on?'✓ ':''}${procES(p)}</button>`;
+      }).join('')}</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Machines &amp; Equipment</div>
+      <div class="section-title">Maquinaria y Equipo</div>
       <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('')}</div>
     </div>
     <div class="card card-pad">
-      <div class="section-title">Certifications</div>
+      <div class="section-title">Certificaciones</div>
       <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
     </div>
   </div>`;
@@ -2378,12 +2434,178 @@ const App = {
     sb.classList.toggle('open'); bd.classList.toggle('open');
   },
   toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.toggle('open'); },
+
+  /* ---- Account settings (name / company / circular 1:1 photo) ---- */
+  openAccountModal(){
+    document.getElementById('role-menu')?.classList.remove('open');
+    const es = STATE.role==='SUPPLIER';
+    let rec, nameLabel, companyLabel, showCompany, initialsText;
+    if(STATE.role==='CLIENT'){
+      rec = currentClient();
+      nameLabel = 'Contact name'; companyLabel = 'Company'; showCompany = true;
+      initialsText = initials(rec.contact);
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.contact, company:rec.company, photo:rec.photo||null};
+    } else if(STATE.role==='SUPPLIER'){
+      rec = currentSupplier();
+      nameLabel = 'Nombre de contacto'; companyLabel = 'Nombre de la empresa'; showCompany = true;
+      initialsText = initials(rec.name);
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.contactName||'Gerente de Producción', company:rec.name, photo:rec.photo||null};
+    } else {
+      rec = INNOUS_USER;
+      nameLabel = 'Name'; companyLabel = ''; showCompany = false;
+      initialsText = 'IN';
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null};
+    }
+    const d = STATE.ui.accountDraft;
+    openModal(`
+      <div class="modal-header"><h3>${es?'Configuración de Cuenta':'Account Settings'}</h3><button class="modal-close" onclick="App.closeAccountModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="account-photo-row">
+          ${avatarHtml(d.photo, initialsText, 'var(--navy)', 64)}
+          <div>
+            <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="App.onPhotoSelected(this)">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('account-photo-input').click()"><i data-lucide="camera"></i>${es?'Cambiar foto':'Change photo'}</button>
+            <div class="field-hint">${es?'Se recorta a 1:1 y se muestra en círculo.':'Cropped to 1:1 and shown in a circle.'}</div>
+          </div>
+        </div>
+        <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
+        ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeAccountModal()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveAccount()"><i data-lucide="check"></i>${es?'Guardar':'Save'}</button></div>
+    `);
+  },
+  closeAccountModal(){ STATE.ui.accountDraft = null; closeModal(); },
+  saveAccount(){
+    const d = STATE.ui.accountDraft;
+    if(STATE.role==='CLIENT'){ const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo; }
+    else if(STATE.role==='SUPPLIER'){ const rec = currentSupplier(); rec.contactName = d.name.trim()||rec.contactName; rec.name = d.company.trim()||rec.name; rec.photo = d.photo; }
+    else { INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo; }
+    STATE.ui.accountDraft = null;
+    closeModal();
+    showToast(STATE.role==='SUPPLIER' ? 'Cuenta actualizada' : 'Account updated', 'success');
+    route();
+  },
+  onPhotoSelected(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=> App.openCropModal(reader.result);
+    reader.readAsDataURL(file);
+  },
+
+  /* ---- 1:1 photo cropper (pure canvas, no dependencies) ---- */
+  openCropModal(dataUrl){
+    const es = STATE.role==='SUPPLIER';
+    STATE.ui.cropState = {scale:1, x:0, y:0, coverW:0, coverH:0, dataUrl};
+    openModal(`
+      <div class="modal-header"><h3>${es?'Ajustar foto':'Adjust photo'}</h3><button class="modal-close" onclick="App.cancelCrop()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="crop-viewport" id="crop-viewport">
+          <img id="crop-img" src="${dataUrl}" alt="">
+          <div class="crop-circle-guide"></div>
+        </div>
+        <div class="crop-zoom-row">
+          <i data-lucide="zoom-out" style="width:15px;height:15px;color:var(--ink-tertiary);"></i>
+          <input type="range" id="crop-zoom" min="100" max="300" value="100" oninput="App.setCropZoom(this.value)">
+          <i data-lucide="zoom-in" style="width:15px;height:15px;color:var(--ink-tertiary);"></i>
+        </div>
+        <div class="field-hint" style="text-align:center;margin-top:8px;">${es?'Arrastra para reposicionar · usa el control para acercar':'Drag to reposition · use the slider to zoom'}</div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="App.cancelCrop()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveCrop()"><i data-lucide="check"></i>${es?'Guardar foto':'Save photo'}</button></div>
+    `);
+    const img = document.getElementById('crop-img');
+    const finishSetup = ()=>{
+      const VP = 240;
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      const ratio = Math.max(VP/nw, VP/nh);
+      STATE.ui.cropState.coverW = nw*ratio;
+      STATE.ui.cropState.coverH = nh*ratio;
+      App.applyCropTransform();
+      App.attachCropDrag();
+    };
+    if(img.complete && img.naturalWidth) finishSetup(); else img.onload = finishSetup;
+  },
+  applyCropTransform(){
+    const VP = 240;
+    const c = STATE.ui.cropState;
+    const img = document.getElementById('crop-img');
+    if(!img) return;
+    const w = c.coverW*c.scale, h = c.coverH*c.scale;
+    img.style.width = w+'px';
+    img.style.height = h+'px';
+    img.style.left = (((VP-w)/2) + c.x)+'px';
+    img.style.top = (((VP-h)/2) + c.y)+'px';
+  },
+  setCropZoom(val){
+    const c = STATE.ui.cropState;
+    const newScale = val/100;
+    // re-clamp existing pan to the new zoom level so the image never reveals empty space
+    const VP = 240;
+    const w = c.coverW*newScale, h = c.coverH*newScale;
+    const maxX = Math.max(0,(w-VP)/2), maxY = Math.max(0,(h-VP)/2);
+    c.scale = newScale;
+    c.x = Math.max(-maxX, Math.min(maxX, c.x));
+    c.y = Math.max(-maxY, Math.min(maxY, c.y));
+    App.applyCropTransform();
+  },
+  attachCropDrag(){
+    const vp = document.getElementById('crop-viewport');
+    if(!vp) return;
+    let dragging = false, startX=0, startY=0, origX=0, origY=0;
+    const VP = 240;
+    const onDown = (e)=>{
+      dragging = true;
+      const pt = e.touches ? e.touches[0] : e;
+      startX = pt.clientX; startY = pt.clientY;
+      const c = STATE.ui.cropState; origX = c.x; origY = c.y;
+      e.preventDefault();
+    };
+    const onMove = (e)=>{
+      if(!dragging) return;
+      const pt = e.touches ? e.touches[0] : e;
+      const c = STATE.ui.cropState;
+      const w = c.coverW*c.scale, h = c.coverH*c.scale;
+      const maxX = Math.max(0,(w-VP)/2), maxY = Math.max(0,(h-VP)/2);
+      c.x = Math.max(-maxX, Math.min(maxX, origX + (pt.clientX-startX)));
+      c.y = Math.max(-maxY, Math.min(maxY, origY + (pt.clientY-startY)));
+      App.applyCropTransform();
+    };
+    const onUp = ()=>{ dragging = false; };
+    vp.onmousedown = onDown; vp.ontouchstart = onDown;
+    document.onmousemove = (e)=>{ onMove(e); };
+    document.ontouchmove = (e)=>{ if(dragging){ onMove(e); } };
+    document.onmouseup = onUp; document.ontouchend = onUp;
+  },
+  cancelCrop(){
+    STATE.ui.cropState = null;
+    document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
+    App.openAccountModal();
+  },
+  saveCrop(){
+    const c = STATE.ui.cropState;
+    const img = document.getElementById('crop-img');
+    const OUT = 320, VP = 240;
+    const k = OUT/VP;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT; canvas.height = OUT;
+    const ctx = canvas.getContext('2d');
+    const w = c.coverW*c.scale*k, h = c.coverH*c.scale*k;
+    const left = (((VP-c.coverW*c.scale)/2) + c.x)*k;
+    const top = (((VP-c.coverH*c.scale)/2) + c.y)*k;
+    ctx.drawImage(img, left, top, w, h);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
+    STATE.ui.cropState = null;
+    if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:'', company:'', photo:null};
+    STATE.ui.accountDraft.photo = dataUrl;
+    App.openAccountModal();
+  },
   switchRole(role){
     STATE.role = role; STATE.ui.activeChatKey = null;
     document.getElementById('role-menu').classList.remove('open');
     const home = role==='CLIENT'?'#/client/dashboard':role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
     if(location.hash===home) route(); else location.hash = home;
-    showToast(`Viewing as ${ROLE_META[role].label}`);
+    showToast(role==='SUPPLIER' ? 'Viendo como Proveedor' : `Viewing as ${ROLE_META[role].label}`);
   },
 
   /* ---- New RFQ form ---- */
@@ -2528,6 +2750,26 @@ const App = {
   },
 
   /* ---- Supplier quote submission ---- */
+  toggleSupplierCapability(proc){
+    const s = currentSupplier();
+    const idx = s.capabilities.indexOf(proc);
+    if(idx>-1){
+      if(s.capabilities.length===1){ showToast('Debes mantener al menos un servicio seleccionado'); return; }
+      s.capabilities.splice(idx,1);
+    } else {
+      s.capabilities.push(proc);
+    }
+    route();
+  },
+  saveSupplierProfile(){
+    const s = currentSupplier();
+    const d = STATE.ui.supplierProfileDraft;
+    s.name = d.name.trim()||s.name;
+    s.city = d.city.trim()||s.city;
+    s.capacity = d.capacity.trim()||s.capacity;
+    showToast('Perfil guardado', 'success');
+    route();
+  },
   submitSupplierQuote(e,pid){
     e.preventDefault();
     const f = new FormData(e.target);
@@ -2545,7 +2787,7 @@ const App = {
     if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
     if(p.status==='sourcing') p.status='sourcing';
     logActivity(p, supplier.name, 'Supplier submitted a quote.');
-    showToast('Quote submitted successfully', 'success');
+    showToast('Cotización enviada con éxito', 'success');
     navigate('#/supplier/rfq/'+pid);
     return false;
   },
@@ -2568,7 +2810,7 @@ const App = {
     if(next==='delivered'){ p.status='completed'; p.order.paymentStatus='Paid'; }
     else if(p.status==='awarded') p.status='in_production';
     logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
-    showToast(`Order ${p.id} updated to ${ORDER_STATUS_META[next].label}`, 'success');
+    showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
     route();
   },
 
@@ -2593,7 +2835,7 @@ const App = {
     const input = document.getElementById('supplier-chat-input'); const text = input.value.trim(); if(!text) return;
     const p = findProject(pid); p.chatSupplier[STATE.supplierId].push({from:'supplier', text, ts:new Date('2026-09-08')});
     route();
-    setTimeout(()=>{ p.chatSupplier[STATE.supplierId].push({from:'innous', text:'Got it, thanks for the update.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
+    setTimeout(()=>{ p.chatSupplier[STATE.supplierId].push({from:'innous', text:'Entendido, gracias por la actualización.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
   },
 };
 
