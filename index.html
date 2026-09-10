@@ -3531,13 +3531,13 @@ const App = {
     if(!confirm(msg)) return;
     CUSTOMERS.splice(CUSTOMERS.indexOf(c),1);
     if(isRealAccountId(id)){
-      // Removes their profile/customer rows so the app locks them out on their
-      // next login attempt. This doesn't remove the underlying login credential
-      // itself (that needs Supabase's admin API, deliberately kept out of this
-      // app for security) — but without a profile, enterAppAsUser() always
-      // signs them straight back out.
-      await sb.from('customers').delete().eq('user_id', id);
-      await sb.from('profiles').delete().eq('user_id', id);
+      // Runs a database function that removes their profile/customer rows AND
+      // the underlying login credential itself — so the email is actually
+      // free to sign up again, not just locked out forever. The function
+      // does the privileged part server-side; this app never holds the key
+      // that would otherwise be needed for that.
+      const { error } = await sb.rpc('innous_delete_account', { p_user_id: id });
+      if(error){ showToast(error.message); return; }
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) customer — remember so it stays gone after a refresh
     showToast('Customer account deleted', 'success');
     navigate('#/innous/customers');
@@ -3551,8 +3551,8 @@ const App = {
     if(!confirm(msg)) return;
     SUPPLIERS.splice(SUPPLIERS.indexOf(s),1);
     if(isRealAccountId(id)){
-      await sb.from('suppliers').delete().eq('user_id', id);
-      await sb.from('profiles').delete().eq('user_id', id);
+      const { error } = await sb.rpc('innous_delete_account', { p_user_id: id });
+      if(error){ showToast(error.message); return; }
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
     showToast('Supplier account deleted', 'success');
     navigate('#/innous/suppliers');
