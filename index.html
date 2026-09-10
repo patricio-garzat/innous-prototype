@@ -542,6 +542,33 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   0%{ transform:translate3d(0,0,0) scale(1); }
   100%{ transform:translate3d(-2.5%,2%,0) scale(1.06); }
 }
+/* Slow flowing wave lines drifting across the landing background — each is
+   one seamless SVG tile repeated horizontally and scrolled via
+   background-position, so the loop never has a visible seam. Kept very low
+   opacity and z-index:0 (same layer as auth-mesh, behind the real content
+   at z-index:1) so they read as ambient motion, never compete with text. */
+.auth-wave-line{position:absolute;left:0;right:0;z-index:0;pointer-events:none;background-repeat:repeat-x;}
+.auth-wave-line.wave-1{
+  top:10%;height:90px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 90'%3E%3Cpath d='M0 45 C 60 15 60 15 120 45 C 180 75 180 75 240 45' fill='none' stroke='%2300A3E0' stroke-width='2' opacity='0.22'/%3E%3C/svg%3E");
+  background-size:240px 90px;
+  animation:authWaveScroll 26s linear infinite;
+}
+.auth-wave-line.wave-2{
+  top:40%;height:110px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 110'%3E%3Cpath d='M0 55 C 80 15 80 15 160 55 C 240 95 240 95 320 55' fill='none' stroke='%23003865' stroke-width='2.5' opacity='0.14'/%3E%3C/svg%3E");
+  background-size:320px 110px;
+  animation:authWaveScrollReverse 34s linear infinite;
+}
+.auth-wave-line.wave-3{
+  top:70%;height:70px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 70' %3E%3Cpath d='M0 35 C 50 10 50 10 100 35 C 150 60 150 60 200 35' fill='none' stroke='%2300A3E0' stroke-width='1.5' opacity='0.16'/%3E%3C/svg%3E");
+  background-size:200px 70px;
+  animation:authWaveScroll 19s linear infinite;
+}
+@keyframes authWaveScroll{ from{background-position-x:0;} to{background-position-x:-240px;} }
+@keyframes authWaveScrollReverse{ from{background-position-x:0;} to{background-position-x:320px;} }
+@media(prefers-reduced-motion:reduce){ .auth-wave-line{animation:none;} }
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 .auth-topbar .logo-svg{height:clamp(40px,8vh,88px);}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
@@ -1921,6 +1948,9 @@ function renderLanding(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
+    <div class="auth-wave-line wave-1"></div>
+    <div class="auth-wave-line wave-2"></div>
+    <div class="auth-wave-line wave-3"></div>
     ${authTopbar()}
     <div class="auth-main" style="align-items:flex-start;padding-top:clamp(20px,6vh,64px);">
       <div class="hero-wrap">
