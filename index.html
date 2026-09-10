@@ -2424,7 +2424,7 @@ function rfqMiniTable(list){
    adding/removing a simulated file — the fields repopulate from state
    instead of the form resetting to blank. */
 ROUTES['client/new-rfq'] = function(){
-  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryLocation:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryCountry:'US', deliveryZip:'', deliveryLocation:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
   const d = STATE.ui.newRfqDraft;
   return `
   <div class="content-inner" style="max-width:820px;">
@@ -2461,7 +2461,22 @@ ROUTES['client/new-rfq'] = function(){
           </div>
         </div>
       </div>
-      ${d.deliveryMethod==='delivery' ? `<div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" value="${escAttr(d.deliveryLocation)}" oninput="STATE.ui.newRfqDraft.deliveryLocation=this.value" placeholder="City, State, Country" required></div>` : ''}
+      ${d.deliveryMethod==='delivery' ? `
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Country</label>
+          <select name="deliveryCountry" onchange="STATE.ui.newRfqDraft.deliveryCountry=this.value;App.lookupDeliveryZip();">
+            <option value="US" ${d.deliveryCountry==='US'?'selected':''}>United States</option>
+            <option value="CA" ${d.deliveryCountry==='CA'?'selected':''}>Canada</option>
+            <option value="MX" ${d.deliveryCountry==='MX'?'selected':''}>Mexico</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="field-label">ZIP / Postal code</label><input type="text" name="deliveryZip" value="${escAttr(d.deliveryZip)}" oninput="STATE.ui.newRfqDraft.deliveryZip=this.value" onblur="App.lookupDeliveryZip()" placeholder="e.g. 48201" required></div>
+      </div>
+      <div class="form-group">
+        <label class="field-label">Delivery location</label>
+        <input type="text" name="deliveryLocation" value="${escAttr(d.deliveryLocation)}" oninput="STATE.ui.newRfqDraft.deliveryLocation=this.value" placeholder="Fills in automatically from the ZIP code" required>
+        <div class="field-hint" id="zip-lookup-status"></div>
+      </div>` : ''}
       <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" oninput="STATE.ui.newRfqDraft.specialReq=this.value" placeholder="Packaging, testing, finish, etc.">${escAttr(d.specialReq)}</textarea></div>
       <hr class="divider">
       <div class="section-title">Upload drawings &amp; project files</div>
@@ -4212,6 +4227,36 @@ const App = {
     STATE.ui.newRfqDraft.deliveryMethod = method;
     if(method==='pickup') STATE.ui.newRfqDraft.deliveryLocation = '';
     route();
+  },
+  /* ---- ZIP/postal code → city, state autofill (Delivery location) ----
+     Uses the free, keyless Zippopotam.us lookup API. Doesn't block
+     submission if it fails or the code isn't found — the field stays a
+     normal editable text input, this just saves typing when it works. */
+  async lookupDeliveryZip(){
+    const zip = (STATE.ui.newRfqDraft.deliveryZip||'').trim();
+    const country = (STATE.ui.newRfqDraft.deliveryCountry||'US').toLowerCase();
+    const statusEl = document.getElementById('zip-lookup-status');
+    const locField = document.querySelector('input[name=deliveryLocation]');
+    if(!zip){ if(statusEl) statusEl.textContent=''; return; }
+    const myToken = (STATE.ui.zipLookupToken = (STATE.ui.zipLookupToken||0) + 1);
+    if(statusEl){ statusEl.textContent = 'Looking up…'; statusEl.className = 'field-hint'; }
+    try{
+      const res = await fetch(`https://api.zippopotam.us/${country}/${encodeURIComponent(zip)}`);
+      if(myToken !== STATE.ui.zipLookupToken) return; // a newer lookup superseded this one
+      if(!res.ok){ if(statusEl){ statusEl.textContent='ZIP code not found — enter the city manually.'; } return; }
+      const data = await res.json();
+      const place = data.places && data.places[0];
+      if(place){
+        const city = place['place name'];
+        const state = place['state abbreviation'] || place['state'] || '';
+        const combined = state ? `${city}, ${state}` : city;
+        STATE.ui.newRfqDraft.deliveryLocation = combined;
+        if(locField) locField.value = combined;
+        if(statusEl){ statusEl.textContent = '✓ Filled in from ZIP code'; statusEl.className = 'field-hint account-pw-hint-ok'; }
+      }
+    }catch(err){
+      if(myToken===STATE.ui.zipLookupToken && statusEl) statusEl.textContent = "Couldn't look that up — enter the city manually.";
+    }
   },
   /* ---- Real file selection for a new RFQ (uploaded to Storage on submit,
      see submitRfq — kept as plain File objects here so nothing round-trips
