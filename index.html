@@ -1049,6 +1049,17 @@ function orderRowToJs(row){
    accidentally pull in another supplier's pricing. */
 async function refreshRealProjects(){
   const { data: rows } = await sb.from('projects').select('*');
+  // `rows` is the complete, RLS-scoped set of real projects this user can
+  // currently see (their own as a client, whatever they're invited to as a
+  // supplier, or everything as INNOUS) — so any real project already sitting
+  // in local state that ISN'T in it anymore was deleted server-side. Without
+  // this, a project cached to this browser's localStorage (see
+  // persistRealData/loadRealData) before it was deleted would stick around
+  // forever on that one device, even though it's genuinely gone.
+  const freshIds = new Set((rows||[]).map(r=>r.id));
+  for(let i=PROJECTS.length-1;i>=0;i--){
+    if(!PROJECTS[i].isDemo && !freshIds.has(PROJECTS[i].id)) PROJECTS.splice(i,1);
+  }
   (rows||[]).forEach(row=>{
     const idx = PROJECTS.findIndex(x=>x.id===row.id);
     const p = projectRowToJs(row, idx>-1 ? PROJECTS[idx] : null);
