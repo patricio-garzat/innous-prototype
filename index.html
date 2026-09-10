@@ -860,6 +860,41 @@ async function refreshRealCustomersAndSuppliers(){
     if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
   });
 }
+/* Real RFQ, still just the submission + status-review slice (see the big
+   comment above the SUPABASE_URL block) — supplier invitations, quotes,
+   shortlist and orders are NOT in the database yet, so those nested
+   fields are preserved from whatever's already loaded locally rather
+   than being wiped back to empty on every refresh. */
+function projectRowToJs(row, existing){
+  return {
+    id: row.id, customerId: row.customer_id, projectName: row.project_name, description: row.description,
+    process: row.process, quantity: row.quantity, material: row.material,
+    deliveryDate: row.delivery_date ? new Date(row.delivery_date) : null,
+    deliveryLocation: row.delivery_location, qualityReq: row.quality_req, specialReq: row.special_req,
+    files: row.files || [], createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    status: row.status,
+    invitedSupplierIds: existing?.invitedSupplierIds || [],
+    supplierQuotes: existing?.supplierQuotes || [],
+    shortlist: existing?.shortlist || [],
+    selectedSupplierId: existing?.selectedSupplierId || null,
+    selectedQuote: existing?.selectedQuote || null,
+    order: existing?.order || null,
+    activity: (row.activity||[]).map(a=>({...a, ts: a.ts ? new Date(a.ts) : new Date()})),
+    chatClient: existing?.chatClient || [], chatSupplier: existing?.chatSupplier || {},
+    isDemo: false,
+  };
+}
+/* CLIENT sees only its own real RFQs (RLS-scoped); INNOUS sees every real
+   RFQ. Supplier-side visibility comes once invited_suppliers is wired up
+   in the next phase. */
+async function refreshRealProjects(){
+  const { data: rows } = await sb.from('projects').select('*');
+  (rows||[]).forEach(row=>{
+    const idx = PROJECTS.findIndex(x=>x.id===row.id);
+    const p = projectRowToJs(row, idx>-1 ? PROJECTS[idx] : null);
+    if(idx>-1) PROJECTS[idx]=p; else PROJECTS.push(p);
+  });
+}
 /* Called once we know a Supabase auth session is valid (fresh login, signup,
    or a restored session on page load) — reads the matching profile and
    customer/supplier row, merges it into CUSTOMERS/SUPPLIERS, sets STATE, and
@@ -884,6 +919,7 @@ async function enterAppAsUser(user){
       const idx = CUSTOMERS.findIndex(x=>x.id===c.id);
       if(idx>-1) CUSTOMERS[idx]=c; else CUSTOMERS.push(c);
       STATE.clientId = c.id;
+      await refreshRealProjects();
     }
   } else if(profile.role==='SUPPLIER'){
     const { data: srow } = await sb.from('suppliers').select('*').eq('user_id', user.id).maybeSingle();
@@ -898,6 +934,7 @@ async function enterAppAsUser(user){
     INNOUS_USER.name = profile.display_name || user.email;
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
     await refreshRealCustomersAndSuppliers();
+    await refreshRealProjects();
   }
   document.getElementById('auth-root').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
@@ -3640,32 +3677,32 @@ const App = {
     route();
   },
   removeMockFile(i){ STATE.ui.newRfqFiles.splice(i,1); route(); },
-  submitRfq(e){
+  async submitRfq(e){
     e.preventDefault();
     const f = new FormData(e.target);
     const idNum = 500 + PROJECTS.length + rnd(1,20);
-    const proj = {
-      id: 'IN-2026-'+String(idNum).padStart(5,'0'),
-      customerId: STATE.clientId,
-      projectName: f.get('projectName'),
-      description: f.get('description'),
-      process: STATE.ui.newRfqDraft.process,
-      quantity: parseInt(f.get('quantity'))||1,
-      material: f.get('material'),
-      deliveryDate: new Date(f.get('deliveryDate')),
-      deliveryLocation: f.get('deliveryLocation'),
-      qualityReq: f.get('qualityReq')||'Standard quality documentation.',
-      specialReq: f.get('specialReq')||'—',
-      files: STATE.ui.newRfqFiles.length ? STATE.ui.newRfqFiles.slice() : mockFiles(STATE.ui.newRfqDraft.process),
-      createdAt: new Date('2026-09-08'),
-      status:'submitted', invitedSupplierIds:[], supplierQuotes:[], shortlist:[], order:null,
-      activity:[{ts:new Date('2026-09-08'),actor:currentClient().company,text:'RFQ submitted.'}],
-      chatClient:[], chatSupplier:{},
-    };
-    PROJECTS.unshift(proj);
-    STATE.ui.newRfqDraft = null; STATE.ui.newRfqFiles = [];
-    showToast(`RFQ ${proj.id} submitted`, 'success');
-    navigate('#/client/rfq/'+proj.id);
+    const id = 'IN-2026-'+String(idNum).padStart(5,'0');
+    const files = STATE.ui.newRfqFiles.length ? STATE.ui.newRfqFiles.slice() : mockFiles(STATE.ui.newRfqDraft.process);
+    const activity = [{ts:new Date().toISOString(), actor:currentClient().company, text:'RFQ submitted.'}];
+    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    try{
+      const { error } = await withTimeout(sb.from('projects').insert({
+        id, customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
+        process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
+        delivery_date: f.get('deliveryDate')||null, delivery_location: f.get('deliveryLocation'),
+        quality_req: f.get('qualityReq')||'Standard quality documentation.', special_req: f.get('specialReq')||'—',
+        files, status:'submitted', activity,
+      }), 12000, 'submitRfq');
+      if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
+      await refreshRealProjects();
+      STATE.ui.newRfqDraft = null; STATE.ui.newRfqFiles = [];
+      showToast(`RFQ ${id} submitted`, 'success');
+      navigate('#/client/rfq/'+id);
+    }catch(err){
+      console.error('submitRfq failed', err);
+      showToast('No se pudo enviar el RFQ. Intenta de nuevo.');
+      if(submitBtn) submitBtn.disabled = false;
+    }
     return false;
   },
 
@@ -3820,9 +3857,13 @@ const App = {
   },
 
   /* ---- Status transitions ---- */
-  advanceStatus(pid, status){
+  async advanceStatus(pid, status){
     const p = findProject(pid); p.status = status;
     logActivity(p,'INNOUS', status==='under_review' ? 'RFQ reviewed and approved for sourcing.' : 'RFQ approved for supplier matching.');
+    if(!p.isDemo){
+      const { error } = await sb.from('projects').update({ status: p.status, activity: p.activity }).eq('id', p.id);
+      if(error){ showToast(error.message); return; }
+    }
     showToast('RFQ status updated');
     route();
   },
