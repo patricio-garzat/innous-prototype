@@ -449,7 +449,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    card — a slow-drifting soft gradient mesh sits behind everything at
    z-index 0, real content sits at z-index 1 above it. */
 .auth-shell{
-  min-height:100vh;display:flex;flex-direction:column;
+  height:100vh;height:100dvh;display:flex;flex-direction:column;
   position:relative;overflow:hidden;
   background:var(--bg);
 }
@@ -470,7 +470,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
-.auth-main{position:relative;z-index:1;flex:1;display:flex;align-items:center;justify-content:center;padding:24px 24px 72px;}
+.auth-main{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;align-items:center;justify-content:center;padding:24px 24px 40px;}
 .auth-narrow{width:100%;max-width:400px;}
 
 .hero-wrap{width:100%;max-width:900px;margin:0 auto;text-align:center;}
