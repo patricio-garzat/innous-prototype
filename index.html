@@ -2316,7 +2316,7 @@ ROUTES['innous/customers'] = function(){
         const proj = PROJECTS.filter(p=>p.customerId===c.id);
         const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
         const completed = proj.filter(p=>p.status==='completed').length;
-        return `<tr class="row-link" onclick="navigate('#/innous/customer/${c.id}')"><td class="td-strong">${c.company}</td><td>${c.contact}<div class="td-sub">${c.email}</div></td><td>${c.industry}</td><td class="td-sub">${c.city}</td><td>${proj.length}</td><td>${activeOrders}</td><td>${completed}</td></tr>`;
+        return `<tr class="row-link" onclick="navigate('#/innous/customer/${c.id}')"><td class="td-strong"><div style="display:flex;align-items:center;gap:10px;">${avatarHtml(c.photo, initials(c.company))}${c.company}</div></td><td>${c.contact}<div class="td-sub">${c.email}</div></td><td>${c.industry}</td><td class="td-sub">${c.city}</td><td>${proj.length}</td><td>${activeOrders}</td><td>${completed}</td></tr>`;
       }).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -2331,7 +2331,7 @@ ROUTES['innous/customer'] = function(id){
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/customers">Customers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
-    <div class="page-header"><div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), 'var(--navy)', 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Total RFQs', proj.length, 'submitted to date', 'file-text')}
@@ -2370,8 +2370,9 @@ ROUTES['innous/suppliers'] = function(){
       ${SUPPLIERS.map(s=>{
         const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
         const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
+        const avatar = s.photo ? `<div class="supplier-avatar" style="padding:0;overflow:hidden;"><img src="${s.photo}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>` : `<div class="supplier-avatar">${initials(s.name)}</div>`;
         return `<div class="supplier-card row-link" onclick="navigate('#/innous/supplier/${s.id}')">
-          <div class="supplier-card-top"><div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>${stars(s.rating)}</div>
+          <div class="supplier-card-top"><div style="display:flex;gap:10px;">${avatar}<div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>${stars(s.rating)}</div>
           <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
           <div class="mini-stat-grid">
             <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
@@ -2393,7 +2394,7 @@ ROUTES['innous/supplier'] = function(id){
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/suppliers">Suppliers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
-    <div class="page-header"><div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), 'var(--ink)', 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
     <div class="grid grid-4" style="margin-bottom:20px;">
       ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'out of 5.0', 'star')}
