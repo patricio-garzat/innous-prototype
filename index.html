@@ -371,6 +371,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;}
 .chat-input-row{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border);}
 .chat-input-row input{flex:1;}
+@media(max-width:768px){
+  .chat-panel{flex-direction:column;height:auto;}
+  .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
+  .chat-thread{min-height:360px;}
+}
 
 .pricing-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
 .pricing-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:13px;}
@@ -458,8 +463,8 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   border-radius:24px;padding:72px 48px;text-align:center;color:#fff;position:relative;overflow:hidden;
   box-shadow:0 24px 60px -20px rgba(0,27,51,0.45);
 }
-.hero-panel::before{content:'';position:absolute;top:-120px;right:-100px;width:380px;height:380px;background:radial-gradient(circle,rgba(0,163,224,0.30),transparent 70%);}
-.hero-panel::after{content:'';position:absolute;bottom:-140px;left:-80px;width:340px;height:340px;background:radial-gradient(circle,rgba(17,109,255,0.16),transparent 70%);}
+.hero-panel::before{content:'';position:absolute;top:-120px;right:-100px;width:380px;height:380px;background:radial-gradient(circle,rgba(0,163,224,0.30),transparent 70%);pointer-events:none;}
+.hero-panel::after{content:'';position:absolute;bottom:-140px;left:-80px;width:340px;height:340px;background:radial-gradient(circle,rgba(17,109,255,0.16),transparent 70%);pointer-events:none;}
 .hero-eyebrow{display:inline-flex;align-items:center;gap:7px;font-family:'Ubuntu',sans-serif;font-size:11.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--cyan);position:relative;padding:6px 14px;border:1px solid rgba(0,163,224,0.4);border-radius:20px;background:rgba(0,163,224,0.08);}
 .hero-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-style:italic;font-size:42px;line-height:1.16;margin:22px 0 18px;position:relative;letter-spacing:-0.5px;}
 .hero-sub{font-size:15.5px;color:rgba(255,255,255,0.72);max-width:540px;margin:0 auto;line-height:1.65;position:relative;}
@@ -668,35 +673,36 @@ function orderStatusLabel(status, es){ return es ? (ORDER_STATUS_ES[status]||sta
 
 /* ---------- Customers ---------- */
 const CUSTOMERS = [
-  {id:'c1',company:'ABC Manufacturing',contact:'Diane Coleman',email:'dcoleman@abcmfg.com',city:'Detroit, MI',industry:'Automotive'},
-  {id:'c2',company:'Titan Hydraulics',contact:'Marcus Reed',email:'mreed@titanhydraulics.com',city:'Houston, TX',industry:'Industrial Equipment'},
-  {id:'c3',company:'Northfield Industrial',contact:'Sara Bianchi',email:'sbianchi@northfieldind.com',city:'Chicago, IL',industry:'Heavy Machinery'},
-  {id:'c4',company:'Apex Aerospace Components',contact:'Julian Osei',email:'josei@apexaero.com',city:'Wichita, KS',industry:'Aerospace'},
-  {id:'c5',company:'Meridian Energy Systems',contact:'Rachel Kim',email:'rkim@meridianenergy.com',city:'Tulsa, OK',industry:'Energy'},
-  {id:'c6',company:'Coastal Marine Fabrication',contact:'Tom Whitfield',email:'twhitfield@coastalmarine.com',city:'Jacksonville, FL',industry:'Marine'},
-  {id:'c7',company:'Precision Robotics Corp',contact:'Elena Vargas',email:'evargas@precisionrobotics.com',city:'San Jose, CA',industry:'Robotics'},
-  {id:'c8',company:'Summit Agricultural Equipment',contact:'Gary Holt',email:'gholt@summitag.com',city:'Des Moines, IA',industry:'Agriculture'},
-  {id:'c9',company:'Vanguard Defense Systems',contact:'Nicole Park',email:'npark@vanguarddefense.com',city:'Arlington, VA',industry:'Defense'},
-  {id:'c10',company:'BrightPath Medical Devices',contact:'Aaron Feldman',email:'afeldman@brightpathmed.com',city:'Minneapolis, MN',industry:'Medical Devices'},
+  {id:'c1',company:'ABC Manufacturing',contact:'Diane Coleman',email:'dcoleman@abcmfg.com',phone:'(313) 555-0142',city:'Detroit, MI',industry:'Automotive',registeredAt:daysFromNow(-410)},
+  {id:'c2',company:'Titan Hydraulics',contact:'Marcus Reed',email:'mreed@titanhydraulics.com',phone:'(713) 555-0198',city:'Houston, TX',industry:'Industrial Equipment',registeredAt:daysFromNow(-365)},
+  {id:'c3',company:'Northfield Industrial',contact:'Sara Bianchi',email:'sbianchi@northfieldind.com',phone:'(312) 555-0121',city:'Chicago, IL',industry:'Heavy Machinery',registeredAt:daysFromNow(-298)},
+  {id:'c4',company:'Apex Aerospace Components',contact:'Julian Osei',email:'josei@apexaero.com',phone:'(316) 555-0177',city:'Wichita, KS',industry:'Aerospace',registeredAt:daysFromNow(-256)},
+  {id:'c5',company:'Meridian Energy Systems',contact:'Rachel Kim',email:'rkim@meridianenergy.com',phone:'(918) 555-0110',city:'Tulsa, OK',industry:'Energy',registeredAt:daysFromNow(-201)},
+  {id:'c6',company:'Coastal Marine Fabrication',contact:'Tom Whitfield',email:'twhitfield@coastalmarine.com',phone:'(904) 555-0133',city:'Jacksonville, FL',industry:'Marine',registeredAt:daysFromNow(-178)},
+  {id:'c7',company:'Precision Robotics Corp',contact:'Elena Vargas',email:'evargas@precisionrobotics.com',phone:'(408) 555-0165',city:'San Jose, CA',industry:'Robotics',registeredAt:daysFromNow(-140)},
+  {id:'c8',company:'Summit Agricultural Equipment',contact:'Gary Holt',email:'gholt@summitag.com',phone:'(515) 555-0154',city:'Des Moines, IA',industry:'Agriculture',registeredAt:daysFromNow(-97)},
+  {id:'c9',company:'Vanguard Defense Systems',contact:'Nicole Park',email:'npark@vanguarddefense.com',phone:'(703) 555-0189',city:'Arlington, VA',industry:'Defense',registeredAt:daysFromNow(-62)},
+  {id:'c10',company:'BrightPath Medical Devices',contact:'Aaron Feldman',email:'afeldman@brightpathmed.com',phone:'(612) 555-0116',city:'Minneapolis, MN',industry:'Medical Devices',registeredAt:daysFromNow(-23)},
 ];
+const INDUSTRIES = ['Automotive','Industrial Equipment','Heavy Machinery','Aerospace','Energy','Marine','Robotics','Agriculture','Defense','Medical Devices','Consumer Products','Electronics','Other'];
 
 /* ---------- Suppliers ---------- */
 const SUPPLIERS = [
-  {id:'s1',name:'Monterrey Precision Machining',city:'Monterrey, NL',capabilities:['CNC Machining'],machines:['5-axis CNC (Haas)','3-axis CNC','CNC Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 500–5,000 units/mo',rating:4.9,onTime:98,quality:99,projects:214},
-  {id:'s2',name:'Querétaro Advanced Manufacturing',city:'Querétaro, QRO',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'High-volume · 1,000–20,000 units/mo',rating:4.8,onTime:96,quality:98,projects:187},
-  {id:'s3',name:'Bajío Metal Works',city:'León, GTO',capabilities:['Stamping','Fabrication / Pailería'],machines:['400T Press','Progressive Die','Press Brake'],certs:['ISO 9001'],capacity:'High-volume · 5,000–50,000 units/mo',rating:4.6,onTime:92,quality:95,projects:143},
-  {id:'s4',name:'Saltillo Foundry Group',city:'Saltillo, COAH',capabilities:['Foundry / Casting'],machines:['Sand Casting','Die Casting','CNC Finishing'],certs:['ISO 9001','IATF 16949'],capacity:'Mid-volume · 300–8,000 units/mo',rating:4.5,onTime:90,quality:94,projects:98},
-  {id:'s5',name:'Tijuana CNC Solutions',city:'Tijuana, BC',capabilities:['CNC Machining'],machines:['4-axis CNC','3-axis CNC','Swiss Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 200–4,000 units/mo',rating:4.7,onTime:95,quality:97,projects:126},
-  {id:'s6',name:'Guadalajara Industrial Fab',city:'Guadalajara, JAL',capabilities:['Fabrication / Pailería','Cutting'],machines:['Laser Cutting','Plasma Cutting','MIG/TIG Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 100–3,000 units/mo',rating:4.6,onTime:93,quality:95,projects:112},
-  {id:'s7',name:'CDMX Precision Tooling',city:'Ciudad de México',capabilities:['CNC Machining','Conventional Machining'],machines:['3-axis CNC','Manual Lathe','Manual Mill'],certs:['ISO 9001'],capacity:'Low-mid volume · 50–2,000 units/mo',rating:4.8,onTime:97,quality:98,projects:161},
-  {id:'s8',name:'Juárez Manufacturing Partners',city:'Ciudad Juárez, CHIH',capabilities:['Stamping','CNC Machining'],machines:['Progressive Die','300T Press','5-axis CNC'],certs:['IATF 16949','ISO 9001'],capacity:'High-volume · 10,000–100,000 units/mo',rating:4.7,onTime:94,quality:96,projects:203},
-  {id:'s9',name:'Puebla Casting & Foundry',city:'Puebla, PUE',capabilities:['Foundry / Casting'],machines:['Investment Casting','Sand Casting'],certs:['ISO 9001'],capacity:'Low-mid volume · 100–2,500 units/mo',rating:4.4,onTime:89,quality:92,projects:76},
-  {id:'s10',name:'Chihuahua Steel Fabrication',city:'Chihuahua, CHIH',capabilities:['Fabrication / Pailería'],machines:['Plasma Cutting','Press Brake','Robotic Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 50–1,500 units/mo',rating:4.5,onTime:91,quality:94,projects:88},
-  {id:'s11',name:'Mexicali Machining Co.',city:'Mexicali, BC',capabilities:['CNC Machining','Conventional Machining'],machines:['4-axis CNC','Manual Lathe'],certs:['ISO 9001'],capacity:'Mid-volume · 200–5,000 units/mo',rating:4.8,onTime:96,quality:97,projects:154},
-  {id:'s12',name:'San Luis Potosí Metal Cutting',city:'San Luis Potosí, SLP',capabilities:['Cutting','Stamping'],machines:['Laser Cutting','Waterjet','200T Press'],certs:['ISO 9001'],capacity:'High-volume · 5,000–40,000 units/mo',rating:4.6,onTime:93,quality:95,projects:119},
-  {id:'s13',name:'Toluca Precision Works',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',rating:4.9,onTime:97,quality:99,projects:171},
-  {id:'s14',name:'Hermosillo Industrial Group',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',rating:4.5,onTime:90,quality:93,projects:104},
-  {id:'s15',name:'Aguascalientes Advanced CNC',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',rating:4.9,onTime:98,quality:99,projects:196},
+  {id:'s1',name:'Monterrey Precision Machining',contactName:'Ricardo Villarreal',email:'rvillarreal@mtyprecision.mx',phone:'+52 81 5512 3401',city:'Monterrey, NL',capabilities:['CNC Machining'],machines:['5-axis CNC (Haas)','3-axis CNC','CNC Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 500–5,000 units/mo',operators:64,yearsOperating:14,registeredAt:daysFromNow(-520),rating:4.9,onTime:98,quality:99,projects:214},
+  {id:'s2',name:'Querétaro Advanced Manufacturing',contactName:'Fernanda Aguilar',email:'faguilar@qroadvmfg.mx',phone:'+52 442 224 8817',city:'Querétaro, QRO',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'High-volume · 1,000–20,000 units/mo',operators:118,yearsOperating:19,registeredAt:daysFromNow(-498),rating:4.8,onTime:96,quality:98,projects:187},
+  {id:'s3',name:'Bajío Metal Works',contactName:'Hector Salcedo',email:'hsalcedo@bajiometal.mx',phone:'+52 477 713 2290',city:'León, GTO',capabilities:['Stamping','Fabrication / Pailería'],machines:['400T Press','Progressive Die','Press Brake'],certs:['ISO 9001'],capacity:'High-volume · 5,000–50,000 units/mo',operators:203,yearsOperating:22,registeredAt:daysFromNow(-471),rating:4.6,onTime:92,quality:95,projects:143},
+  {id:'s4',name:'Saltillo Foundry Group',contactName:'Adriana Cavazos',email:'acavazos@saltillofoundry.mx',phone:'+52 844 415 6602',city:'Saltillo, COAH',capabilities:['Foundry / Casting'],machines:['Sand Casting','Die Casting','CNC Finishing'],certs:['ISO 9001','IATF 16949'],capacity:'Mid-volume · 300–8,000 units/mo',operators:87,yearsOperating:17,registeredAt:daysFromNow(-449),rating:4.5,onTime:90,quality:94,projects:98},
+  {id:'s5',name:'Tijuana CNC Solutions',contactName:'Miguel Ángel Rosas',email:'mrosas@tjcncsolutions.mx',phone:'+52 664 973 4415',city:'Tijuana, BC',capabilities:['CNC Machining'],machines:['4-axis CNC','3-axis CNC','Swiss Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 200–4,000 units/mo',operators:52,yearsOperating:11,registeredAt:daysFromNow(-402),rating:4.7,onTime:95,quality:97,projects:126},
+  {id:'s6',name:'Guadalajara Industrial Fab',contactName:'Paulina Orozco',email:'porozco@gdlindfab.mx',phone:'+52 33 3811 9926',city:'Guadalajara, JAL',capabilities:['Fabrication / Pailería','Cutting'],machines:['Laser Cutting','Plasma Cutting','MIG/TIG Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 100–3,000 units/mo',operators:46,yearsOperating:9,registeredAt:daysFromNow(-376),rating:4.6,onTime:93,quality:95,projects:112},
+  {id:'s7',name:'CDMX Precision Tooling',contactName:'Jorge Iturbide',email:'jiturbide@cdmxtooling.mx',phone:'+52 55 5290 6634',city:'Ciudad de México',capabilities:['CNC Machining','Conventional Machining'],machines:['3-axis CNC','Manual Lathe','Manual Mill'],certs:['ISO 9001'],capacity:'Low-mid volume · 50–2,000 units/mo',operators:31,yearsOperating:26,registeredAt:daysFromNow(-350),rating:4.8,onTime:97,quality:98,projects:161},
+  {id:'s8',name:'Juárez Manufacturing Partners',contactName:'Claudia Nevárez',email:'cnevarez@juarezmfgpartners.mx',phone:'+52 656 629 1187',city:'Ciudad Juárez, CHIH',capabilities:['Stamping','CNC Machining'],machines:['Progressive Die','300T Press','5-axis CNC'],certs:['IATF 16949','ISO 9001'],capacity:'High-volume · 10,000–100,000 units/mo',operators:266,yearsOperating:24,registeredAt:daysFromNow(-320),rating:4.7,onTime:94,quality:96,projects:203},
+  {id:'s9',name:'Puebla Casting & Foundry',contactName:'Israel Mendoza',email:'imendoza@pueblacasting.mx',phone:'+52 222 348 7720',city:'Puebla, PUE',capabilities:['Foundry / Casting'],machines:['Investment Casting','Sand Casting'],certs:['ISO 9001'],capacity:'Low-mid volume · 100–2,500 units/mo',operators:39,yearsOperating:8,registeredAt:daysFromNow(-289),rating:4.4,onTime:89,quality:92,projects:76},
+  {id:'s10',name:'Chihuahua Steel Fabrication',contactName:'Lorena Baca',email:'lbaca@chihsteelfab.mx',phone:'+52 614 481 3356',city:'Chihuahua, CHIH',capabilities:['Fabrication / Pailería'],machines:['Plasma Cutting','Press Brake','Robotic Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 50–1,500 units/mo',operators:34,yearsOperating:6,registeredAt:daysFromNow(-247),rating:4.5,onTime:91,quality:94,projects:88},
+  {id:'s11',name:'Mexicali Machining Co.',contactName:'Óscar Beltrán',email:'obeltran@mxlmachining.mx',phone:'+52 686 552 9048',city:'Mexicali, BC',capabilities:['CNC Machining','Conventional Machining'],machines:['4-axis CNC','Manual Lathe'],certs:['ISO 9001'],capacity:'Mid-volume · 200–5,000 units/mo',operators:58,yearsOperating:13,registeredAt:daysFromNow(-214),rating:4.8,onTime:96,quality:97,projects:154},
+  {id:'s12',name:'San Luis Potosí Metal Cutting',contactName:'Verónica Piña',email:'vpina@slpmetalcutting.mx',phone:'+52 444 825 1173',city:'San Luis Potosí, SLP',capabilities:['Cutting','Stamping'],machines:['Laser Cutting','Waterjet','200T Press'],certs:['ISO 9001'],capacity:'High-volume · 5,000–40,000 units/mo',operators:142,yearsOperating:16,registeredAt:daysFromNow(-183),rating:4.6,onTime:93,quality:95,projects:119},
+  {id:'s13',name:'Toluca Precision Works',contactName:'Emilio Zarate',email:'ezarate@tolucaprecision.mx',phone:'+52 722 214 6690',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',operators:74,yearsOperating:18,registeredAt:daysFromNow(-152),rating:4.9,onTime:97,quality:99,projects:171},
+  {id:'s14',name:'Hermosillo Industrial Group',contactName:'Alejandra Duarte',email:'aduarte@hmoindgroup.mx',phone:'+52 662 289 4470',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',operators:81,yearsOperating:12,registeredAt:daysFromNow(-118),rating:4.5,onTime:90,quality:93,projects:104},
+  {id:'s15',name:'Aguascalientes Advanced CNC',contactName:'Diego Fuentes',email:'dfuentes@agsadvcnc.mx',phone:'+52 449 916 5528',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',operators:96,yearsOperating:15,registeredAt:daysFromNow(-64),rating:4.9,onTime:98,quality:99,projects:196},
 ];
 
 /* ---------- Project / RFQ templates ---------- */
@@ -758,11 +764,11 @@ let PROJECTS = [];
 function hydrateAccountRecord(account){
   if(account.role==='CLIENT'){
     if(!CUSTOMERS.find(c=>c.id===account.refId)){
-      CUSTOMERS.push({id:account.refId, company:account.company, contact:account.contact, email:account.email, city:'', industry:'', photo:account.photo||null});
+      CUSTOMERS.push({id:account.refId, company:account.company, contact:account.contact, email:account.email, phone:account.phone||'', city:account.city||'', industry:account.industry||'', registeredAt:daysFromNow(0), generalChat:[], photo:account.photo||null});
     }
   } else if(account.role==='SUPPLIER'){
     if(!SUPPLIERS.find(s=>s.id===account.refId)){
-      SUPPLIERS.push({id:account.refId, name:account.company, contactName:account.contact, city:'Not set', capabilities:['CNC Machining'], machines:[], certs:[], capacity:'Not set', rating:0, onTime:0, quality:0, projects:0, photo:account.photo||null});
+      SUPPLIERS.push({id:account.refId, name:account.company, contactName:account.contact, email:account.email, phone:account.phone||'', operators:account.operators||0, yearsOperating:account.yearsOperating||0, registeredAt:daysFromNow(0), generalChat:[], city:account.city||'Not set', capabilities:account.capabilities&&account.capabilities.length?account.capabilities:['CNC Machining'], machines:[], certs:account.certs||[], capacity:'Not set', rating:0, onTime:0, quality:0, projects:0, photo:account.photo||null});
     }
   } else if(account.role==='INNOUS'){
     // INNOUS is one shared operations identity, not a per-account customer/supplier record
@@ -1060,7 +1066,8 @@ const STATE = {
   authMode: 'guest', // 'guest' (landing/signup/login) | 'demo' (full pre-seeded showcase) | 'account' (a real signed-up account)
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0 },
+  settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -1071,6 +1078,16 @@ function loadAccounts(){ try{ return JSON.parse(localStorage.getItem('innous_acc
 function saveAccounts(list){ try{ localStorage.setItem('innous_accounts', JSON.stringify(list)); }catch(e){} }
 function loadSession(){ try{ return JSON.parse(localStorage.getItem('innous_session')||'null'); }catch(e){ return null; } }
 function saveSession(session){ try{ if(session) localStorage.setItem('innous_session', JSON.stringify(session)); else localStorage.removeItem('innous_session'); }catch(e){} }
+
+/* ---------- Platform settings (INNOUS Settings page) — persisted so changes
+   actually stick, and so the default markup really is used across the app. ---------- */
+const DEFAULT_SETTINGS = {
+  legalName:'INNOUS Sourcing LLC', region:'United States ↔ Mexico', defaultMarkupPct:15,
+  notif:{newRfq:true, quoteReceived:true, customerSelects:true, weeklySummary:false},
+};
+function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem('innous_settings')||'{}'); return {...DEFAULT_SETTINGS, ...saved, notif:{...DEFAULT_SETTINGS.notif, ...(saved.notif||{})}}; }catch(e){ return {...DEFAULT_SETTINGS, notif:{...DEFAULT_SETTINGS.notif}}; } }
+function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stringify(s)); }catch(e){} }
+STATE.settings = loadSettings();
 
 /* ---------- Real-data persistence ----------
    Accounts/sessions already persisted to localStorage, but CUSTOMERS/SUPPLIERS/
@@ -1096,8 +1113,8 @@ function persistRealData(){
 }
 function loadRealData(){
   try{
-    const rc = JSON.parse(localStorage.getItem('innous_real_customers')||'[]');
-    const rs = JSON.parse(localStorage.getItem('innous_real_suppliers')||'[]');
+    const rc = reviveDates(JSON.parse(localStorage.getItem('innous_real_customers')||'[]'));
+    const rs = reviveDates(JSON.parse(localStorage.getItem('innous_real_suppliers')||'[]'));
     const rp = reviveDates(JSON.parse(localStorage.getItem('innous_real_projects')||'[]'));
     rc.forEach(c=>{ if(!CUSTOMERS.find(x=>x.id===c.id)) CUSTOMERS.push(c); });
     rs.forEach(s=>{ if(!SUPPLIERS.find(x=>x.id===s.id)) SUPPLIERS.push(s); });
@@ -1122,8 +1139,9 @@ if(!ACCOUNTS.find(a=>a.role==='INNOUS')){
 // no example data loaded by default (see App.loadExampleData), so the old demo
 // persona ids (c1/s1) don't exist until either example data is loaded or a real
 // account is signed up.
-function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', city:'', industry:'', photo:null}; }
-function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', city:'', capabilities:[], machines:[], certs:[], capacity:'', rating:0, onTime:0, quality:0, projects:0, photo:null}; }
+function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', phone:'', city:'', industry:'', registeredAt:null, generalChat:[], photo:null}; }
+function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, generalChat:[], rating:0, onTime:0, quality:0, projects:0, photo:null}; }
+function chatOf(entity){ if(!entity.generalChat) entity.generalChat=[]; return entity.generalChat; }
 function findProject(id){ return PROJECTS.find(p=>p.id===id); }
 function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Unknown Supplier'; }
 function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Unknown Customer'; }
@@ -1539,15 +1557,51 @@ function renderSignupForm(){
   <div class="auth-shell">
     ${authTopbar()}
     <div class="auth-main">
-      <div class="auth-narrow">
+      <div class="auth-narrow" style="max-width:${es?'480px':'400px'};">
         <div class="auth-back" onclick="STATE.authView='role-pick';renderAuthRoot();"><i data-lucide="arrow-left"></i>${es?'Atrás':'Back'}</div>
         <div class="auth-card">
           <div class="auth-card-title">${es?'Crea tu cuenta de proveedor':'Create your client account'}</div>
           <div class="auth-card-sub">${es?'Empieza a recibir RFQs de clientes en Estados Unidos.':'Start sourcing verified manufacturing partners in Mexico.'}</div>
           <form onsubmit="return App.submitSignup(event)">
             <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
-            <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
+            <div class="form-row">
+              <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
+              <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
+            </div>
             <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
+            <div class="form-row">
+              <div class="form-group"><label class="field-label">${es?'Ciudad':'City'}</label><input type="text" name="city" required placeholder="${es?'ej. Monterrey':'e.g. Detroit'}"></div>
+              <div class="form-group"><label class="field-label">${es?'Estado':'State'}</label><input type="text" name="state" required placeholder="${es?'ej. Nuevo León':'e.g. MI'}"></div>
+            </div>
+            ${es ? `
+            <div class="form-row">
+              <div class="form-group"><label class="field-label">Años operando</label><input type="number" name="yearsOperating" min="0" required></div>
+              <div class="form-group"><label class="field-label">Cantidad de operadores</label><input type="number" name="operators" min="0" required></div>
+            </div>
+            <div class="form-group">
+              <label class="field-label">Servicios que ofreces</label>
+              <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Selecciona todos los que apliquen.</div>
+              <div class="cap-list">${PROCESSES.filter(p=>p!=='Other').map(p=>`
+                <label class="tag" style="cursor:pointer;background:var(--surface-alt);border:1px solid var(--border);display:inline-flex;align-items:center;gap:5px;">
+                  <input type="checkbox" name="capabilities" value="${p}" style="margin:0;">${procES(p)}
+                </label>`).join('')}</div>
+            </div>
+            <div class="form-group">
+              <label class="field-label">Certificaciones con las que cuentas</label>
+              <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Si no cuentas con ninguna todavía, puedes dejarlo en blanco.</div>
+              <div class="cap-list">${CERTS.map(c=>`
+                <label class="tag" style="cursor:pointer;background:var(--surface-alt);border:1px solid var(--border);display:inline-flex;align-items:center;gap:5px;">
+                  <input type="checkbox" name="certs" value="${c}" style="margin:0;">${c}
+                </label>`).join('')}</div>
+            </div>
+            ` : `
+            <div class="form-group"><label class="field-label">Industry</label>
+              <select name="industry" required style="width:100%;padding:12px 14px;border-radius:9px;font-size:14px;background:var(--surface-alt);border:1px solid var(--border);">
+                <option value="" disabled selected>Select your industry</option>
+                ${INDUSTRIES.map(i=>`<option value="${i}">${i}</option>`).join('')}
+              </select>
+            </div>
+            `}
             <div class="form-group"><label class="field-label">${es?'Usuario':'Username'}</label><input type="text" name="username" required autocomplete="username" minlength="4" pattern="[a-z0-9]{4,}" title="${es?'Solo minúsculas y números, sin espacios, mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces, at least 4 characters'}" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9]/g,'')"><div class="field-hint">${es?'Solo minúsculas y números, sin espacios · mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces · at least 4 characters'}</div></div>
             <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="4" autocomplete="new-password"></div>
             <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="4" autocomplete="new-password"></div>
@@ -1963,9 +2017,10 @@ ROUTES['client/order'] = function(id){
 
 /* ---- Client Messages ---- */
 ROUTES['client/messages'] = function(){
-  const mine = clientProjects().filter(p=>p.chatClient && p.chatClient.length || ['customer_review','awarded','in_production','completed'].includes(p.status));
-  if(!STATE.ui.activeChatKey && mine.length) STATE.ui.activeChatKey = mine[0].id;
-  const active = findProject(STATE.ui.activeChatKey) || mine[0];
+  const general = { id:'general', projectName:'General Inquiries', chatClient: chatOf(currentClient()) };
+  const mine = [general, ...clientProjects().filter(p=>p.chatClient && p.chatClient.length || ['customer_review','awarded','in_production','completed'].includes(p.status))];
+  if(!STATE.ui.activeChatKey) STATE.ui.activeChatKey = mine[0].id;
+  const active = (STATE.ui.activeChatKey==='general' ? general : findProject(STATE.ui.activeChatKey)) || mine[0];
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div></div>
@@ -1973,14 +2028,14 @@ ROUTES['client/messages'] = function(){
       <div class="chat-list">
         ${mine.map(p=>`<div class="chat-list-item ${active&&active.id===p.id?'active':''}" onclick="App.openClientChat('${p.id}')">
           <div class="avatar" style="background:var(--accent);">IN</div>
-          <div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id}</div></div>
+          <div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id==='general'?'General':p.id}</div></div>
         </div>`).join('') || emptyState('message-square','No conversations yet','')}
       </div>
       <div class="chat-thread">
         ${active ? `
-        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
+        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team</div><div class="td-sub">${active.projectName}${active.id==='general'?'':' · '+active.id}</div></div>
         <div class="chat-messages" id="chat-messages">${(active.chatClient||[]).map(m=>`<div class="chat-bubble ${m.from==='client'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='client'?'You':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet. Say hello!</div>`}</div>
-        <div class="chat-input-row"><input type="text" id="client-chat-input" placeholder="Message INNOUS about ${active.projectName}..." onkeydown="if(event.key==='Enter')App.sendClientMessage('${active.id}')"><button class="btn btn-primary" onclick="App.sendClientMessage('${active.id}')"><i data-lucide="send"></i></button></div>
+        <div class="chat-input-row"><input type="text" id="client-chat-input" placeholder="Message INNOUS${active.id==='general'?'':' about '+active.projectName}..." onkeydown="if(event.key==='Enter')App.sendClientMessage('${active.id}')"><button class="btn btn-primary" onclick="App.sendClientMessage('${active.id}')"><i data-lucide="send"></i></button></div>
         ` : emptyState('message-square','No conversations yet','Messages appear once your RFQ is under review.')}
       </div>
     </div>
@@ -2184,7 +2239,7 @@ function supplierResponsesSection(p){
 }
 
 function markupKey(pid,sid){ return pid+'::'+sid; }
-function getMarkup(pid,sid){ const k=markupKey(pid,sid); if(STATE.ui.markupDrafts[k]===undefined) STATE.ui.markupDrafts[k]=15; return STATE.ui.markupDrafts[k]; }
+function getMarkup(pid,sid){ const k=markupKey(pid,sid); if(STATE.ui.markupDrafts[k]===undefined) STATE.ui.markupDrafts[k]=STATE.settings.defaultMarkupPct; return STATE.ui.markupDrafts[k]; }
 
 function quoteComparisonSection(p){
   const submitted = p.supplierQuotes.filter(q=>q.status==='submitted');
@@ -2261,9 +2316,48 @@ ROUTES['innous/customers'] = function(){
         const proj = PROJECTS.filter(p=>p.customerId===c.id);
         const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
         const completed = proj.filter(p=>p.status==='completed').length;
-        return `<tr><td class="td-strong">${c.company}</td><td>${c.contact}<div class="td-sub">${c.email}</div></td><td>${c.industry}</td><td class="td-sub">${c.city}</td><td>${proj.length}</td><td>${activeOrders}</td><td>${completed}</td></tr>`;
+        return `<tr class="row-link" onclick="navigate('#/innous/customer/${c.id}')"><td class="td-strong">${c.company}</td><td>${c.contact}<div class="td-sub">${c.email}</div></td><td>${c.industry}</td><td class="td-sub">${c.city}</td><td>${proj.length}</td><td>${activeOrders}</td><td>${completed}</td></tr>`;
       }).join('')}
     </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- INNOUS Customer Detail ---- */
+ROUTES['innous/customer'] = function(id){
+  const c = CUSTOMERS.find(x=>x.id===id); if(!c) return emptyState('search','Customer not found','');
+  const proj = PROJECTS.filter(p=>p.customerId===c.id);
+  const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
+  const completed = proj.filter(p=>p.status==='completed').length;
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/innous/customers">Customers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
+    <div class="page-header"><div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
+    <div class="grid grid-3" style="margin-bottom:20px;">
+      ${kpiCard('Total RFQs', proj.length, 'submitted to date', 'file-text')}
+      ${kpiCard('Active Orders', activeOrders, 'in production or awarded', 'cog')}
+      ${kpiCard('Completed Orders', completed, 'delivered to date', 'check-circle')}
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Contact Information</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Contact Name</div><div class="info-item-val">${c.contact||'—'}</div></div>
+        <div><div class="info-item-label">Email</div><div class="info-item-val">${c.email||'—'}</div></div>
+        <div><div class="info-item-label">Phone</div><div class="info-item-val">${c.phone||'—'}</div></div>
+      </div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Company Information</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Industry</div><div class="info-item-val">${c.industry||'—'}</div></div>
+        <div><div class="info-item-label">Location</div><div class="info-item-val">${c.city||'—'}</div></div>
+        <div><div class="info-item-label">Registered</div><div class="info-item-val">${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
+      </div>
+    </div>
+    ${proj.length ? `
+    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">RFQ History</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Status</th><th>Created</th></tr></thead><tbody>
+      ${proj.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td></tr>`).join('')}
+    </tbody></table></div></div>` : ''}
   </div>`;
 };
 
@@ -2276,7 +2370,7 @@ ROUTES['innous/suppliers'] = function(){
       ${SUPPLIERS.map(s=>{
         const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
         const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
-        return `<div class="supplier-card">
+        return `<div class="supplier-card row-link" onclick="navigate('#/innous/supplier/${s.id}')">
           <div class="supplier-card-top"><div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>${stars(s.rating)}</div>
           <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
           <div class="mini-stat-grid">
@@ -2288,6 +2382,59 @@ ROUTES['innous/suppliers'] = function(){
         </div>`;
       }).join('')}
     </div>
+  </div>`;
+};
+
+/* ---- INNOUS Supplier Detail ---- */
+ROUTES['innous/supplier'] = function(id){
+  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Supplier not found','');
+  const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
+  const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
+  return `
+  <div class="content-inner">
+    <div class="breadcrumb"><a href="#/innous/suppliers">Suppliers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
+    <div class="page-header"><div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
+    <div class="grid grid-4" style="margin-bottom:20px;">
+      ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'out of 5.0', 'star')}
+      ${kpiCard('On-Time', s.onTime+'%', 'delivery performance', 'clock')}
+      ${kpiCard('Quality', s.quality+'%', 'acceptance rate', 'shield-check')}
+      ${kpiCard('Won Projects', won, 'of '+proj.length+' invited', 'trophy')}
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Contact Information</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Contact Name</div><div class="info-item-val">${s.contactName||'—'}</div></div>
+        <div><div class="info-item-label">Email</div><div class="info-item-val">${s.email||'—'}</div></div>
+        <div><div class="info-item-label">Phone</div><div class="info-item-val">${s.phone||'—'}</div></div>
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Company Information</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Location</div><div class="info-item-val">${s.city||'—'}</div></div>
+        <div><div class="info-item-label">Operators</div><div class="info-item-val">${s.operators||'—'}</div></div>
+        <div><div class="info-item-label">Years Operating</div><div class="info-item-val">${s.yearsOperating||'—'}</div></div>
+        <div><div class="info-item-label">Registered on INNOUS</div><div class="info-item-val">${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
+        <div><div class="info-item-label">Capacity</div><div class="info-item-val">${s.capacity||'—'}</div></div>
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Services Offered</div>
+      <div class="cap-list" style="margin-top:10px;">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Machinery &amp; Equipment</div>
+      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Certifications</div>
+      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+    </div>
+    ${proj.length ? `
+    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">RFQ History</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Status</th><th>Invited</th></tr></thead><tbody>
+      ${proj.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td></tr>`).join('')}
+    </tbody></table></div></div>` : ''}
   </div>`;
 };
 
@@ -2515,24 +2662,33 @@ ROUTES['innous/messages'] = function(){
     if(p.chatClient && p.chatClient.length) threads.push({type:'client', pid:p.id, name:customerName(p.customerId), proj:p.projectName, key:'c:'+p.id});
     Object.keys(p.chatSupplier||{}).forEach(sid=>{ if(p.chatSupplier[sid].length) threads.push({type:'supplier', pid:p.id, sid, name:supplierName(sid), proj:p.projectName, key:'s:'+p.id+':'+sid}); });
   });
+  // General (not tied to a specific RFQ) conversations — either already has messages,
+  // or is the one just opened via "Send Message" on a Customer/Supplier detail page.
+  CUSTOMERS.forEach(c=>{ const key='gc:'+c.id; if((c.generalChat&&c.generalChat.length) || STATE.ui.activeChatKey===key) threads.push({type:'client-general', pid:null, name:c.company, proj:'General', key}); });
+  SUPPLIERS.forEach(s=>{ const key='gs:'+s.id; if((s.generalChat&&s.generalChat.length) || STATE.ui.activeChatKey===key) threads.push({type:'supplier-general', pid:null, name:s.name, proj:'General', key}); });
   if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = threads[0].key;
   const active = threads.find(t=>t.key===STATE.ui.activeChatKey) || threads[0];
-  const p = active ? findProject(active.pid) : null;
-  const msgs = active ? (active.type==='client' ? p.chatClient : p.chatSupplier[active.sid]) : [];
+  const isSupplierSide = active && (active.type==='supplier' || active.type==='supplier-general');
+  const p = active && active.pid ? findProject(active.pid) : null;
+  const msgs = active ? (
+    active.key.startsWith('gc:') ? chatOf(CUSTOMERS.find(c=>c.id===active.key.slice(3))) :
+    active.key.startsWith('gs:') ? chatOf(SUPPLIERS.find(s=>s.id===active.key.slice(3))) :
+    (active.type==='client' ? p.chatClient : p.chatSupplier[active.sid])
+  ) : [];
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Customer and supplier conversations. INNOUS mediates all communication.</div></div></div>
     <div class="chat-panel">
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${active&&active.key===t.key?'active':''}" onclick="App.openInnousChat('${t.key}')">
-          <div class="avatar" style="background:${t.type==='client'?'var(--accent)':'var(--ink)'};">${initials(t.name)}</div>
-          <div><div style="font-weight:600;font-size:13px;">${t.name}</div><div class="td-sub">${t.type==='client'?'Customer':'Supplier'} · ${t.proj}</div></div>
+          <div class="avatar" style="background:${t.type.startsWith('client')?'var(--accent)':'var(--ink)'};">${initials(t.name)}</div>
+          <div><div style="font-weight:600;font-size:13px;">${t.name}</div><div class="td-sub">${t.type.startsWith('client')?'Customer':'Supplier'} · ${t.proj}</div></div>
         </div>`).join('') || emptyState('message-square','No conversations yet','')}
       </div>
       <div class="chat-thread">
         ${active? `
-        <div class="chat-thread-header"><div style="font-weight:700;">${active.name}</div><div class="td-sub">${active.type==='client'?'Customer':'Supplier'} · ${active.proj} · ${active.pid}</div></div>
-        <div class="chat-messages">${msgs.map(m=>`<div class="chat-bubble ${m.from==='innous'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='innous'?'INNOUS':active.name} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet.</div>`}</div>
+        <div class="chat-thread-header"><div style="font-weight:700;">${active.name}</div><div class="td-sub">${isSupplierSide?'Supplier':'Customer'} · ${active.proj}${active.pid?' · '+active.pid:''}</div></div>
+        <div class="chat-messages">${msgs.map(m=>`<div class="chat-bubble ${m.from==='innous'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='innous'?'INNOUS':active.name} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">No messages yet — say hello.</div>`}</div>
         <div class="chat-input-row"><input type="text" placeholder="Message ${active.name}..." onkeydown="if(event.key==='Enter')App.sendInnousMessage('${active.key}')" id="innous-chat-input"><button class="btn btn-primary" onclick="App.sendInnousMessage('${active.key}')"><i data-lucide="send"></i></button></div>
         ` : emptyState('message-square','No conversations yet','')}
       </div>
@@ -2542,29 +2698,32 @@ ROUTES['innous/messages'] = function(){
 
 /* ---- INNOUS Settings ---- */
 ROUTES['innous/settings'] = function(){
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, notif:{...STATE.settings.notif} };
+  const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
-    <div class="page-header"><div><div class="page-title">Settings</div><div class="page-subtitle">Platform configuration</div></div></div>
+    <div class="page-header"><div><div class="page-title">Settings</div><div class="page-subtitle">Platform configuration</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Save Changes</button></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Company</div>
       <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="INNOUS Sourcing LLC" disabled></div>
-        <div class="form-group"><label class="field-label">Region</label><input type="text" value="United States ↔ Mexico" disabled></div>
+        <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
+        <div class="form-group"><label class="field-label">Region</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
       </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Default Pricing</div>
       <div class="section-sub">Applied as a starting point when comparing new supplier quotes.</div>
       <div class="form-group" style="margin-top:12px;"><label class="field-label">Default Markup</label>
-        <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<span class="markup-chip ${m===15?'active':''}">${m}%</span>`).join('')}</div>
+        <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<button type="button" class="markup-chip ${m===d.defaultMarkupPct?'active':''}" onclick="App.setDraftMarkup(${m})">${m}%</button>`).join('')}</div>
       </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Notifications</div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>New RFQ submitted</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Supplier quote received</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" checked><span>Customer selects a quote</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox"><span>Weekly analytics summary</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.newRfq?'checked':''} onchange="STATE.ui.settingsDraft.notif.newRfq=this.checked"><span>New RFQ submitted</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.quoteReceived?'checked':''} onchange="STATE.ui.settingsDraft.notif.quoteReceived=this.checked"><span>Supplier quote received</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.customerSelects?'checked':''} onchange="STATE.ui.settingsDraft.notif.customerSelects=this.checked"><span>Customer selects a quote</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.weeklySummary?'checked':''} onchange="STATE.ui.settingsDraft.notif.weeklySummary=this.checked"><span>Weekly analytics summary</span></div></div>
     </div>
     <div class="card card-pad" style="border-color:#F9C6C6;">
       <div class="section-title" style="color:var(--danger);">Example Data</div>
@@ -2851,8 +3010,9 @@ ROUTES['supplier/documents'] = function(){
 
 /* ---- Supplier Messages ---- */
 ROUTES['supplier/messages'] = function(){
-  const threads = supplierInvited().filter(p=> (p.chatSupplier[STATE.supplierId]||[]).length);
-  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = threads[0].id;
+  const general = { id:'general', projectName:'Consultas Generales', chatSupplier:{ [STATE.supplierId]: chatOf(currentSupplier()) } };
+  const threads = [general, ...supplierInvited().filter(p=> (p.chatSupplier[STATE.supplierId]||[]).length)];
+  if(!STATE.ui.activeChatKey) STATE.ui.activeChatKey = threads[0].id;
   const active = threads.find(p=>p.id===STATE.ui.activeChatKey) || threads[0];
   return `
   <div class="content-inner">
@@ -2860,12 +3020,12 @@ ROUTES['supplier/messages'] = function(){
     <div class="chat-panel">
       <div class="chat-list">
         ${threads.map(p=>`<div class="chat-list-item ${active&&active.id===p.id?'active':''}" onclick="App.openSupplierChat('${p.id}')">
-          <div class="avatar" style="background:var(--ink);">IN</div><div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id}</div></div>
+          <div class="avatar" style="background:var(--ink);">IN</div><div><div style="font-weight:600;font-size:13px;">${p.projectName}</div><div class="td-sub mono">${p.id==='general'?'General':p.id}</div></div>
         </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
       <div class="chat-thread">
         ${active? `
-        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS</div><div class="td-sub">${active.projectName} · ${active.id}</div></div>
+        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS</div><div class="td-sub">${active.projectName}${active.id==='general'?'':' · '+active.id}</div></div>
         <div class="chat-messages">${(active.chatSupplier[STATE.supplierId]||[]).map(m=>`<div class="chat-bubble ${m.from==='supplier'?'out':'in'}">${m.text}<div class="chat-bubble-meta">${m.from==='supplier'?'Tú':'INNOUS'} · ${timeAgo(m.ts)}</div></div>`).join('') || `<div class="td-sub" style="margin:auto;">Aún no hay mensajes.</div>`}</div>
         <div class="chat-input-row"><input type="text" placeholder="Mensaje a INNOUS..." onkeydown="if(event.key==='Enter')App.sendSupplierMessage('${active.id}')" id="supplier-chat-input"><button class="btn btn-primary" onclick="App.sendSupplierMessage('${active.id}')"><i data-lucide="send"></i></button></div>
         ` : emptyState('message-square','Aún no hay conversaciones','Los mensajes aparecen una vez que te inviten a cotizar un RFQ.')}
@@ -2959,8 +3119,12 @@ const App = {
     const password = f.get('password'), password2 = f.get('password2');
     if(password!==password2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return false; }
     if(ACCOUNTS.find(a=>a.username===username)){ showToast(es?'Ese usuario ya existe':'That username is already taken'); return false; }
+    if(es && f.getAll('capabilities').length===0){ showToast('Selecciona al menos un servicio que ofreces'); return false; }
     const refId = (role==='CLIENT'?'c':'s')+'acct'+Date.now();
-    const account = { username, password, role, refId, company:f.get('company').trim(), contact:f.get('contact').trim(), email:f.get('email').trim(), photo:null, tourDone:false };
+    const cityState = `${f.get('city').trim()}, ${f.get('state').trim()}`;
+    const account = { username, password, role, refId, company:f.get('company').trim(), contact:f.get('contact').trim(), email:f.get('email').trim(), phone:f.get('phone').trim(), city:cityState, photo:null, tourDone:false };
+    if(role==='CLIENT'){ account.industry = f.get('industry'); }
+    else if(role==='SUPPLIER'){ account.capabilities = f.getAll('capabilities'); account.certs = f.getAll('certs'); account.yearsOperating = parseInt(f.get('yearsOperating'),10)||0; account.operators = parseInt(f.get('operators'),10)||0; }
     ACCOUNTS.push(account); saveAccounts(ACCOUNTS);
     App.logInAs(account);
     showToast(es?'Cuenta creada':'Account created', 'success');
@@ -3013,6 +3177,13 @@ const App = {
     localStorage.removeItem('innous_session');
     clearRealData();
     location.reload();
+  },
+  setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
+  saveInnousSettings(){
+    STATE.settings = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
+    saveSettings(STATE.settings);
+    showToast('Settings saved', 'success');
+    route();
   },
 
   /* ---- Post-signup mini tour ---- */
@@ -3474,24 +3645,37 @@ const App = {
   openClientChat(pid){ STATE.ui.activeChatKey = pid; route(); },
   sendClientMessage(pid){
     const input = document.getElementById('client-chat-input'); const text = input.value.trim(); if(!text) return;
-    const p = findProject(pid); p.chatClient.push({from:'client', text, ts:new Date('2026-09-08')});
+    const thread = pid==='general' ? chatOf(currentClient()) : findProject(pid).chatClient;
+    thread.push({from:'client', text, ts:new Date('2026-09-08')});
     route();
-    setTimeout(()=>{ p.chatClient.push({from:'innous', text:'Thanks for the note — our team is on it and will follow up shortly.', ts:new Date('2026-09-08')}); if(location.hash.includes('client/messages')) route(); }, 900);
+    setTimeout(()=>{ thread.push({from:'innous', text:'Thanks for the note — our team is on it and will follow up shortly.', ts:new Date('2026-09-08')}); if(location.hash.includes('client/messages')) route(); }, 900);
+  },
+  /* General (not-tied-to-an-RFQ) conversation, started by INNOUS from a customer's
+     or supplier's detail page — key is 'gc:<customerId>' or 'gs:<supplierId>'. */
+  startGeneralChat(type, id){
+    STATE.ui.activeChatKey = (type==='client'?'gc:':'gs:')+id;
+    closeModal();
+    navigate('#/innous/messages');
   },
   openInnousChat(key){ STATE.ui.activeChatKey = key; route(); },
   sendInnousMessage(key){
     const input = document.getElementById('innous-chat-input'); const text = input.value.trim(); if(!text) return;
-    const [type,pid,sid] = key.split(':'); const p = findProject(pid);
-    if(type==='c') p.chatClient.push({from:'innous', text, ts:new Date('2026-09-08')});
-    else p.chatSupplier[sid].push({from:'innous', text, ts:new Date('2026-09-08')});
+    if(key.startsWith('gc:')) chatOf(CUSTOMERS.find(c=>c.id===key.slice(3))).push({from:'innous', text, ts:new Date('2026-09-08')});
+    else if(key.startsWith('gs:')) chatOf(SUPPLIERS.find(s=>s.id===key.slice(3))).push({from:'innous', text, ts:new Date('2026-09-08')});
+    else {
+      const [type,pid,sid] = key.split(':'); const p = findProject(pid);
+      if(type==='c') p.chatClient.push({from:'innous', text, ts:new Date('2026-09-08')});
+      else p.chatSupplier[sid].push({from:'innous', text, ts:new Date('2026-09-08')});
+    }
     route();
   },
   openSupplierChat(pid){ STATE.ui.activeChatKey = pid; route(); },
   sendSupplierMessage(pid){
     const input = document.getElementById('supplier-chat-input'); const text = input.value.trim(); if(!text) return;
-    const p = findProject(pid); p.chatSupplier[STATE.supplierId].push({from:'supplier', text, ts:new Date('2026-09-08')});
+    const thread = pid==='general' ? chatOf(currentSupplier()) : findProject(pid).chatSupplier[STATE.supplierId];
+    thread.push({from:'supplier', text, ts:new Date('2026-09-08')});
     route();
-    setTimeout(()=>{ p.chatSupplier[STATE.supplierId].push({from:'innous', text:'Entendido, gracias por la actualización.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
+    setTimeout(()=>{ thread.push({from:'innous', text:'Entendido, gracias por la actualización.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
   },
 };
 
