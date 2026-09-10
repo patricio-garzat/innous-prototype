@@ -347,7 +347,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .process-option svg{width:18px;height:18px;margin:0 auto 6px;stroke:var(--ink-secondary);}
 .process-option.selected svg{stroke:#fff;}
 
-.file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);}
+.file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);cursor:pointer;transition:border-color .15s,background .15s;}
+.file-drop:hover,.file-drop.drag-over{border-color:var(--accent);background:var(--accent-soft);}
 .file-drop svg{width:26px;height:26px;stroke:var(--ink-tertiary);margin:0 auto 10px;}
 .file-drop-title{font-size:13.5px;font-weight:600;}
 .file-drop-sub{font-size:12px;color:var(--ink-tertiary);margin-top:3px;}
@@ -1647,9 +1648,16 @@ function avatarHtml(photo, initialsText, bg, size){
   if(photo) return `<div class="avatar" style="padding:0;overflow:hidden;${sizeStyle}"><img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;"></div>`;
   return `<div class="avatar" style="background:${bg||avatarColorFor(initialsText)};${sizeStyle}">${initialsText}</div>`;
 }
+function formatFileSize(bytes){
+  if(bytes < 1024*1024) return Math.max(1, Math.round(bytes/1024)) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
 function fileIconChip(f){
   const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
-  return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
+  // Real uploaded files carry a storage `path` and can be opened via a signed
+  // URL; older/demo files with no path just render as a static, unclickable chip.
+  const clickAttrs = f.path ? `style="cursor:pointer;" onclick="App.openProjectFile('${escAttr(f.path)}')" title="Click to open"` : '';
+  return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
 }
 function timelineComp(steps, currentIdx){
   return `<div class="timeline">${steps.map((label,i)=>{
@@ -2410,7 +2418,7 @@ function rfqMiniTable(list){
    adding/removing a simulated file — the fields repopulate from state
    instead of the form resetting to blank. */
 ROUTES['client/new-rfq'] = function(){
-  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:MATERIALS[0], deliveryDate:'', deliveryLocation:'', qualityReq:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryLocation:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
   const d = STATE.ui.newRfqDraft;
   return `
   <div class="content-inner" style="max-width:820px;">
@@ -2435,24 +2443,28 @@ ROUTES['client/new-rfq'] = function(){
       </div>
       <div class="form-row">
         <div class="form-group"><label class="field-label">Quantity</label><input type="number" name="quantity" value="${escAttr(d.quantity)}" oninput="STATE.ui.newRfqDraft.quantity=this.value" min="1" placeholder="e.g. 250" required></div>
-        <div class="form-group"><label class="field-label">Material</label><select name="material" onchange="STATE.ui.newRfqDraft.material=this.value">${MATERIALS.map(m=>`<option ${d.material===m?'selected':''}>${m}</option>`).join('')}</select></div>
+        <div class="form-group"><label class="field-label">Material</label><input type="text" name="material" value="${escAttr(d.material)}" oninput="STATE.ui.newRfqDraft.material=this.value" placeholder="e.g. Aluminum 6061" required></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label class="field-label">Required delivery date</label><input type="date" name="deliveryDate" value="${escAttr(d.deliveryDate)}" oninput="STATE.ui.newRfqDraft.deliveryDate=this.value" required></div>
-        <div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" value="${escAttr(d.deliveryLocation)}" oninput="STATE.ui.newRfqDraft.deliveryLocation=this.value" placeholder="City, State, Country" required></div>
+        <div class="form-group">
+          <label class="field-label">Fulfillment</label>
+          <div style="display:flex;gap:8px;">
+            <div class="process-option ${d.deliveryMethod==='delivery'?'selected':''}" style="flex:1;padding:11px 10px;" onclick="App.setNewRfqDeliveryMethod('delivery')">Delivery</div>
+            <div class="process-option ${d.deliveryMethod==='pickup'?'selected':''}" style="flex:1;padding:11px 10px;" onclick="App.setNewRfqDeliveryMethod('pickup')">Pickup</div>
+          </div>
+        </div>
       </div>
-      <div class="form-group"><label class="field-label">Quality requirements</label><textarea name="qualityReq" oninput="STATE.ui.newRfqDraft.qualityReq=this.value" placeholder="e.g. ISO 9001, dimensional reports, material certs...">${escAttr(d.qualityReq)}</textarea></div>
+      ${d.deliveryMethod==='delivery' ? `<div class="form-group"><label class="field-label">Delivery location</label><input type="text" name="deliveryLocation" value="${escAttr(d.deliveryLocation)}" oninput="STATE.ui.newRfqDraft.deliveryLocation=this.value" placeholder="City, State, Country" required></div>` : ''}
       <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" oninput="STATE.ui.newRfqDraft.specialReq=this.value" placeholder="Packaging, testing, finish, etc.">${escAttr(d.specialReq)}</textarea></div>
       <hr class="divider">
       <div class="section-title">Upload drawings &amp; project files</div>
-      <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG</div>
-      <div class="file-drop">
+      <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG — up to 25 MB each</div>
+      <input type="file" id="new-rfq-file-input" multiple accept=".pdf,.step,.stp,.dwg,.dxf,.jpg,.jpeg,.png" style="display:none;" onchange="App.onRfqFilesSelected(this)">
+      <div class="file-drop" id="rfq-file-drop" onclick="document.getElementById('new-rfq-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="App.onRfqFilesDropped(event)">
         <i data-lucide="upload-cloud"></i>
-        <div class="file-drop-title">Drop files here or click to simulate an upload</div>
-        <div class="file-drop-sub">This is a prototype — files are simulated, not uploaded.</div>
-        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-          ${['pdf','step','dwg','dxf','jpg','png'].map(t=>`<button type="button" class="btn btn-secondary btn-sm" onclick="App.addMockFile('${t}')">+ ${FILE_TYPES[t].ext}</button>`).join('')}
-        </div>
+        <div class="file-drop-title">Drop files here or click to upload</div>
+        <div class="file-drop-sub">Files upload when you submit the RFQ.</div>
       </div>
       <div class="file-list" id="new-rfq-file-list">${STATE.ui.newRfqFiles.map((f,i)=>fileChipRemovable(f,i)).join('')}</div>
       <hr class="divider">
@@ -2465,7 +2477,7 @@ ROUTES['client/new-rfq'] = function(){
 };
 function fileChipRemovable(f,i){
   const meta = FILE_TYPES[f.type];
-  return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span><button type="button" class="fc-remove" onclick="App.removeMockFile(${i})"><i data-lucide="x" style="width:14px;height:14px;"></i></button></div>`;
+  return `<div class="file-chip"><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span><button type="button" class="fc-remove" onclick="App.removeRfqFile(${i})"><i data-lucide="x" style="width:14px;height:14px;"></i></button></div>`;
 }
 
 /* ---- Client RFQ List ---- */
@@ -2512,7 +2524,6 @@ ROUTES['client/rfq'] = function(id){
           ${infoItem('Material', p.material)}
           ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
           ${infoItem('Delivery Location', p.deliveryLocation)}
-          ${infoItem('Quality Requirements', p.qualityReq)}
         </div>
         <hr class="divider">
         <div class="info-item-label">Description</div>
@@ -2772,8 +2783,6 @@ ROUTES['innous/rfq'] = function(id){
         <hr class="divider">
         <div class="info-item-label">Specifications</div>
         <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
-        <div class="info-item-label" style="margin-top:12px;">Quality Requirements</div>
-        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.qualityReq}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Files</div>
@@ -3480,8 +3489,6 @@ ROUTES['supplier/rfq'] = function(id){
         <hr class="divider">
         <div class="info-item-label">Descripción</div>
         <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
-        <div class="info-item-label" style="margin-top:12px;">Requisitos de Calidad</div>
-        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.qualityReq}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Archivos</div>
@@ -4195,30 +4202,76 @@ const App = {
 
   /* ---- New RFQ form ---- */
   setNewRfqProcess(p){ STATE.ui.newRfqDraft.process = p; route(); },
-  addMockFile(type){
-    const meta = FILE_TYPES[type];
-    const names = {pdf:'drawing.pdf',step:'model.step',dwg:'detail.dwg',dxf:'layout.dxf',jpg:'reference.jpg',png:'photo.png'};
-    STATE.ui.newRfqFiles.push({name:names[type], type, size: rnd(150,4000)+' KB'});
+  setNewRfqDeliveryMethod(method){
+    STATE.ui.newRfqDraft.deliveryMethod = method;
+    if(method==='pickup') STATE.ui.newRfqDraft.deliveryLocation = '';
     route();
   },
-  removeMockFile(i){ STATE.ui.newRfqFiles.splice(i,1); route(); },
+  /* ---- Real file selection for a new RFQ (uploaded to Storage on submit,
+     see submitRfq — kept as plain File objects here so nothing round-trips
+     to the network until the RFQ itself is actually being created). ---- */
+  addRealFiles(fileList){
+    const allowedExt = ['pdf','step','stp','dwg','dxf','jpg','jpeg','png'];
+    const maxSize = 25*1024*1024;
+    const rejected = [];
+    Array.from(fileList).forEach(file=>{
+      const ext = (file.name.split('.').pop()||'').toLowerCase();
+      if(!allowedExt.includes(ext)){ rejected.push(`${file.name} (tipo no soportado)`); return; }
+      if(file.size > maxSize){ rejected.push(`${file.name} (más de 25 MB)`); return; }
+      const type = ext==='stp' ? 'step' : (ext==='jpeg' ? 'jpg' : ext);
+      STATE.ui.newRfqFiles.push({ file, name:file.name, type, size:formatFileSize(file.size) });
+    });
+    if(rejected.length) showToast('No se pudieron agregar: '+rejected.join(', '));
+    route();
+  },
+  onRfqFilesSelected(input){ App.addRealFiles(input.files); input.value=''; },
+  onRfqFilesDropped(e){
+    e.preventDefault();
+    document.getElementById('rfq-file-drop')?.classList.remove('drag-over');
+    App.addRealFiles(e.dataTransfer.files);
+  },
+  removeRfqFile(i){ STATE.ui.newRfqFiles.splice(i,1); route(); },
+  async openProjectFile(path){
+    if(!path) return;
+    const { data, error } = await sb.storage.from('project-files').createSignedUrl(path, 300);
+    if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
+    window.open(data.signedUrl, '_blank');
+  },
   async submitRfq(e){
     e.preventDefault();
     const f = new FormData(e.target);
     const idNum = 500 + PROJECTS.length + rnd(1,20);
     const id = 'IN-2026-'+String(idNum).padStart(5,'0');
-    const files = STATE.ui.newRfqFiles.length ? STATE.ui.newRfqFiles.slice() : mockFiles(STATE.ui.newRfqDraft.process);
+    const deliveryMethod = STATE.ui.newRfqDraft.deliveryMethod;
+    const deliveryLocation = deliveryMethod==='pickup' ? 'Pickup' : (f.get('deliveryLocation')||'');
+    const filesToUpload = STATE.ui.newRfqFiles.filter(x=>x.file);
     const activity = [{ts:new Date().toISOString(), actor:currentClient().company, text:'RFQ submitted.'}];
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     try{
       const { error } = await withTimeout(sb.from('projects').insert({
         id, customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
         process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
-        delivery_date: f.get('deliveryDate')||null, delivery_location: f.get('deliveryLocation'),
-        quality_req: f.get('qualityReq')||'Standard quality documentation.', special_req: f.get('specialReq')||'—',
-        files, status:'submitted', activity,
+        delivery_date: f.get('deliveryDate')||null, delivery_location: deliveryLocation,
+        quality_req: 'Standard quality documentation.', special_req: f.get('specialReq')||'—',
+        files: [], status:'submitted', activity,
       }), 12000, 'submitRfq');
       if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
+
+      // Upload the real files now that the project row exists (Storage RLS
+      // checks for a matching project owned by this client) — a failed
+      // upload on one file doesn't block the RFQ itself, just that file.
+      const uploadedFiles = [];
+      for(const item of filesToUpload){
+        const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        const path = `${id}/${Date.now()}-${safeName}`;
+        const { error: upErr } = await sb.storage.from('project-files').upload(path, item.file);
+        if(upErr){ showToast(`No se pudo subir ${item.name}: ${upErr.message}`); continue; }
+        uploadedFiles.push({ name:item.name, type:item.type, size:item.size, path });
+      }
+      if(uploadedFiles.length){
+        await sb.from('projects').update({ files: uploadedFiles }).eq('id', id);
+      }
+
       await refreshRealProjects();
       STATE.ui.newRfqDraft = null; STATE.ui.newRfqFiles = [];
       showToast(`RFQ ${id} submitted`, 'success');
