@@ -4519,7 +4519,11 @@ const App = {
         uploadedFiles.push({ name:item.name, type:item.type, size:item.size, path });
       }
       if(uploadedFiles.length){
-        await sb.from('projects').update({ files: uploadedFiles }).eq('id', id);
+        // Clients have no direct UPDATE grant on projects (only create/read
+        // their own) — this narrow RPC is the one exception, and it re-checks
+        // ownership itself rather than relying on a blanket UPDATE policy.
+        const { error: attachErr } = await sb.rpc('client_attach_rfq_files', { p_project_id: id, p_files: uploadedFiles });
+        if(attachErr) showToast(`Files uploaded, but couldn't attach them to the RFQ: ${attachErr.message}`);
       }
 
       await refreshRealProjects();
