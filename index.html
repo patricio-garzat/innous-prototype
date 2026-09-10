@@ -2381,10 +2381,11 @@ ROUTES['innous/rfq'] = function(id){
         <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
         <hr class="divider">
         <div class="section-title">Customer Contact</div>
+        ${(()=>{ const c = CUSTOMERS.find(x=>x.id===p.customerId); return c ? `
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-          <div class="avatar">${initials(CUSTOMERS.find(c=>c.id===p.customerId).contact)}</div>
-          <div><div style="font-weight:600;font-size:13px;">${CUSTOMERS.find(c=>c.id===p.customerId).contact}</div><div class="td-sub">${CUSTOMERS.find(c=>c.id===p.customerId).email}</div></div>
-        </div>
+          <div class="avatar">${initials(c.contact)}</div>
+          <div><div style="font-weight:600;font-size:13px;">${c.contact}</div><div class="td-sub">${c.email}</div></div>
+        </div>` : `<div class="td-sub" style="margin-top:10px;">This customer's account has been deleted.</div>`; })()}
       </div>
     </div>
 
@@ -2451,12 +2452,13 @@ function supplierResponsesSection(p){
       ${p.invitedSupplierIds.map((sid,i)=>{
         const q = p.supplierQuotes.find(x=>x.supplierId===sid);
         const submitted = q && q.status==='submitted';
+        const s = SUPPLIERS.find(x=>x.id===sid);
         return `<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/suppliers')">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-weight:600;font-size:12.5px;">${SUPPLIERS.find(s=>s.id===sid).name}</div>
+            <div style="font-weight:600;font-size:12.5px;">${s?s.name:'Deleted Supplier'}</div>
             <span class="badge ${submitted?'badge-green':'badge-amber'}">${submitted?'Submitted':'Pending'}</span>
           </div>
-          <div class="td-sub" style="margin-top:6px;">${SUPPLIERS.find(s=>s.id===sid).city}</div>
+          <div class="td-sub" style="margin-top:6px;">${s?s.city:'—'}</div>
         </div>`;
       }).join('')}
     </div>
@@ -2484,7 +2486,7 @@ function quoteComparisonSection(p){
         const customerPrice = q.quotedTotal*(1+markup/100);
         const already = shortlisted.has(q.supplierId);
         return `<tr>
-          <td class="td-strong">${supplier.name}<div class="td-sub">${supplier.city} · ${supplier.rating}★</div></td>
+          <td class="td-strong">${supplier?supplier.name:'Deleted Supplier'}<div class="td-sub">${supplier?`${supplier.city} · ${supplier.rating}★`:'—'}</div></td>
           <td>${fmtMoney2(q.unitPrice)}</td>
           <td class="td-sub" style="line-height:1.5;">T ${fmtMoney(q.tooling)}<br>S ${fmtMoney(q.setup)}<br>Sh ${q.shipping?fmtMoney(q.shipping):'Incl.'}</td>
           <td class="td-strong">${fmtMoney(q.quotedTotal)}</td>
@@ -4004,8 +4006,10 @@ const App = {
   openInnousChat(key){ STATE.ui.activeChatKey = key; route(); },
   sendInnousMessage(key){
     const input = document.getElementById('innous-chat-input'); const text = input.value.trim(); if(!text) return;
-    if(key.startsWith('gc:')) chatOf(CUSTOMERS.find(c=>c.id===key.slice(3))).push({from:'innous', text, ts:new Date('2026-09-08')});
-    else if(key.startsWith('gs:')) chatOf(SUPPLIERS.find(s=>s.id===key.slice(3))).push({from:'innous', text, ts:new Date('2026-09-08')});
+    // Guards against a stale key from another tab where that customer/supplier
+    // has since been deleted — rather than crashing, just drop the send.
+    if(key.startsWith('gc:')){ const c = CUSTOMERS.find(x=>x.id===key.slice(3)); if(!c){ showToast('This customer no longer exists.'); route(); return; } chatOf(c).push({from:'innous', text, ts:new Date('2026-09-08')}); }
+    else if(key.startsWith('gs:')){ const s = SUPPLIERS.find(x=>x.id===key.slice(3)); if(!s){ showToast('This supplier no longer exists.'); route(); return; } chatOf(s).push({from:'innous', text, ts:new Date('2026-09-08')}); }
     else {
       const [type,pid,sid] = key.split(':'); const p = findProject(pid);
       if(type==='c') p.chatClient.push({from:'innous', text, ts:new Date('2026-09-08')});
