@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>INNOUS — Manufacturing Sourcing Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,6 +51,11 @@ body{
   color:var(--ink);
   font-size:14px;
   line-height:1.5;
+  /* Feel like a native app on mobile, not a webpage: no pinch-zoom, no
+     double-tap-to-zoom (the viewport meta tag covers pinch; this covers
+     double-tap in browsers that still allow it despite that meta). */
+  touch-action:manipulation;
+  -webkit-text-size-adjust:100%;
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:'JetBrains Mono',monospace;}
@@ -493,7 +498,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .sidebar-backdrop{display:none;}
 @media(max-width:900px){
   .mobile-menu-btn{display:flex;}
-  .sidebar{position:fixed;top:var(--topbar-h);left:0;bottom:0;transform:translateX(-100%);box-shadow:var(--shadow-md);}
+  .sidebar{position:fixed;top:var(--topbar-h);left:0;bottom:0;transform:translateX(-100%);box-shadow:var(--shadow-md);z-index:41;}
   .sidebar.open{transform:translateX(0);}
   .sidebar-backdrop.open{display:block;position:fixed;inset:var(--topbar-h) 0 0 0;background:rgba(0,0,0,0.3);z-index:40;}
   .content{padding:20px 16px 50px;}
@@ -507,7 +512,13 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   .user-chip-text,.user-chip-sub{display:none;}
   .topbar-right{gap:4px;}
   .notif-btn{width:32px;height:32px;}
-  .notif-menu{width:min(320px, calc(100vw - 24px));}
+  /* The bell isn't flush against the screen's right edge on mobile (the
+     role switcher sits after it), so anchoring these dropdowns to their
+     own tiny trigger button's right edge (as the desktop layout does)
+     pushed them mostly off-screen to the left. Anchor to the viewport
+     instead, so they always land centered under the topbar regardless of
+     where their trigger button actually sits. */
+  .notif-menu,.role-menu{position:fixed;left:12px;right:12px;top:calc(var(--topbar-h) + 8px);width:auto;min-width:0;max-height:calc(100vh - var(--topbar-h) - 20px);}
 }
 
 /* ============ AUTH: landing / signup / login / tour ============
