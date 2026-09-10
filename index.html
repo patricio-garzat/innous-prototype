@@ -3548,7 +3548,7 @@ ROUTES['supplier/quotes'] = function(){
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
-        <td>${p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Ganada</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">En Revisión</span>':'<span class="badge badge-gray">No Seleccionada</span>'}</td>
+        <td>${p.status==='completed'?'<span class="badge badge-purple">Completada</span>':p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Ganada</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">En Revisión</span>':'<span class="badge badge-gray">Rechazada</span>'}</td>
       </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
