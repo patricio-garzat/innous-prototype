@@ -993,6 +993,11 @@ function projectRowToJs(row, existing){
     quoteSalespersonEmail: row.quote_salesperson_email || null,
     quotePaymentTerms: row.quote_payment_terms || null,
     quoteDeliveryDays: row.quote_delivery_days || null,
+    // Gate between "client picked a supplier" and "supplier is told" — see
+    // App.authorizeProject() and supabase-fix23-innous-authorize.sql. Stays
+    // null until INNOUS explicitly authorizes the project; until then the
+    // winning supplier's own portal still shows the RFQ as pending review.
+    innousAuthorizedAt: row.innous_authorized_at ? new Date(row.innous_authorized_at) : null,
     isDemo: false,
   };
 }
@@ -1468,8 +1473,15 @@ function buildShortlistAndAward(proj){
 // (quote_number_seq, see supabase-fix21) so demo data also shows realistic
 // "IN-0000"-style folios instead of reusing the RFQ's own id.
 let _demoQuoteSeq = 0;
-function setOrderState(proj, orderStatus){
+// alreadyAuthorized=true is for pre-seeded demo history (an order that's
+// supposedly been running for a while — the supplier obviously already
+// knows about it). The one live call site that mimics a customer picking a
+// quote *just now* (App.confirmSelectQuote's demo branch) passes false, so
+// the demo also shows off the new authorize-before-supplier-sees-it gate
+// instead of skipping straight past it.
+function setOrderState(proj, orderStatus, alreadyAuthorized=true){
   const q = proj.selectedQuote;
+  proj.innousAuthorizedAt = alreadyAuthorized ? addDays(proj.createdAt,1) : null;
   proj.order = {
     status: orderStatus,
     supplierId: proj.selectedSupplierId,
@@ -2000,14 +2012,21 @@ function rfqStageMessage(p, audience){
       sourcing:"Suppliers have been invited. Waiting on their quotes.",
       quotes_received:"Quotes are in — compare them below and build the customer shortlist.",
       customer_review:"Shortlist sent to the customer — awaiting their decision.",
-      awarded:"Order confirmed — production is about to begin.",
+      awarded: p.innousAuthorizedAt ? "Order confirmed — production is about to begin." : "The customer selected a supplier — authorize the project below to notify them and release the order.",
       in_production:"Order is in production — track milestones on the order page.",
       completed:"Project completed and delivered.",
     })[p.status] || '';
   }
   if(audience==='supplier'){
-    if(['awarded','in_production','completed'].includes(p.status)){
-      const won = p.selectedSupplierId===STATE.supplierId;
+    // The winning supplier sees nothing different from "still under review"
+    // until INNOUS explicitly authorizes the project — see
+    // App.authorizeProject(). A losing supplier finds out right away, same
+    // as always; there's nothing sensitive about telling them it went
+    // elsewhere.
+    const isWinner = p.selectedSupplierId===STATE.supplierId;
+    const revealed = !isWinner || !!p.innousAuthorizedAt;
+    if(['awarded','in_production','completed'].includes(p.status) && revealed){
+      const won = isWinner;
       if(p.status==='completed'){
         return won
           ? "Este proyecto ya fue completado y entregado — consulta el pedido para ver los detalles finales."
@@ -2026,6 +2045,10 @@ function rfqStageMessage(p, audience){
 function orderStageMessage(p, audience){
   // From Quality Inspection onward, logistics is INNOUS's job alone — the
   // supplier's and client's messages both say so explicitly at that stage.
+  if(p.order.status==='order_confirmed' && !p.innousAuthorizedAt){
+    if(audience==='innous') return "Authorize this project below to notify the supplier — they can't see this order or start production until you do.";
+    if(audience==='supplier') return "Tu cotización fue enviada. INNOUS la está comparando con otros proveedores — te notificaremos si eres seleccionado.";
+  }
   const msgs = {
     order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
     in_production:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
@@ -2191,6 +2214,9 @@ function pendingItems(){
     });
     PROJECTS.filter(p=>p.status==='quotes_received').forEach(p=>{
       items.push({navId:'rfqs', icon:'file-diff', text:`Build customer shortlist — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+    });
+    PROJECTS.filter(p=>p.status==='awarded' && !p.innousAuthorizedAt).forEach(p=>{
+      items.push({navId:'rfqs', icon:'check-circle', text:`Authorize project — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.order && p.order.quality.status==='ncr_open').forEach(p=>{
       items.push({navId:'quality', icon:'alert-triangle', text:`Quality issue open — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
@@ -3093,11 +3119,12 @@ ROUTES['innous/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
+        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
         <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Delete RFQ</button>
       </div>
     </div>
-    ${stageBanner(rfqStageMessage(p,'innous'), ['submitted','under_review'].includes(p.status)?'action':'info')}
+    ${stageBanner(rfqStageMessage(p,'innous'), ['submitted','under_review'].includes(p.status) || (p.status==='awarded' && !p.innousAuthorizedAt) ?'action':'info')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
 
     <div class="grid grid-2" style="margin-bottom:20px;">
@@ -3491,9 +3518,11 @@ ROUTES['innous/order'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
-      <div class="page-actions">${orderStatusBadge(p.order.status)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabel(nextStatus)}</button>`:''}</div>
+      <div class="page-actions">${orderStatusBadge(p.order.status)}
+        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
+        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabel(nextStatus)}</button>`:''}</div>
     </div>
-    ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':(nextStatus?'action':'info'))}
+    ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
@@ -3766,9 +3795,9 @@ ROUTES['supplier/dashboard'] = function(){
   const invited = supplierInvited();
   const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || q.status!=='submitted'; }).filter(p=>['sourcing','quotes_received'].includes(p.status));
   const submitted = invited.filter(p=>{ const q=supplierQuoteFor(p); return q && q.status==='submitted'; });
-  const activeOrders = invited.filter(p=>p.order && p.selectedSupplierId===STATE.supplierId && ['awarded','in_production'].includes(p.status));
-  const completedOrders = invited.filter(p=>p.order && p.selectedSupplierId===STATE.supplierId && p.status==='completed');
-  const won = invited.filter(p=>p.selectedSupplierId===STATE.supplierId).length;
+  const activeOrders = invited.filter(p=>p.order && supplierWon(p) && ['awarded','in_production'].includes(p.status));
+  const completedOrders = invited.filter(p=>p.order && supplierWon(p) && p.status==='completed');
+  const won = invited.filter(supplierWon).length;
   const winRate = submitted.length? Math.round(won/submitted.length*100):0;
   const revenue = [...activeOrders,...completedOrders].reduce((s,p)=>s+p.order.supplierCost,0);
   const recent = invited.flatMap(p=>supplierSafeActivity(p.activity).map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,6);
@@ -3921,14 +3950,30 @@ ROUTES['supplier/quotes'] = function(){
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
-        <td>${p.status==='completed'?'<span class="badge badge-purple">Completada</span>':p.selectedSupplierId===STATE.supplierId?'<span class="badge badge-green">Ganada</span>':(p.status==='customer_review'||p.shortlist.length===0)?'<span class="badge badge-blue">En Revisión</span>':'<span class="badge badge-gray">Rechazada</span>'}</td>
+        <td>${supplierQuoteStatusBadge(p)}</td>
       </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
 
+// True only once INNOUS has authorized the project (see App.authorizeProject) —
+// everywhere the supplier's own portal would reveal "you won this RFQ" checks
+// this instead of the raw selectedSupplierId match, so the award stays
+// invisible to them until INNOUS releases it.
+function supplierWon(p){ return p.selectedSupplierId===STATE.supplierId && !!p.innousAuthorizedAt; }
+function supplierQuoteStatusBadge(p){
+  // Checked in this order on purpose: an unauthorized win must never fall
+  // through to "Completada"/"Ganada" below, however far along the project
+  // otherwise looks — from this supplier's point of view it's still just
+  // "under review" until INNOUS says otherwise.
+  if(p.selectedSupplierId===STATE.supplierId && !p.innousAuthorizedAt) return '<span class="badge badge-blue">En Revisión</span>';
+  if(p.status==='completed') return '<span class="badge badge-purple">Completada</span>';
+  if(supplierWon(p)) return '<span class="badge badge-green">Ganada</span>';
+  if(p.status==='customer_review'||p.shortlist.length===0) return '<span class="badge badge-blue">En Revisión</span>';
+  return '<span class="badge badge-gray">Rechazada</span>';
+}
 /* ---- Supplier Active Orders ---- */
-function supplierOrders(){ return PROJECTS.filter(p=>p.selectedSupplierId===STATE.supplierId && p.order); }
+function supplierOrders(){ return PROJECTS.filter(p=>supplierWon(p) && p.order); }
 ROUTES['supplier/orders'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed');
   return `
@@ -3958,7 +4003,7 @@ function supplierOrderCard(p){
 
 /* ---- Supplier Order Detail (can update production status) ---- */
 ROUTES['supplier/order'] = function(id){
-  const p = findProject(id); if(!p || p.selectedSupplierId!==STATE.supplierId || !p.order) return emptyState('search','Pedido no encontrado','');
+  const p = findProject(id); if(!p || !supplierWon(p) || !p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
   const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabel(s, true));
   const nextStatus = supplierNextOrderStatus(p);
@@ -4057,7 +4102,7 @@ ROUTES['supplier/performance'] = function(){
   const s = currentSupplier();
   const invited = supplierInvited();
   const submitted = invited.filter(p=>{const q=supplierQuoteFor(p); return q&&q.status==='submitted';});
-  const won = invited.filter(p=>p.selectedSupplierId===s.id);
+  const won = invited.filter(supplierWon);
   const winRate = submitted.length? Math.round(won.length/submitted.length*100):0;
   const isNew = s.projects===0 && s.rating===0;
   return `
@@ -5073,7 +5118,7 @@ const App = {
     const s = p.shortlist.find(x=>x.supplierId===sid);
     if(p.isDemo){
       p.selectedSupplierId = sid; p.selectedQuote = s; p.status = 'awarded';
-      setOrderState(p, 'order_confirmed');
+      setOrderState(p, 'order_confirmed', false);
       logActivity(p, customerName(p.customerId), 'Customer selected manufacturing option. Order confirmed.');
       closeModal();
       showToast(`Order created — ${p.id}`, 'success');
@@ -5090,6 +5135,32 @@ const App = {
     closeModal();
     showToast(`Order created — ${p.id}`, 'success');
     navigate('#/client/order/'+pid);
+  },
+  /* Deliberate gap between "client picked a supplier" and "supplier finds
+     out" — see rfqStageMessage()/orderStageMessage()/supplierOrders() for
+     the other half of this: everywhere the supplier's own portal would
+     otherwise reveal they won, it checks p.innousAuthorizedAt first and
+     falls back to showing the RFQ as still pending review. This is the only
+     place that timestamp ever gets set. */
+  async authorizeProject(pid){
+    const p = findProject(pid); if(!p || !p.selectedSupplierId || p.innousAuthorizedAt) return;
+    const now = new Date();
+    if(!p.isDemo){
+      const { error } = await sb.from('projects').update({ innous_authorized_at: now.toISOString() }).eq('id', pid);
+      if(error){ showToast(error.message); return; }
+      if(isRealAccountId(p.selectedSupplierId)){
+        const { error: e2 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: [p.selectedSupplierId],
+          p_title: `Tu cotización para ${p.id} fue seleccionada`,
+          p_body: `INNOUS autorizó el proyecto "${p.projectName}" — ya puedes empezar a trabajar en él.`,
+          p_project_id: p.id,
+        });
+        if(e2) console.error('innous_send_notification (authorize) failed', e2);
+      }
+    }
+    p.innousAuthorizedAt = now;
+    showToast('Project authorized — supplier notified', 'success');
+    route();
   },
 
   /* ---- Supplier quote submission ---- */
