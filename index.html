@@ -34,6 +34,9 @@
   --warning-soft:#FFFBEB;
   --danger:#B91C1C;
   --danger-soft:#FEF2F2;
+  --purple:#6D28D9;
+  --purple-soft:#F1E9FB;
+  --navy-soft:#E7EEF3;
   --radius:10px;
   --radius-sm:6px;
   --shadow-sm:0 1px 2px rgba(24,24,27,0.05);
@@ -134,10 +137,11 @@ svg{display:block;}
 .nav-item{
   display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);font-size:13.5px;
   font-weight:500;color:var(--ink-secondary);width:100%;text-align:left;margin-bottom:1px;
+  transition:background .12s,color .12s;
 }
 .nav-item svg{width:16px;height:16px;stroke-width:2px;flex:0 0 auto;}
 .nav-item:hover{background:var(--surface-alt);color:var(--ink);}
-.nav-item.active{background:var(--navy);color:#fff;}
+.nav-item.active{background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;}
 .nav-item.active svg{stroke:#fff;}
 .nav-badge{margin-left:auto;background:var(--accent-soft);color:var(--accent-ink);font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:20px;}
 .nav-item.active .nav-badge{background:rgba(255,255,255,0.18);color:#fff;}
@@ -174,11 +178,12 @@ svg{display:block;}
 .section-sub{font-size:12.5px;color:var(--ink-tertiary);margin-bottom:14px;}
 
 /* ============ BUTTONS ============ */
-.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;border:1px solid transparent;white-space:nowrap;transition:background .12s,border-color .12s;}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;border:1px solid transparent;white-space:nowrap;transition:background .15s,border-color .12s,box-shadow .15s,transform .15s;}
 .btn svg{width:15px;height:15px;}
-.btn-primary{background:var(--ink);color:#fff;}
-.btn-primary:hover{background:#000;}
-.btn-primary:disabled{background:var(--border-strong);color:var(--ink-tertiary);cursor:not-allowed;}
+.btn-primary{background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
+.btn-primary:hover{background:linear-gradient(100deg,var(--navy-deep),var(--accent-ink));box-shadow:0 6px 18px -6px rgba(0,56,101,0.5);transform:translateY(-1px);}
+.btn-primary:active{transform:translateY(0);}
+.btn-primary:disabled{background:var(--border-strong);color:var(--ink-tertiary);cursor:not-allowed;box-shadow:none;transform:none;}
 .btn-accent{background:var(--accent);color:#fff;}
 .btn-accent:hover{background:var(--accent-ink);}
 .btn-secondary{background:var(--surface);border-color:var(--border-strong);color:var(--ink);}
@@ -206,11 +211,17 @@ svg{display:block;}
 @media(max-width:640px){.grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr;}}
 
 /* ============ KPI ============ */
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);transition:border-color .15s,box-shadow .15s,transform .15s;}
+.kpi-card:hover{border-color:var(--border-strong);box-shadow:var(--shadow-md);transform:translateY(-1px);}
 .kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .kpi-label{font-size:12px;color:var(--ink-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
 .kpi-icon{width:28px;height:28px;border-radius:7px;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;}
 .kpi-icon svg{width:14px;height:14px;stroke:var(--ink-secondary);}
+.kpi-icon-blue{background:var(--accent-soft);} .kpi-icon-blue svg{stroke:var(--accent-ink);}
+.kpi-icon-green{background:var(--success-soft);} .kpi-icon-green svg{stroke:var(--success);}
+.kpi-icon-amber{background:var(--warning-soft);} .kpi-icon-amber svg{stroke:var(--warning);}
+.kpi-icon-purple{background:var(--purple-soft);} .kpi-icon-purple svg{stroke:var(--purple);}
+.kpi-icon-navy{background:var(--navy-soft);} .kpi-icon-navy svg{stroke:var(--navy);}
 .kpi-value{font-size:26px;font-weight:800;letter-spacing:-0.5px;}
 .kpi-sub{font-size:12px;color:var(--ink-tertiary);margin-top:4px;display:flex;align-items:center;gap:4px;}
 .kpi-sub.up{color:var(--success);}
@@ -370,10 +381,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:20px;}
 .tab-btn{padding:10px 4px;margin-right:20px;font-size:13.5px;font-weight:600;color:var(--ink-tertiary);border-bottom:2px solid transparent;}
 .tab-btn:hover{color:var(--ink);}
-.tab-btn.active{color:var(--ink);border-color:var(--ink);}
+.tab-btn.active{color:var(--accent-ink);border-color:var(--accent-ink);}
 
 .empty-state{text-align:center;padding:50px 20px;color:var(--ink-tertiary);}
-.empty-state svg{width:36px;height:36px;margin:0 auto 12px;stroke:var(--ink-tertiary);}
+.empty-state-icon{width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+.empty-state-icon svg{width:22px;height:22px;stroke:var(--accent-ink);}
 .empty-state-title{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;}
 
 .stars{display:inline-flex;gap:1px;}
@@ -1566,10 +1578,21 @@ function stars(rating){
 }
 function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
 /* Circular avatar — shows an uploaded (already square-cropped) photo when set, otherwise initials on a solid color. */
+// A small, deterministic palette so avatars without an explicit brand color
+// (e.g. every row in the customer/supplier lists) each get a distinct,
+// consistent color derived from their initials — instead of every single
+// company reading as the same flat navy/black circle.
+const AVATAR_PALETTE = ['var(--navy)','var(--accent-ink)','var(--success)','var(--purple)','var(--warning)','var(--danger)'];
+function avatarColorFor(seed){
+  const s = (seed||'').toString();
+  let h = 0;
+  for(let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
 function avatarHtml(photo, initialsText, bg, size){
   const sizeStyle = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size*0.38)}px;` : '';
   if(photo) return `<div class="avatar" style="padding:0;overflow:hidden;${sizeStyle}"><img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;"></div>`;
-  return `<div class="avatar" style="${bg?`background:${bg};`:''}${sizeStyle}">${initialsText}</div>`;
+  return `<div class="avatar" style="background:${bg||avatarColorFor(initialsText)};${sizeStyle}">${initialsText}</div>`;
 }
 function fileIconChip(f){
   const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
@@ -2204,7 +2227,7 @@ function route(){
   if(STATE.authMode!=='guest') persistRealData();
 }
 function emptyState(icon,title,sub){
-  return `<div class="empty-state"><i data-lucide="${icon}"></i><div class="empty-state-title">${title}</div><div>${sub}</div></div>`;
+  return `<div class="empty-state"><div class="empty-state-icon"><i data-lucide="${icon}"></i></div><div class="empty-state-title">${title}</div><div>${sub}</div></div>`;
 }
 function navigate(path){
   // Render synchronously right away rather than relying on the browser's native
@@ -2265,8 +2288,22 @@ ROUTES['client/dashboard'] = function(){
   </div>`;
 };
 
+// Icon → color-tone lookup so every KPI card across the app (client, supplier
+// and INNOUS dashboards, detail pages, performance pages) gets a consistent,
+// meaningful splash of color without every one of the ~30 call sites needing
+// to specify it — money metrics read green, pipeline/document metrics read
+// blue, production metrics read navy, performance/ratings read amber, and
+// margin/rate metrics read purple.
+const KPI_ICON_TONE = {
+  'dollar-sign':'green','wallet':'green','check-circle-2':'green','check-circle':'green',
+  'file-text':'blue','file-diff':'blue','send':'blue','inbox':'blue',
+  'package':'navy','cog':'navy','factory':'navy',
+  'star':'amber','clock':'amber','trophy':'amber',
+  'trending-up':'purple','target':'purple','percent':'purple','shield-check':'purple',
+};
 function kpiCard(label,value,sub,icon){
-  return `<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">${label}</span><div class="kpi-icon"><i data-lucide="${icon}"></i></div></div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
+  const tone = KPI_ICON_TONE[icon] || 'blue';
+  return `<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">${label}</span><div class="kpi-icon kpi-icon-${tone}"><i data-lucide="${icon}"></i></div></div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
 function rfqMiniTable(list){
   return `<table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Process</th><th>Status</th></tr></thead><tbody>
@@ -2829,7 +2866,7 @@ ROUTES['innous/customer'] = function(id){
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/customers">Customers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
-    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), 'var(--navy)', 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), null, 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
         <button class="btn btn-primary" onclick="App.startGeneralChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button>
         <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
@@ -2895,7 +2932,7 @@ ROUTES['innous/supplier'] = function(id){
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/suppliers">Suppliers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
-    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), 'var(--ink)', 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), null, 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
         <button class="btn btn-primary" onclick="App.startGeneralChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button>
         <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
