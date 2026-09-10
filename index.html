@@ -1315,14 +1315,32 @@ function recalcSupplierMetrics(supplierId){
   if(!completed.length) return;
   let onTimeCount=0, qualityCount=0;
   completed.forEach(p=>{
+    // Demo orders carry a full milestone history with a real "delivered on"
+    // date; real orders don't persist per-stage dates yet, so approximate
+    // with "right now" — accurate for the common case (this runs the moment
+    // an order is actually marked Delivered) if a bit off for a metrics
+    // recompute long after the fact (e.g. from App.setQualityStatus).
     const dm = p.order.milestones.find(m=>m.key==='delivered');
-    if(dm && dm.date && new Date(dm.date) <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
+    const deliveredOn = dm && dm.date ? new Date(dm.date) : new Date();
+    if(deliveredOn <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
     if(p.order.quality.status==='approved') qualityCount++;
   });
   s.onTime = Math.round(onTimeCount/completed.length*100);
   s.quality = Math.round(qualityCount/completed.length*100);
   s.rating = Math.round((s.onTime/100*2.5 + s.quality/100*2.5)*10)/10;
   s.projects = completed.length;
+}
+/* recalcSupplierMetrics() above only updates the in-memory copy — for a
+   real supplier that's lost the moment anyone reloads (their row in the
+   database still has whatever it started with). Call this right after,
+   from an INNOUS session (the only one with write access to someone
+   else's supplier row), to make it stick. */
+async function persistSupplierMetrics(supplierId){
+  if(!isRealAccountId(supplierId)) return;
+  const s = SUPPLIERS.find(x=>x.id===supplierId); if(!s) return;
+  try{
+    await sb.from('suppliers').update({ rating: s.rating, on_time_pct: s.onTime, quality_pct: s.quality, projects_won: s.projects }).eq('user_id', supplierId);
+  }catch(e){}
 }
 
 /* ---------- Global App State ---------- */
@@ -3351,7 +3369,7 @@ ROUTES['supplier/performance'] = function(){
       <div class="section-title">Proyectos Completados</div>
       <div class="section-sub">${s.projects} proyectos completados con clientes de INNOUS hasta la fecha.</div>
       <div class="table-wrap" style="margin-top:12px;"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Entregado</th></tr></thead><tbody>
-        ${supplierOrders().filter(p=>p.status==='completed').map(p=>`<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('check-circle-2','Aún no hay proyectos completados','')}</td></tr>`}
+        ${supplierOrders().filter(p=>p.status==='completed').map(p=>`<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td class="td-sub">${p.order.logistics.estimatedDelivery?fmtDate(p.order.logistics.estimatedDelivery):'—'}</td></tr>`).join('') || `<tr><td colspan="4">${emptyState('check-circle-2','Aún no hay proyectos completados','')}</td></tr>`}
       </tbody></table></div>
     </div>
   </div>`;
@@ -4043,29 +4061,47 @@ const App = {
     showToast('RFQ status updated');
     route();
   },
-  advanceOrderStatus(pid){
+  async advanceOrderStatus(pid){
     const p = findProject(pid);
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     const next = ORDER_STATUS_FLOW[idx+1];
     if(!next) return;
     p.order.status = next;
-    p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08');
+    if(p.order.milestones[idx+1]){ p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08'); }
     // Payment status is deliberately NOT touched here — production progress is the
     // supplier's call, billing/collection is INNOUS's (see App.setPaymentStatus).
-    if(next==='delivered'){ p.status='completed'; recalcSupplierMetrics(p.selectedSupplierId); }
-    else if(p.status==='awarded') p.status='in_production';
+    const justCompleted = next==='delivered';
+    const justStarted = p.status==='awarded';
+    if(justCompleted){ p.status='completed'; recalcSupplierMetrics(p.selectedSupplierId); }
+    else if(justStarted) p.status='in_production';
     logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
+    if(!p.isDemo){
+      const { error: e1 } = await sb.from('orders').update({status: next}).eq('project_id', pid);
+      if(e1){ showToast(e1.message); return; }
+      if(justCompleted || justStarted){
+        // Whichever role is advancing the order writes this — INNOUS always
+        // can (its usual "for all"); the supplier can too, but only for its
+        // own awarded project (see supabase-fix10-order-status.sql).
+        const { error: e2 } = await sb.from('projects').update({status: p.status}).eq('id', pid);
+        if(e2){ showToast(e2.message); return; }
+      }
+      if(justCompleted) await persistSupplierMetrics(p.selectedSupplierId);
+    }
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
     route();
   },
-  setPaymentStatus(pid, status){
+  async setPaymentStatus(pid, status){
     const p = findProject(pid);
     p.order.paymentStatus = status;
     logActivity(p, 'INNOUS', `Payment status updated to "${status}".`);
+    if(!p.isDemo){
+      const { error } = await sb.from('orders').update({payment_status: status}).eq('project_id', pid);
+      if(error){ showToast(error.message); return; }
+    }
     showToast(`Payment status set to ${status}`, 'success');
     route();
   },
-  setQualityStatus(pid, status){
+  async setQualityStatus(pid, status){
     const p = findProject(pid);
     p.order.quality.status = status;
     if(status==='ncr_open'){
@@ -4075,6 +4111,11 @@ const App = {
     }
     logActivity(p, 'INNOUS', `Quality inspection ${status==='approved'?'approved':'rejected — NCR opened'}.`);
     recalcSupplierMetrics(p.selectedSupplierId);
+    if(!p.isDemo){
+      const { error } = await sb.from('orders').update({quality_status: p.order.quality.status, quality_ncr: p.order.quality.ncr}).eq('project_id', pid);
+      if(error){ showToast(error.message); return; }
+      await persistSupplierMetrics(p.selectedSupplierId);
+    }
     showToast(status==='approved' ? 'Quality approved' : 'Quality rejected — NCR opened', status==='approved'?'success':undefined);
     route();
   },
