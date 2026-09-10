@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 /* ============ RESET & TOKENS ============ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -549,9 +550,14 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <div id="toast-container" class="toast-container"></div>
 <div id="modal-root"></div>
+<div id="boot-loading" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#F7F7F5;z-index:9999;">
+  <div style="width:34px;height:34px;border-radius:50%;border:3px solid #E4E4E7;border-top-color:#00A3E0;animation:boot-spin .8s linear infinite;"></div>
+  <div style="font-family:'Ubuntu',sans-serif;font-weight:700;color:#52525B;font-size:13.5px;" id="boot-loading-text">Cargando INNOUS…</div>
+</div>
+<style>@keyframes boot-spin{to{transform:rotate(360deg);}}</style>
 <div id="auth-root" style="display:none;"></div>
 
-<div class="app-shell" id="app-shell">
+<div class="app-shell" id="app-shell" style="display:none;">
   <header class="topbar">
     <div class="topbar-left">
       <button class="mobile-menu-btn" onclick="App.toggleSidebar()"><i data-lucide="menu"></i></button>
@@ -710,6 +716,10 @@ function innousNextOrderStatus(p){
    the "example data loaded" flag itself (both get cleared together). */
 function loadDeletedDemoIds(){ try{ return JSON.parse(localStorage.getItem('innous_deleted_demo')||'[]'); }catch(e){ return []; } }
 function saveDeletedDemoIds(ids){ try{ localStorage.setItem('innous_deleted_demo', JSON.stringify(ids)); }catch(e){} }
+/* Real accounts are keyed by their Supabase auth UUID; example/demo records
+   use short hand-written ids like 'c1'/'s1'. Used to tell which storage a
+   customer/supplier id actually lives in. */
+function isRealAccountId(id){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id)); }
 
 /* ---------- Customers ---------- */
 const CUSTOMERS = [
@@ -796,25 +806,104 @@ function mockFiles(process){
 
 let PROJECTS = [];
 
-/* Re-inserts a real signed-up account's own company/supplier record into the
-   in-memory CUSTOMERS/SUPPLIERS arrays (which are otherwise fully rebuilt,
-   seeded-demo-data-only, on every page load by buildProjects()). The account
-   starts with zero projects — clientProjects()/supplierInvited() naturally
-   return an empty list for a brand-new id, no special-casing needed. */
-function hydrateAccountRecord(account){
-  if(account.role==='CLIENT'){
-    if(!CUSTOMERS.find(c=>c.id===account.refId)){
-      CUSTOMERS.push({id:account.refId, company:account.company, contact:account.contact, email:account.email, phone:account.phone||'', city:account.city||'', industry:account.industry||'', registeredAt:daysFromNow(0), generalChat:[], photo:account.photo||null});
-    }
-  } else if(account.role==='SUPPLIER'){
-    if(!SUPPLIERS.find(s=>s.id===account.refId)){
-      SUPPLIERS.push({id:account.refId, name:account.company, contactName:account.contact, email:account.email, phone:account.phone||'', operators:account.operators||0, yearsOperating:account.yearsOperating||0, registeredAt:daysFromNow(0), generalChat:[], city:account.city||'Not set', capabilities:account.capabilities&&account.capabilities.length?account.capabilities:['CNC Machining'], machines:[], certs:account.certs||[], capacity:'Not set', rating:0, onTime:0, quality:0, projects:0, photo:account.photo||null});
-    }
-  } else if(account.role==='INNOUS'){
-    // INNOUS is one shared operations identity, not a per-account customer/supplier record
-    INNOUS_USER.name = account.contact || INNOUS_USER.name;
-    INNOUS_USER.photo = account.photo || INNOUS_USER.photo;
+/* ---------- Real backend (Supabase) ----------
+   Real, shared authentication and data — a client on one device and a
+   supplier on another now actually see and interact with each other,
+   which localStorage alone could never do. Confidentiality (client never
+   sees the real supplier, supplier never sees markup/other suppliers) is
+   enforced server-side by Row Level Security policies on the database
+   itself, not just by what this file chooses to render.
+   RFQs/quotes/orders/messages are NOT wired to Supabase yet — those still
+   run on the local demo data layer below, pending the next phase. */
+const SUPABASE_URL = 'https://axbtkcfblzgyosxzxiud.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4YnRrY2ZibHpneW9zeHp4aXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDU2NDUsImV4cCI6MjEwNDU4MTY0NX0.7eXLIi2c-6dxVUAX0cbNe7B54KriVgDeH6Unq-UbUfc';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* Supabase rows use snake_case columns; the rest of this file expects the
+   exact camelCase shape CUSTOMERS/SUPPLIERS always had, so every render
+   function downstream keeps working unchanged. */
+function customerRowToJs(row){
+  return {
+    id: row.user_id, company: row.company, contact: row.contact, email: row.email,
+    phone: row.phone||'', city: row.city||'', industry: row.industry||'',
+    registeredAt: row.registered_at ? new Date(row.registered_at) : null,
+    photo: row.photo_url || null, generalChat: [],
+  };
+}
+function supplierRowToJs(row){
+  return {
+    id: row.user_id, name: row.name, contactName: row.contact_name||'', email: row.email||'', phone: row.phone||'',
+    city: row.city||'', capabilities: row.capabilities||[], machines: row.machines||[], certs: row.certs||[],
+    capacity: row.capacity||'Not set', operators: row.operators||0, yearsOperating: row.years_operating||0,
+    registeredAt: row.registered_at ? new Date(row.registered_at) : null,
+    rating: row.rating||0, onTime: row.on_time_pct||0, quality: row.quality_pct||0, projects: row.projects_won||0,
+    photo: row.photo_url || null, generalChat: [],
+  };
+}
+/* INNOUS is the one role that must see every real customer/supplier, not
+   just its own row — RLS already allows this (my_role()='INNOUS' grants
+   'for all' on both tables), this just actually asks for it and merges the
+   real rows in alongside the hardcoded demo ones. */
+async function refreshRealCustomersAndSuppliers(){
+  const [{ data: crows }, { data: srows }] = await Promise.all([
+    sb.from('customers').select('*'),
+    sb.from('suppliers').select('*'),
+  ]);
+  (crows||[]).forEach(row=>{
+    const c = customerRowToJs(row);
+    const idx = CUSTOMERS.findIndex(x=>x.id===c.id);
+    if(idx>-1) CUSTOMERS[idx]=c; else CUSTOMERS.push(c);
+  });
+  (srows||[]).forEach(row=>{
+    const s = supplierRowToJs(row);
+    const idx = SUPPLIERS.findIndex(x=>x.id===s.id);
+    if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
+  });
+}
+/* Called once we know a Supabase auth session is valid (fresh login, signup,
+   or a restored session on page load) — reads the matching profile and
+   customer/supplier row, merges it into CUSTOMERS/SUPPLIERS, sets STATE, and
+   enters the app. If no profile exists (shouldn't normally happen) the
+   session is treated as invalid rather than leaving the app half-logged-in. */
+async function enterAppAsUser(user){
+  const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+  if(error || !profile){
+    await sb.auth.signOut();
+    showToast('No se encontró tu perfil. Contacta a soporte.');
+    document.getElementById('app-shell').style.display = 'none';
+    document.getElementById('auth-root').style.display = '';
+    renderAuthRoot();
+    return;
   }
+  STATE.authMode = 'account';
+  STATE.role = profile.role;
+  if(profile.role==='CLIENT'){
+    const { data: crow } = await sb.from('customers').select('*').eq('user_id', user.id).maybeSingle();
+    if(crow){
+      const c = customerRowToJs(crow);
+      const idx = CUSTOMERS.findIndex(x=>x.id===c.id);
+      if(idx>-1) CUSTOMERS[idx]=c; else CUSTOMERS.push(c);
+      STATE.clientId = c.id;
+    }
+  } else if(profile.role==='SUPPLIER'){
+    const { data: srow } = await sb.from('suppliers').select('*').eq('user_id', user.id).maybeSingle();
+    if(srow){
+      const s = supplierRowToJs(srow);
+      const idx = SUPPLIERS.findIndex(x=>x.id===s.id);
+      if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
+      STATE.supplierId = s.id;
+    }
+  } else { // INNOUS — the one role that needs to see every real account, not just its own
+    STATE.innousUserId = user.id;
+    INNOUS_USER.name = profile.display_name || user.email;
+    INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
+    await refreshRealCustomersAndSuppliers();
+  }
+  document.getElementById('auth-root').style.display = 'none';
+  document.getElementById('app-shell').style.display = '';
+  lastRoutedHash = null;
+  const home = profile.role==='CLIENT' ? '#/client/dashboard' : profile.role==='SUPPLIER' ? '#/supplier/dashboard' : '#/innous/overview';
+  navigate(home);
 }
 function buildProjects(){
   PROJECTS = [];
@@ -1111,14 +1200,6 @@ const STATE = {
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
-/* ---------- Account persistence (localStorage — this is a front-end-only
-   prototype, so "auth" just means matching a username/password kept in the
-   browser's own storage; nothing is sent anywhere). ---------- */
-function loadAccounts(){ try{ return JSON.parse(localStorage.getItem('innous_accounts')||'[]'); }catch(e){ return []; } }
-function saveAccounts(list){ try{ localStorage.setItem('innous_accounts', JSON.stringify(list)); }catch(e){} }
-function loadSession(){ try{ return JSON.parse(localStorage.getItem('innous_session')||'null'); }catch(e){ return null; } }
-function saveSession(session){ try{ if(session) localStorage.setItem('innous_session', JSON.stringify(session)); else localStorage.removeItem('innous_session'); }catch(e){} }
-
 /* ---------- Platform settings (INNOUS Settings page) — persisted so changes
    actually stick, and so the default markup really is used across the app. ---------- */
 const DEFAULT_SETTINGS = {
@@ -1129,14 +1210,12 @@ function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem('inn
 function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stringify(s)); }catch(e){} }
 STATE.settings = loadSettings();
 
-/* ---------- Real-data persistence ----------
-   Accounts/sessions already persisted to localStorage, but CUSTOMERS/SUPPLIERS/
-   PROJECTS live purely in memory and get rebuilt from scratch on every load —
-   which used to mean every real client, supplier and RFQ vanished on refresh
-   except whichever single account happened to be logged in at that moment
-   (hydrateAccountRecord only restores the CURRENT session's own record).
-   This layer persists every real (non-example) customer/supplier/project so a
-   refresh — or logging in as a different real account — sees the same world. */
+/* ---------- Real-data persistence (RFQs/orders only, for now) ----------
+   Customers and suppliers are real Supabase rows now (see enterAppAsUser
+   above) — no longer localStorage. Projects/RFQs/quotes/orders/messages
+   aren't wired to Supabase yet (next phase), so they still persist to
+   localStorage exactly as before, purely so a refresh doesn't lose an
+   in-progress demo RFQ. This is intentionally NOT shared across devices yet. */
 function reviveDates(obj){
   if(obj===null || obj===undefined) return obj;
   if(Array.isArray(obj)) return obj.map(reviveDates);
@@ -1146,8 +1225,6 @@ function reviveDates(obj){
 }
 function persistRealData(){
   try{
-    localStorage.setItem('innous_real_customers', JSON.stringify(CUSTOMERS.filter(c=>String(c.id).startsWith('cacct'))));
-    localStorage.setItem('innous_real_suppliers', JSON.stringify(SUPPLIERS.filter(s=>String(s.id).startsWith('sacct'))));
     localStorage.setItem('innous_real_projects', JSON.stringify(PROJECTS.filter(p=>!p.isDemo)));
   }catch(e){}
 }
@@ -1171,26 +1248,12 @@ function migrateLegacyOrder(order){
 }
 function loadRealData(){
   try{
-    const rc = reviveDates(JSON.parse(localStorage.getItem('innous_real_customers')||'[]'));
-    const rs = reviveDates(JSON.parse(localStorage.getItem('innous_real_suppliers')||'[]'));
     const rp = reviveDates(JSON.parse(localStorage.getItem('innous_real_projects')||'[]'));
-    rc.forEach(c=>{ if(!CUSTOMERS.find(x=>x.id===c.id)) CUSTOMERS.push(c); });
-    rs.forEach(s=>{ if(!SUPPLIERS.find(x=>x.id===s.id)) SUPPLIERS.push(s); });
     rp.forEach(p=>{ migrateLegacyOrder(p.order); if(!PROJECTS.find(x=>x.id===p.id)) PROJECTS.push(p); });
   }catch(e){}
 }
 function clearRealData(){
-  localStorage.removeItem('innous_real_customers');
-  localStorage.removeItem('innous_real_suppliers');
   localStorage.removeItem('innous_real_projects');
-}
-let ACCOUNTS = loadAccounts();
-// INNOUS is the platform operator, not something anyone signs up as — provision one
-// shared ops login automatically so there's a genuine way in through the same Log In
-// form every other account uses.
-if(!ACCOUNTS.find(a=>a.role==='INNOUS')){
-  ACCOUNTS.push({username:'innous', password:'innous2026', role:'INNOUS', refId:null, company:'', contact:'Ops Team', email:'ops@innous.com.mx', photo:null, tourDone:true});
-  saveAccounts(ACCOUNTS);
 }
 
 // Fall back to an empty placeholder record rather than throwing — the app starts with
@@ -1681,9 +1744,8 @@ function renderSignupForm(){
               </select>
             </div>
             `}
-            <div class="form-group"><label class="field-label">${es?'Usuario':'Username'}</label><input type="text" name="username" required autocomplete="username" minlength="4" pattern="[a-z0-9]{4,}" title="${es?'Solo minúsculas y números, sin espacios, mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces, at least 4 characters'}" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9]/g,'')"><div class="field-hint">${es?'Solo minúsculas y números, sin espacios · mínimo 4 caracteres':'Lowercase letters and numbers only, no spaces · at least 4 characters'}</div></div>
-            <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="4" autocomplete="new-password"></div>
-            <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="4" autocomplete="new-password"></div>
+            <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="6" autocomplete="new-password"></div>
+            <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="6" autocomplete="new-password"></div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>${es?'Crear Cuenta':'Create Account'}</button>
           </form>
         </div>
@@ -1704,7 +1766,7 @@ function renderLoginForm(){
           <div class="auth-card-title">Log in</div>
           <div class="auth-card-sub">Welcome back to INNOUS.</div>
           <form onsubmit="return App.submitLogin(event)">
-            <div class="form-group"><label class="field-label">Username</label><input type="text" name="username" required autocomplete="username"></div>
+            <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required autocomplete="email"></div>
             <div class="form-group"><label class="field-label">Password</label><input type="password" name="password" required autocomplete="current-password"></div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>Log In</button>
           </form>
@@ -3201,54 +3263,70 @@ const App = {
   goToSignup(){ STATE.authView='role-pick'; renderAuthRoot(); },
   backToLanding(){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); },
   pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; renderAuthRoot(); },
-  submitSignup(e){
+  async submitSignup(e){
     e.preventDefault();
     const f = new FormData(e.target);
-    const role = STATE.signupRole;
+    const role = STATE.signupRole; // always CLIENT or SUPPLIER — the role picker never offers INNOUS
     const es = role==='SUPPLIER';
-    const username = f.get('username').trim().toLowerCase().replace(/[^a-z0-9]/g,'');
-    if(username.length<4){ showToast(es?'El usuario debe tener al menos 4 caracteres (solo minúsculas y números)':'Username must be at least 4 characters (lowercase letters and numbers only)'); return false; }
+    const email = f.get('email').trim().toLowerCase();
     const password = f.get('password'), password2 = f.get('password2');
     if(password!==password2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return false; }
-    if(ACCOUNTS.find(a=>a.username===username)){ showToast(es?'Ese usuario ya existe':'That username is already taken'); return false; }
+    if(password.length<6){ showToast(es?'La contraseña debe tener al menos 6 caracteres':'Password must be at least 6 characters'); return false; }
     if(es && f.getAll('capabilities').length===0){ showToast('Selecciona al menos un servicio que ofreces'); return false; }
-    const refId = (role==='CLIENT'?'c':'s')+'acct'+Date.now();
-    const cityState = `${f.get('city').trim()}, ${f.get('state').trim()}`;
-    const account = { username, password, role, refId, company:f.get('company').trim(), contact:f.get('contact').trim(), email:f.get('email').trim(), phone:f.get('phone').trim(), city:cityState, photo:null, tourDone:false };
-    if(role==='CLIENT'){ account.industry = f.get('industry'); }
-    else if(role==='SUPPLIER'){ account.capabilities = f.getAll('capabilities'); account.certs = f.getAll('certs'); account.yearsOperating = parseInt(f.get('yearsOperating'),10)||0; account.operators = parseInt(f.get('operators'),10)||0; }
-    ACCOUNTS.push(account); saveAccounts(ACCOUNTS);
-    App.logInAs(account);
-    showToast(es?'Cuenta creada':'Account created', 'success');
-    App.startTour();
+    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    try{
+      const { data, error } = await withTimeout(sb.auth.signUp({ email, password }), 12000, 'signup');
+      if(error || !data.user){
+        showToast(error?.message || (es?'No se pudo crear la cuenta':'Could not create account'));
+        if(submitBtn) submitBtn.disabled = false;
+        return false;
+      }
+      const cityState = `${f.get('city').trim()}, ${f.get('state').trim()}`;
+      const { error: profileErr } = await sb.from('profiles').insert({ user_id: data.user.id, role });
+      if(profileErr){ showToast(profileErr.message); if(submitBtn) submitBtn.disabled=false; return false; }
+      if(role==='CLIENT'){
+        await sb.from('customers').insert({
+          user_id: data.user.id, company: f.get('company').trim(), contact: f.get('contact').trim(), email,
+          phone: f.get('phone').trim(), city: cityState, industry: f.get('industry'),
+        });
+      } else {
+        await sb.from('suppliers').insert({
+          user_id: data.user.id, name: f.get('company').trim(), contact_name: f.get('contact').trim(), email,
+          phone: f.get('phone').trim(), city: cityState,
+          capabilities: f.getAll('capabilities'), certs: f.getAll('certs'),
+          years_operating: parseInt(f.get('yearsOperating'),10)||0, operators: parseInt(f.get('operators'),10)||0,
+        });
+      }
+      await withTimeout(enterAppAsUser(data.user), 15000, 'enterApp');
+      showToast(es?'Cuenta creada':'Account created', 'success');
+      App.startTour();
+    }catch(err){
+      console.error('submitSignup failed', err);
+      showToast(es?'No se pudo conectar. Intenta de nuevo.':'Could not connect. Please try again.');
+      if(submitBtn) submitBtn.disabled = false;
+    }
     return false;
   },
-  submitLogin(e){
+  async submitLogin(e){
     e.preventDefault();
     const f = new FormData(e.target);
-    const username = f.get('username').trim().toLowerCase();
+    const email = f.get('email').trim().toLowerCase();
     const password = f.get('password');
-    const account = ACCOUNTS.find(a=>a.username===username && a.password===password);
-    if(!account){ showToast('Invalid username or password'); return false; }
-    App.logInAs(account);
-    showToast(account.role==='SUPPLIER' ? 'Bienvenido de nuevo' : 'Welcome back', 'success');
+    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    try{
+      const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 12000, 'login');
+      if(error || !data.user){ showToast('Correo o contraseña incorrectos'); if(submitBtn) submitBtn.disabled=false; return false; }
+      await withTimeout(enterAppAsUser(data.user), 15000, 'enterApp');
+      showToast('Welcome back', 'success');
+    }catch(err){
+      console.error('submitLogin failed', err);
+      showToast('No se pudo conectar. Intenta de nuevo.');
+      if(submitBtn) submitBtn.disabled = false;
+    }
     return false;
   },
-  logInAs(account){
-    hydrateAccountRecord(account);
-    STATE.authMode = 'account';
-    STATE.role = account.role;
-    if(account.role==='CLIENT') STATE.clientId = account.refId;
-    else if(account.role==='SUPPLIER') STATE.supplierId = account.refId;
-    saveSession({username:account.username});
-    document.getElementById('auth-root').style.display='none';
-    document.getElementById('app-shell').style.display='';
-    lastRoutedHash = null;
-    const home = account.role==='CLIENT'?'#/client/dashboard':account.role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
-    navigate(home);
-  },
-  logOut(){
-    saveSession(null);
+  async logOut(){
+    await sb.auth.signOut();
     STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
     document.getElementById('app-shell').style.display='none';
     document.getElementById('auth-root').style.display='';
@@ -3285,7 +3363,7 @@ const App = {
      display as "Deleted Customer"/"Deleted Supplier" from then on (see
      customerName()/supplierName()), the same way a real ledger wouldn't
      un-happen a completed order just because the account was closed. */
-  deleteCustomer(id){
+  async deleteCustomer(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const proj = PROJECTS.filter(p=>p.customerId===id);
     const active = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
@@ -3293,13 +3371,19 @@ const App = {
     if(proj.length) msg += ` They have ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Customer".`;
     if(!confirm(msg)) return;
     CUSTOMERS.splice(CUSTOMERS.indexOf(c),1);
-    const accIdx = ACCOUNTS.findIndex(a=>a.refId===id);
-    if(accIdx>-1){ ACCOUNTS.splice(accIdx,1); saveAccounts(ACCOUNTS); }
-    else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) customer — remember so it stays gone after a refresh
+    if(isRealAccountId(id)){
+      // Removes their profile/customer rows so the app locks them out on their
+      // next login attempt. This doesn't remove the underlying login credential
+      // itself (that needs Supabase's admin API, deliberately kept out of this
+      // app for security) — but without a profile, enterAppAsUser() always
+      // signs them straight back out.
+      await sb.from('customers').delete().eq('user_id', id);
+      await sb.from('profiles').delete().eq('user_id', id);
+    } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) customer — remember so it stays gone after a refresh
     showToast('Customer account deleted', 'success');
     navigate('#/innous/customers');
   },
-  deleteSupplier(id){
+  async deleteSupplier(id){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
     const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(id));
     const active = proj.filter(p=>p.selectedSupplierId===id && ['awarded','in_production'].includes(p.status)).length;
@@ -3307,9 +3391,10 @@ const App = {
     if(proj.length) msg += ` They're on ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Supplier".`;
     if(!confirm(msg)) return;
     SUPPLIERS.splice(SUPPLIERS.indexOf(s),1);
-    const accIdx = ACCOUNTS.findIndex(a=>a.refId===id);
-    if(accIdx>-1){ ACCOUNTS.splice(accIdx,1); saveAccounts(ACCOUNTS); }
-    else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
+    if(isRealAccountId(id)){
+      await sb.from('suppliers').delete().eq('user_id', id);
+      await sb.from('profiles').delete().eq('user_id', id);
+    } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
     showToast('Supplier account deleted', 'success');
     navigate('#/innous/suppliers');
   },
@@ -3387,28 +3472,36 @@ const App = {
     `);
   },
   closeAccountModal(){ STATE.ui.accountDraft = null; closeModal(); },
-  saveAccount(){
+  async saveAccount(){
     const es = STATE.role==='SUPPLIER';
-    if(STATE.authMode==='account'){
-      const pw1 = document.getElementById('account-new-password')?.value || '';
-      const pw2 = document.getElementById('account-new-password2')?.value || '';
-      if(pw1 || pw2){
-        if(pw1.length<4){ showToast(es?'La contraseña debe tener al menos 4 caracteres':'Password must be at least 4 characters'); return; }
-        if(pw1!==pw2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return; }
-        const session = loadSession();
-        const account = session && ACCOUNTS.find(a=>a.username===session.username);
-        if(account){ account.password = pw1; saveAccounts(ACCOUNTS); showToast(es?'Contraseña actualizada':'Password updated', 'success'); }
-      }
+    // Validate the password fields (cheap, no network) before touching anything —
+    // and do the profile-field save BEFORE the password change, not after: changing
+    // the password rotates the session's access token, and an update sent right
+    // after that using the pre-rotation token could silently fail (or land on a
+    // stale token) instead of actually saving the name/photo change.
+    const pw1 = document.getElementById('account-new-password')?.value || '';
+    const pw2 = document.getElementById('account-new-password2')?.value || '';
+    if(pw1 || pw2){
+      if(pw1.length<6){ showToast(es?'La contraseña debe tener al menos 6 caracteres':'Password must be at least 6 characters'); return; }
+      if(pw1!==pw2){ showToast(es?'Las contraseñas no coinciden':'Passwords do not match'); return; }
     }
     const d = STATE.ui.accountDraft;
-    if(STATE.role==='CLIENT'){ const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo; }
-    else if(STATE.role==='SUPPLIER'){ const rec = currentSupplier(); rec.contactName = d.name.trim()||rec.contactName; rec.name = d.company.trim()||rec.name; rec.photo = d.photo; }
-    else { INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo; }
-    // a real signed-up account also persists these edits to localStorage, so they survive a reload
-    if(STATE.authMode==='account'){
-      const session = loadSession();
-      const account = session && ACCOUNTS.find(a=>a.username===session.username);
-      if(account){ account.contact = d.name.trim()||account.contact; account.company = d.company.trim()||account.company; account.photo = d.photo; saveAccounts(ACCOUNTS); }
+    let err = null;
+    if(STATE.role==='CLIENT'){
+      const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo;
+      if(STATE.authMode==='account'){ ({error: err} = await sb.from('customers').update({ contact: rec.contact, company: rec.company, photo_url: rec.photo }).eq('user_id', STATE.clientId)); }
+    } else if(STATE.role==='SUPPLIER'){
+      const rec = currentSupplier(); rec.contactName = d.name.trim()||rec.contactName; rec.name = d.company.trim()||rec.name; rec.photo = d.photo;
+      if(STATE.authMode==='account'){ ({error: err} = await sb.from('suppliers').update({ contact_name: rec.contactName, name: rec.name, photo_url: rec.photo }).eq('user_id', STATE.supplierId)); }
+    } else {
+      INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo;
+      if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo }).eq('user_id', STATE.innousUserId)); }
+    }
+    if(err){ showToast(err.message); return; }
+    if((pw1||pw2) && STATE.authMode==='account'){
+      const { error } = await sb.auth.updateUser({ password: pw1 });
+      if(error){ showToast(error.message); return; }
+      showToast(es?'Contraseña actualizada':'Password updated', 'success');
     }
     STATE.ui.accountDraft = null;
     closeModal();
@@ -3830,23 +3923,44 @@ if(localStorage.getItem('innous_demo_loaded')==='1'){
 loadRealData();
 window.addEventListener('hashchange', ()=>{ if(STATE.authMode!=='guest') route(); });
 let booted = false;
-function boot(){
+/* A slow or dropped connection to Supabase used to leave the page stuck
+   totally blank forever (both #auth-root and #app-shell start hidden, and
+   nothing ever un-hides them if the request never resolves). Race every
+   startup network call against a timeout, and show something — a spinner,
+   then a "this is slow" note, then a real error with a retry button —
+   instead of silence. */
+function hideBootLoading(){ document.getElementById('boot-loading')?.remove(); }
+function showBootError(msg){
+  const el = document.getElementById('boot-loading'); if(!el) return;
+  el.innerHTML = `
+    <div style="font-family:'Ubuntu',sans-serif;font-weight:700;color:#18181B;font-size:14px;text-align:center;max-width:320px;padding:0 20px;line-height:1.5;">${msg}</div>
+    <button onclick="location.reload()" style="padding:10px 22px;border-radius:9px;border:1px solid #D4D4D8;background:#fff;font-weight:600;font-size:13px;cursor:pointer;">Reintentar</button>
+  `;
+}
+function withTimeout(promise, ms, label){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout:'+label)), ms)),
+  ]);
+}
+async function boot(){
   if(booted) return; booted = true;
-  const session = loadSession();
-  const account = session && ACCOUNTS.find(a=>a.username===session.username);
-  if(account){
-    hydrateAccountRecord(account);
-    STATE.authMode = 'account';
-    STATE.role = account.role;
-    if(account.role==='CLIENT') STATE.clientId = account.refId; else STATE.supplierId = account.refId;
-    document.getElementById('auth-root').style.display = 'none';
-    document.getElementById('app-shell').style.display = '';
-    if(!location.hash) location.hash = account.role==='CLIENT' ? '#/client/dashboard' : '#/supplier/dashboard';
-    route();
-  } else {
-    document.getElementById('app-shell').style.display = 'none';
-    document.getElementById('auth-root').style.display = '';
-    renderAuthRoot();
+  const slowTimer = setTimeout(()=>{ const t=document.getElementById('boot-loading-text'); if(t) t.textContent='Esto está tardando más de lo normal…'; }, 4000);
+  try{
+    const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000, 'session');
+    if(session && session.user){
+      await withTimeout(enterAppAsUser(session.user), 15000, 'enterApp');
+    } else {
+      document.getElementById('app-shell').style.display = 'none';
+      document.getElementById('auth-root').style.display = '';
+      renderAuthRoot();
+    }
+    clearTimeout(slowTimer);
+    hideBootLoading();
+  }catch(err){
+    clearTimeout(slowTimer);
+    console.error('boot failed', err);
+    showBootError('No se pudo conectar con el servidor. Revisa tu conexión a internet e intenta de nuevo.');
   }
   lucide.createIcons();
 }
