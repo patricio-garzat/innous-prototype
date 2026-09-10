@@ -1151,6 +1151,7 @@ async function enterAppAsUser(user){
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
+    await refreshRealSettings();
   }
   document.getElementById('auth-root').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
@@ -1498,6 +1499,20 @@ const DEFAULT_SETTINGS = {
 };
 function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem('innous_settings')||'{}'); return {...DEFAULT_SETTINGS, ...saved, notif:{...DEFAULT_SETTINGS.notif, ...(saved.notif||{})}}; }catch(e){ return {...DEFAULT_SETTINGS, notif:{...DEFAULT_SETTINGS.notif}}; } }
 function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stringify(s)); }catch(e){} }
+function settingsRowToJs(row){
+  return {
+    legalName: row.legal_name, region: row.region, defaultMarkupPct: row.default_markup_pct,
+    notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
+  };
+}
+// Settings live in a real (shared, singleton) Supabase row now, so every INNOUS
+// admin on every device sees the same values — localStorage is kept only as an
+// instant-render fallback (see STATE.settings=loadSettings() above) for the brief
+// moment before this resolves on boot, not as the source of truth anymore.
+async function refreshRealSettings(){
+  const { data, error } = await sb.from('settings').select('*').eq('id',1).maybeSingle();
+  if(!error && data){ STATE.settings = settingsRowToJs(data); saveSettings(STATE.settings); }
+}
 STATE.settings = loadSettings();
 
 /* ---------- Real-data persistence (RFQs/orders only, for now) ----------
@@ -3862,9 +3877,16 @@ const App = {
     location.reload();
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
-  saveInnousSettings(){
-    STATE.settings = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
-    saveSettings(STATE.settings);
+  async saveInnousSettings(){
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
+    const { error } = await sb.from('settings').update({
+      legal_name: next.legalName, region: next.region, default_markup_pct: next.defaultMarkupPct,
+      notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
+      notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
+    }).eq('id',1);
+    if(error){ showToast(error.message); return; }
+    STATE.settings = next;
+    saveSettings(STATE.settings); // local cache only — the Supabase row above is now the source of truth
     showToast('Settings saved', 'success');
     route();
   },
