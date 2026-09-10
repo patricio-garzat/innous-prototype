@@ -1976,10 +1976,8 @@ function renderSignupForm(){
     <div class="signup-step" data-step="0" ${show(0)}>
       <div class="signup-step-title">${es?'Empresa y contacto':'Company & contact'}</div>
       <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
-      <div class="form-row">
-        <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
-        <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
-      </div>
+      <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
+      <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
       <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
       ${navBtns(0,false)}
     </div>`;
