@@ -13,6 +13,9 @@
      can redact it (white boxes over a logo, etc.) before it's ever shared
      with a supplier — see App.openRedactModal(). -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- Generates the formal, downloadable quote PDF a client gets once they
+     select a supplier — see generateQuotePdf() / App.downloadQuotePdf(). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <style>
 /* ============ RESET & TOKENS ============ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -1482,14 +1485,15 @@ const INNOUS_USER = { name:'Ops Team', photo:null };
 /* ---------- Platform settings (INNOUS Settings page) — persisted so changes
    actually stick, and so the default markup really is used across the app. ---------- */
 const DEFAULT_SETTINGS = {
-  legalName:'INNOUS Sourcing LLC', region:'United States ↔ Mexico', defaultMarkupPct:15,
+  legalName:'Grupo Industrial Innous de Mexico S. de R.L. de C.V.', address:'Palma Real No. 115, Fracc. Industrial Las Palmas Santa Catarina, N.L. 66368',
+  region:'United States ↔ Mexico', defaultMarkupPct:15,
   notif:{newRfq:true, quoteReceived:true, customerSelects:true, weeklySummary:false},
 };
 function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem('innous_settings')||'{}'); return {...DEFAULT_SETTINGS, ...saved, notif:{...DEFAULT_SETTINGS.notif, ...(saved.notif||{})}}; }catch(e){ return {...DEFAULT_SETTINGS, notif:{...DEFAULT_SETTINGS.notif}}; } }
 function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stringify(s)); }catch(e){} }
 function settingsRowToJs(row){
   return {
-    legalName: row.legal_name, region: row.region, defaultMarkupPct: row.default_markup_pct,
+    legalName: row.legal_name, address: row.address || DEFAULT_SETTINGS.address, region: row.region, defaultMarkupPct: row.default_markup_pct,
     notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
   };
 }
@@ -1678,6 +1682,106 @@ function avatarHtml(photo, initialsText, bg, size){
   const sizeStyle = size ? `width:${size}px;height:${size}px;font-size:${Math.round(size*0.38)}px;` : '';
   if(photo) return `<div class="avatar" style="padding:0;overflow:hidden;${sizeStyle}"><img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;"></div>`;
   return `<div class="avatar" style="background:${bg||avatarColorFor(initialsText)};${sizeStyle}">${initialsText}</div>`;
+}
+/* ---- Formal quote PDF (client-facing, generated once they've selected a
+   supplier) — matches INNOUS's real quote template. Only ever reads
+   p.order.customerPrice and the awarded shortlist entry's leadTimeDays,
+   both already confidentiality-scoped to what a client is allowed to see
+   (never supplierCost/markupPct/supplierId — those come back blank/0 on a
+   client session's views regardless, but this never even touches them). ---- */
+const INNOUS_QUOTE_SIGNATURE = { name:'Lic. Patricio Garza T.', email:'patricio@tymmsa.com' };
+function generateQuotePdf(p){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'letter' });
+  const marginL = 50, marginR = 562;
+  const accent = [0,163,224], danger = [185,28,28], ink = [24,24,27], inkSec = [82,82,91];
+  const client = currentClient();
+  const awarded = p.shortlist.find(s=>s.supplierId===p.selectedSupplierId) || {};
+  const total = p.order ? (p.order.customerPrice||0) : 0;
+  const unitPrice = p.quantity ? total/p.quantity : total;
+
+  // Logo — text approximation of the brand mark (bold italic blue wordmark +
+  // italic gray tagline), since embedding the real SVG logo would need an
+  // async canvas render before this can even run.
+  doc.setFont('helvetica','bolditalic'); doc.setFontSize(26); doc.setTextColor(...accent);
+  doc.text('INNOUS', marginL, 60);
+  doc.setFont('helvetica','italic'); doc.setFontSize(11); doc.setTextColor(...inkSec);
+  doc.text('beyond frontiers', marginL, 76);
+
+  let y = 112;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...ink);
+  doc.text('Quote N.', marginL, y);
+  doc.setFont('helvetica','bold'); doc.setTextColor(...danger);
+  doc.text(p.id, marginL+50, y);
+  doc.setFont('helvetica','normal'); doc.setTextColor(...ink);
+  doc.text(new Date().toLocaleDateString('en-US'), marginR, y, {align:'right'});
+
+  y += 18;
+  doc.setFont('helvetica','bold'); doc.text('Attn.', marginL, y);
+  doc.setFont('helvetica','normal'); doc.text(` ${client.contact} | ${client.company}`, marginL+26, y);
+
+  y += 14;
+  doc.setDrawColor(210,210,214); doc.setLineWidth(0.75);
+  doc.line(marginL, y, marginR, y);
+
+  y += 26;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
+  doc.text('We are pleased to submit the following proposal', marginL, y);
+
+  y += 30;
+  doc.setFontSize(9);
+  const colItem = marginL+8, colDesc = marginL+40, colQty = 400, colUnit = 462, colTotal = marginR;
+  doc.text('Item', colItem, y);
+  doc.text('Description', colDesc, y);
+  doc.text('Quantity', colQty, y, {align:'center'});
+  doc.text('Unit Price', colUnit, y, {align:'center'});
+  doc.text('TOTAL PRICE', colTotal, y, {align:'right'});
+
+  y += 16;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+  const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
+  const descLines = doc.splitTextToSize(descText, 290);
+  doc.text('1', colItem, y);
+  doc.text(descLines, colDesc, y);
+  doc.text(String(p.quantity||0), colQty, y, {align:'center'});
+  doc.text(fmtMoney2(unitPrice), colUnit, y, {align:'center'});
+  doc.text(fmtMoney2(total), colTotal, y, {align:'right'});
+  y += descLines.length*12 + 18;
+
+  doc.setFont('helvetica','bold');
+  doc.text('TOTAL', colUnit, y, {align:'center'});
+  doc.text(fmtMoney2(total), colTotal, y, {align:'right'});
+
+  y += 32;
+  doc.setFontSize(9.5);
+  const terms = [
+    ['PRICES IN USD', ''],
+    ['PAYMENT TERMS', ': 50% down payment, and 50% before shipping.'],
+    ['DELIVERY TIME', `: ${awarded.leadTimeDays||'—'} DAYS`],
+    ['QUOTE VALIDITY PERIOD', ': 30 DAYS'],
+  ];
+  terms.forEach(([label,rest])=>{
+    doc.setFont('helvetica','normal'); doc.text('•', marginL, y);
+    doc.setFont('helvetica','bold'); doc.text(label, marginL+12, y);
+    doc.setFont('helvetica','normal'); doc.text(rest, marginL+12+doc.getTextWidth(label), y);
+    y += 15;
+  });
+
+  y += 24;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...ink);
+  doc.text(INNOUS_QUOTE_SIGNATURE.name, marginL, y);
+  y += 14;
+  doc.setFont('helvetica','normal'); doc.setTextColor(37,99,235);
+  doc.text(INNOUS_QUOTE_SIGNATURE.email, marginL, y);
+
+  y += 26;
+  doc.setFont('helvetica','bold'); doc.setTextColor(...ink);
+  doc.text(STATE.settings.legalName||DEFAULT_SETTINGS.legalName, marginL, y);
+
+  y += 24;
+  doc.text(STATE.settings.address||DEFAULT_SETTINGS.address, marginL, y);
+
+  return doc;
 }
 function formatFileSize(bytes){
   if(bytes < 1024*1024) return Math.max(1, Math.round(bytes/1024)) + ' KB';
@@ -2646,7 +2750,7 @@ ROUTES['client/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'CLIENT')}
         ${p.status==='customer_review'?`<button class="btn btn-primary" onclick="navigate('#/client/quotes/${p.id}')"><i data-lucide="file-diff"></i>View Quotes</button>`:''}
-        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button><button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
@@ -3480,7 +3584,7 @@ ROUTES['innous/messages'] = function(){
 
 /* ---- INNOUS Settings ---- */
 ROUTES['innous/settings'] = function(){
-  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, notif:{...STATE.settings.notif} };
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
@@ -3488,10 +3592,12 @@ ROUTES['innous/settings'] = function(){
       <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Save Changes</button></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Company</div>
+      <div class="section-sub">Used on the formal PDF quote a client can download once they select a supplier.</div>
       <div class="form-row" style="margin-top:12px;">
         <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
         <div class="form-group"><label class="field-label">Region</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
       </div>
+      <div class="form-group"><label class="field-label">Address</label><input type="text" value="${escAttr(d.address)}" oninput="STATE.ui.settingsDraft.address=this.value"></div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Default Pricing</div>
@@ -3991,9 +4097,9 @@ const App = {
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
-    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
     const { error } = await sb.from('settings').update({
-      legal_name: next.legalName, region: next.region, default_markup_pct: next.defaultMarkupPct,
+      legal_name: next.legalName, address: next.address, region: next.region, default_markup_pct: next.defaultMarkupPct,
       notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
       notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
     }).eq('id',1);
@@ -4441,6 +4547,16 @@ const App = {
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
     window.open(data.signedUrl, '_blank');
+  },
+  downloadQuotePdf(id){
+    const p = findProject(id); if(!p) return;
+    if(!p.order){ showToast('No quote has been selected yet for this RFQ.'); return; }
+    try{
+      generateQuotePdf(p).save(`Quote-${p.id}.pdf`);
+    }catch(err){
+      console.error('downloadQuotePdf failed', err);
+      showToast("Couldn't generate the PDF. Please try again.");
+    }
   },
   /* ---- Redaction editor (INNOUS only) ---- */
   async openRedactModal(pid, idx){
