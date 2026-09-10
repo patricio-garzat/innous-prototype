@@ -884,9 +884,27 @@ function projectRowToJs(row, existing){
     isDemo: false,
   };
 }
-/* CLIENT sees only its own real RFQs (RLS-scoped); INNOUS sees every real
-   RFQ. Supplier-side visibility comes once invited_suppliers is wired up
-   in the next phase. */
+/* A supplier's own quote for one project — status is 'pending' the moment
+   INNOUS invites them (no price yet, real quote fields all null/empty
+   until the supplier actually fills the quote form in and submits it —
+   never pre-filled with fake numbers the way the demo-seed stub is). */
+function quoteRowToJs(row){
+  const s = SUPPLIERS.find(x=>x.id===row.supplier_id);
+  return {
+    supplierId: row.supplier_id, status: row.status,
+    unitPrice: row.unit_price, tooling: row.tooling||0, setup: row.setup||0, shipping: row.shipping||0,
+    quotedTotal: row.quoted_total, leadTimeDays: row.lead_time_days, paymentTerms: row.payment_terms||'',
+    validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
+    submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
+    rating: s?.rating||0, onTime: s?.onTime||0,
+  };
+}
+/* CLIENT sees only its own real RFQs (RLS-scoped). INNOUS sees every real
+   RFQ, every invitation, every quote. A SUPPLIER sees only the RFQs it was
+   actually invited to (RLS-scoped) and only its own quote for each — RLS
+   flatly denies a supplier any row in supplier_quotes/invited_suppliers
+   belonging to someone else, so there's no way for this fetch to
+   accidentally pull in another supplier's pricing. */
 async function refreshRealProjects(){
   const { data: rows } = await sb.from('projects').select('*');
   (rows||[]).forEach(row=>{
@@ -894,6 +912,21 @@ async function refreshRealProjects(){
     const p = projectRowToJs(row, idx>-1 ? PROJECTS[idx] : null);
     if(idx>-1) PROJECTS[idx]=p; else PROJECTS.push(p);
   });
+  if(STATE.role==='SUPPLIER' || STATE.role==='INNOUS'){
+    const invQuery = STATE.role==='SUPPLIER' ? sb.from('invited_suppliers').select('*').eq('supplier_id', STATE.supplierId) : sb.from('invited_suppliers').select('*');
+    const quoteQuery = STATE.role==='SUPPLIER' ? sb.from('supplier_quotes').select('*').eq('supplier_id', STATE.supplierId) : sb.from('supplier_quotes').select('*');
+    const [{ data: invited }, { data: quotes }] = await Promise.all([invQuery, quoteQuery]);
+    (invited||[]).forEach(row=>{
+      const p = findProject(row.project_id);
+      if(p && !p.invitedSupplierIds.includes(row.supplier_id)) p.invitedSupplierIds.push(row.supplier_id);
+    });
+    (quotes||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      const q = quoteRowToJs(row);
+      const qi = p.supplierQuotes.findIndex(x=>x.supplierId===q.supplierId);
+      if(qi>-1) p.supplierQuotes[qi]=q; else p.supplierQuotes.push(q);
+    });
+  }
 }
 /* Called once we know a Supabase auth session is valid (fresh login, signup,
    or a restored session on page load) — reads the matching profile and
@@ -928,6 +961,7 @@ async function enterAppAsUser(user){
       const idx = SUPPLIERS.findIndex(x=>x.id===s.id);
       if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
       STATE.supplierId = s.id;
+      await refreshRealProjects();
     }
   } else { // INNOUS — the one role that needs to see every real account, not just its own
     STATE.innousUserId = user.id;
@@ -1073,6 +1107,17 @@ function makeQuoteStub(proj, supplierId, submitted){
     documents: submitted ? ['cost-breakdown.pdf'] : [],
     submittedAt: submitted ? addDays(proj.createdAt, rnd(2,6)) : null,
     rating: supplier.rating, onTime: supplier.onTime,
+  };
+}
+/* A real invitation to a real supplier — unlike makeQuoteStub() (used only
+   for demo seeding), this is genuinely empty. No fake pricing: the
+   supplier hasn't quoted anything yet. */
+function makeRealQuoteStub(supplierId){
+  const supplier = SUPPLIERS.find(s=>s.id===supplierId);
+  return {
+    supplierId, status:'pending', unitPrice:null, tooling:0, setup:0, shipping:0, quotedTotal:null,
+    leadTimeDays:null, paymentTerms:'', validity:'', notes:'', documents:[], submittedAt:null,
+    rating: supplier?.rating||0, onTime: supplier?.onTime||0,
   };
 }
 
@@ -3724,16 +3769,25 @@ const App = {
     if(idx>-1) arr.splice(idx,1); else arr.push(sid);
     route();
   },
-  sendRfqToSuppliers(pid){
+  async sendRfqToSuppliers(pid){
     const p = findProject(pid);
     // Add to the existing invite list rather than replacing it — this used to
     // wipe out any suppliers (and their already-submitted quotes!) invited in an
     // earlier round the moment INNOUS invited anyone new.
     const newIds = STATE.ui.selectedInviteSuppliers.filter(sid=>!p.invitedSupplierIds.includes(sid));
+    if(!newIds.length){ STATE.ui.selectedInviteSuppliers = []; return; }
     p.invitedSupplierIds = [...p.invitedSupplierIds, ...newIds];
-    newIds.forEach(sid=>{ p.supplierQuotes.push(makeQuoteStub(p, sid, false)); });
+    newIds.forEach(sid=>{ p.supplierQuotes.push(p.isDemo ? makeQuoteStub(p, sid, false) : makeRealQuoteStub(sid)); });
     if(p.status==='submitted' || p.status==='under_review') p.status = 'sourcing';
     logActivity(p,'INNOUS', `RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}.`);
+    if(!p.isDemo){
+      const { error: e1 } = await sb.from('invited_suppliers').insert(newIds.map(sid=>({ project_id: p.id, supplier_id: sid })));
+      if(e1){ showToast(e1.message); return; }
+      const { error: e2 } = await sb.from('supplier_quotes').insert(newIds.map(sid=>({ project_id: p.id, supplier_id: sid, status:'pending' })));
+      if(e2){ showToast(e2.message); return; }
+      const { error: e3 } = await sb.from('projects').update({ status: p.status }).eq('id', p.id);
+      if(e3){ showToast(e3.message); return; }
+    }
     STATE.ui.selectedInviteSuppliers = [];
     showToast(`RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}`, 'success');
     route();
@@ -3834,7 +3888,7 @@ const App = {
     showToast('Perfil guardado', 'success');
     route();
   },
-  submitSupplierQuote(e,pid){
+  async submitSupplierQuote(e,pid){
     e.preventDefault();
     const f = new FormData(e.target);
     const p = findProject(pid);
@@ -3843,14 +3897,25 @@ const App = {
     const setup = parseFloat(f.get('setup'))||0;
     const shipping = parseFloat(f.get('shipping'))||0;
     const quotedTotal = unit*p.quantity+tooling+setup+shipping;
+    const leadTimeDays = parseInt(f.get('leadTimeDays'))||30;
+    const paymentTerms = f.get('paymentTerms'), validity = f.get('validity'), notes = f.get('notes');
     const supplier = currentSupplier();
     let q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
     const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, tooling, setup, shipping, quotedTotal,
-      leadTimeDays: parseInt(f.get('leadTimeDays'))||30, paymentTerms:f.get('paymentTerms'), validity:f.get('validity'),
-      notes:f.get('notes'), documents:['cost-breakdown.pdf'], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
+      leadTimeDays, paymentTerms, validity, notes, documents:['cost-breakdown.pdf'], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
     if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
     if(p.status==='sourcing') p.status='sourcing';
+    // Kept local-only, deliberately not persisted to the shared activity log —
+    // it names the supplier, and that column is exactly what the client reads
+    // directly (see the big confidentiality note above SUPABASE_URL).
     logActivity(p, supplier.name, 'Supplier submitted a quote.');
+    if(!p.isDemo){
+      const { error } = await sb.from('supplier_quotes').update({
+        status:'submitted', unit_price:unit, tooling, setup, shipping, quoted_total:quotedTotal,
+        lead_time_days:leadTimeDays, payment_terms:paymentTerms, validity, notes, submitted_at:new Date().toISOString(),
+      }).eq('project_id', pid).eq('supplier_id', STATE.supplierId);
+      if(error){ showToast(error.message); return false; }
+    }
     showToast('Cotización enviada con éxito', 'success');
     navigate('#/supplier/rfq/'+pid);
     return false;
