@@ -876,7 +876,7 @@ function projectRowToJs(row, existing){
     invitedSupplierIds: existing?.invitedSupplierIds || [],
     supplierQuotes: existing?.supplierQuotes || [],
     shortlist: existing?.shortlist || [],
-    selectedSupplierId: existing?.selectedSupplierId || null,
+    selectedSupplierId: row.selected_supplier_id || existing?.selectedSupplierId || null,
     selectedQuote: existing?.selectedQuote || null,
     order: existing?.order || null,
     activity: (row.activity||[]).map(a=>({...a, ts: a.ts ? new Date(a.ts) : new Date()})),
@@ -897,6 +897,46 @@ function quoteRowToJs(row){
     validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
     submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
     rating: s?.rating||0, onTime: s?.onTime||0,
+  };
+}
+/* Shortlist entry — the client's copy comes from shortlist_client_view,
+   which simply doesn't have a supplier_cost/markup_pct column to read (see
+   supabase-fix8-shortlist-orders.sql), so those come back undefined -> 0
+   for a client session no matter what; that's the confidentiality
+   boundary living in the database schema itself, not in this mapper. */
+function shortlistRowToJs(row){
+  return {
+    supplierId: row.supplier_id, supplierCost: row.supplier_cost ?? 0, markupPct: row.markup_pct ?? 0,
+    customerPrice: row.customer_price, leadTimeDays: row.lead_time_days, rating: row.rating||0,
+    badge: row.badge||null, addedAt: row.added_at ? new Date(row.added_at) : new Date(),
+  };
+}
+/* Order — same idea: a client reads orders_client_view (no supplier_id,
+   no supplier_cost/markup_pct, no internal logistics ops fields), a
+   supplier reads orders_supplier_view (their own cost is fine — it's
+   their own quote — but never the customer price, markup, or logistics),
+   INNOUS reads the raw table with everything. Whichever one a given
+   session actually queried, missing columns just come back undefined and
+   default out safely here. order_milestones isn't wired up yet, so the
+   per-stage "completed on" dates just don't populate for a real order. */
+function orderRowToJs(row){
+  return {
+    status: row.status, supplierId: row.supplier_id||null,
+    supplierCost: row.supplier_cost ?? 0, customerPrice: row.customer_price ?? 0, markupPct: row.markup_pct ?? 0,
+    paymentStatus: row.payment_status || 'Awaiting Deposit',
+    quality: {
+      inspectionRequired: true, status: row.quality_status || 'pending',
+      documents: row.quality_documents || [], certificates: row.quality_certificates || [],
+      photos: row.quality_photos_count || 0, ncr: row.quality_ncr || [],
+    },
+    logistics: {
+      origin: row.logistics_origin || '', destination: row.logistics_destination || '',
+      carrier: row.carrier || '', tracking: row.tracking || '',
+      pickupDate: row.pickup_date ? new Date(row.pickup_date) : null,
+      estimatedDelivery: row.estimated_delivery ? new Date(row.estimated_delivery) : null,
+      documents: row.logistics_documents || [],
+    },
+    milestones: [],
   };
 }
 /* CLIENT sees only its own real RFQs (RLS-scoped). INNOUS sees every real
@@ -927,6 +967,22 @@ async function refreshRealProjects(){
       if(qi>-1) p.supplierQuotes[qi]=q; else p.supplierQuotes.push(q);
     });
   }
+  if(STATE.role==='CLIENT' || STATE.role==='INNOUS'){
+    const slTable = STATE.role==='CLIENT' ? 'shortlist_client_view' : 'shortlist';
+    const { data: sl } = await sb.from(slTable).select('*');
+    (sl||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      const s = shortlistRowToJs(row);
+      const si = p.shortlist.findIndex(x=>x.supplierId===s.supplierId);
+      if(si>-1) p.shortlist[si]=s; else p.shortlist.push(s);
+    });
+  }
+  const orderTable = STATE.role==='CLIENT' ? 'orders_client_view' : STATE.role==='SUPPLIER' ? 'orders_supplier_view' : 'orders';
+  const { data: orders } = await sb.from(orderTable).select('*');
+  (orders||[]).forEach(row=>{
+    const p = findProject(row.project_id); if(!p) return;
+    p.order = orderRowToJs(row);
+  });
 }
 /* Called once we know a Supabase auth session is valid (fresh login, signup,
    or a restored session on page load) — reads the matching profile and
@@ -3814,29 +3870,52 @@ const App = {
 
   /* ---- Quote comparison / markup / shortlist ---- */
   setMarkup(pid,sid,val){ STATE.ui.markupDrafts[markupKey(pid,sid)] = parseFloat(val)||0; route(); },
-  addToShortlist(pid,sid){
+  async addToShortlist(pid,sid){
     const p = findProject(pid);
     if(p.shortlist.length>=5){ showToast('Shortlist already has 5 options'); return; }
     const q = p.supplierQuotes.find(x=>x.supplierId===sid);
     const markup = getMarkup(pid,sid);
-    p.shortlist.push({supplierId:sid, supplierCost:q.quotedTotal, markupPct:markup, customerPrice:q.quotedTotal*(1+markup/100), leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
+    const customerPrice = q.quotedTotal*(1+markup/100);
+    p.shortlist.push({supplierId:sid, supplierCost:q.quotedTotal, markupPct:markup, customerPrice, leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
     const badges = computeBadges(p.shortlist);
     p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
     if(p.status==='sourcing') p.status='quotes_received';
+    if(!p.isDemo){
+      const { error: e1 } = await sb.from('shortlist').upsert({
+        project_id: pid, supplier_id: sid, supplier_cost: q.quotedTotal, markup_pct: markup,
+        customer_price: customerPrice, lead_time_days: q.leadTimeDays, rating: q.rating||0,
+      });
+      if(e1){ showToast(e1.message); return; }
+      // Badges are recomputed across the whole shortlist every time (best price gets a badge, etc.)
+      // so every row's badge needs to be re-saved, not just the one just added.
+      await Promise.all(p.shortlist.map(s=>sb.from('shortlist').update({badge:s.badge||null}).eq('project_id',pid).eq('supplier_id',s.supplierId)));
+      if(p.status==='quotes_received'){
+        const { error: e2 } = await sb.from('projects').update({status:p.status}).eq('id',pid);
+        if(e2){ showToast(e2.message); return; }
+      }
+    }
     showToast('Added to customer shortlist');
     route();
   },
-  removeFromShortlist(pid,sid){
+  async removeFromShortlist(pid,sid){
     const p = findProject(pid);
     p.shortlist = p.shortlist.filter(s=>s.supplierId!==sid);
     const badges = computeBadges(p.shortlist);
     p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
+    if(!p.isDemo){
+      await sb.from('shortlist').delete().eq('project_id',pid).eq('supplier_id',sid);
+      await Promise.all(p.shortlist.map(s=>sb.from('shortlist').update({badge:s.badge||null}).eq('project_id',pid).eq('supplier_id',s.supplierId)));
+    }
     route();
   },
-  sendQuotesToCustomer(pid){
+  async sendQuotesToCustomer(pid){
     const p = findProject(pid);
     p.status = 'customer_review';
     logActivity(p,'INNOUS', `${p.shortlist.length} supplier quotes reviewed and shortlisted. Sent to customer for decision.`);
+    if(!p.isDemo){
+      const { error } = await sb.from('projects').update({status:p.status}).eq('id',pid);
+      if(error){ showToast(error.message); return; }
+    }
     showToast(`${p.shortlist.length} quotes sent to ${customerName(p.customerId)}`, 'success');
     navigate('#/innous/rfq/'+pid);
   },
@@ -3875,12 +3954,25 @@ const App = {
       <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="App.confirmSelectQuote('${pid}','${sid}')"><i data-lucide="check"></i>Confirm Selection</button></div>
     `);
   },
-  confirmSelectQuote(pid,sid){
+  async confirmSelectQuote(pid,sid){
     const p = findProject(pid);
     const s = p.shortlist.find(x=>x.supplierId===sid);
-    p.selectedSupplierId = sid; p.selectedQuote = s; p.status = 'awarded';
-    setOrderState(p, 'order_confirmed');
-    logActivity(p, customerName(p.customerId), 'Customer selected manufacturing option. Order confirmed.');
+    if(p.isDemo){
+      p.selectedSupplierId = sid; p.selectedQuote = s; p.status = 'awarded';
+      setOrderState(p, 'order_confirmed');
+      logActivity(p, customerName(p.customerId), 'Customer selected manufacturing option. Order confirmed.');
+      closeModal();
+      showToast(`Order created — ${p.id}`, 'success');
+      navigate('#/client/order/'+pid);
+      return;
+    }
+    // Real award: this never sends supplier_cost/markup_pct from the browser —
+    // the database function looks the real quote up itself and builds the
+    // order server-side. The client's own local shortlist entry doesn't even
+    // have those numbers to send (see shortlist_client_view).
+    const { error } = await sb.rpc('client_select_quote', { p_project_id: pid, p_supplier_id: sid });
+    if(error){ showToast(error.message); return; }
+    await refreshRealProjects();
     closeModal();
     showToast(`Order created — ${p.id}`, 'success');
     navigate('#/client/order/'+pid);
