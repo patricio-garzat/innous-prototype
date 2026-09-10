@@ -547,33 +547,30 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    background-position, so the loop never has a visible seam. Kept very low
    opacity and z-index:0 (same layer as auth-mesh, behind the real content
    at z-index:1) so they read as ambient motion, never compete with text. */
-.auth-wave-line{position:absolute;left:0;right:0;z-index:0;pointer-events:none;background-repeat:repeat-x;}
-.auth-wave-line.wave-1{
-  top:8%;height:220px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 220'%3E%3Cdefs%3E%3ClinearGradient id='g1' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23D4D4D8' stop-opacity='0'/%3E%3Cstop offset='0.5' stop-color='%23D4D4D8' stop-opacity='0.9'/%3E%3Cstop offset='1' stop-color='%23D4D4D8' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 110 C 160 30 160 30 320 110 C 480 190 480 190 640 110' fill='none' stroke='url(%23g1)' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-size:640px 220px;
-  animation:authWaveMotion-640 16s ease-in-out infinite;
-}
-.auth-wave-line.wave-2{
-  top:44%;height:260px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 760 260'%3E%3Cdefs%3E%3ClinearGradient id='g2' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23E4E4E7' stop-opacity='0'/%3E%3Cstop offset='0.5' stop-color='%23E4E4E7' stop-opacity='0.95'/%3E%3Cstop offset='1' stop-color='%23E4E4E7' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 130 C 190 30 190 30 380 130 C 570 230 570 230 760 130' fill='none' stroke='url(%23g2)' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-size:760px 260px;
-  animation:authWaveMotionReverse-760 22s ease-in-out infinite;
-}
-.auth-wave-line.wave-3{
-  top:74%;height:170px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 520 170'%3E%3Cdefs%3E%3ClinearGradient id='g3' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='%23D4D4D8' stop-opacity='0'/%3E%3Cstop offset='0.5' stop-color='%23D4D4D8' stop-opacity='0.8'/%3E%3Cstop offset='1' stop-color='%23D4D4D8' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 85 C 130 20 130 20 260 85 C 390 150 390 150 520 85' fill='none' stroke='url(%23g3)' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-size:520px 170px;
-  animation:authWaveMotion-520 13s ease-in-out infinite;
-}
-/* Each keyframe both scrolls the tile by exactly one tile-width (for a
-   seamless horizontal loop) AND bobs the line up/down and back to 0 in
-   the same cycle, so it reads as an actual undulating wave instead of a
-   flat sideways slide. */
-@keyframes authWaveMotion-640{ 0%{background-position-x:0;transform:translateY(0);} 50%{background-position-x:-320px;transform:translateY(10px);} 100%{background-position-x:-640px;transform:translateY(0);} }
-@keyframes authWaveMotionReverse-760{ 0%{background-position-x:0;transform:translateY(0);} 50%{background-position-x:380px;transform:translateY(-12px);} 100%{background-position-x:760px;transform:translateY(0);} }
-@keyframes authWaveMotion-520{ 0%{background-position-x:0;transform:translateY(0);} 50%{background-position-x:-260px;transform:translateY(8px);} 100%{background-position-x:-520px;transform:translateY(0);} }
-@media(prefers-reduced-motion:reduce){ .auth-wave-line{animation:none;} }
+/* Landing background ribbons — inspired by the classic PS4/PS5 flowing
+   silk-ribbon wallpaper: a few wide, softly-translucent wavy bands drifting
+   past each other at different speeds, instead of thin lines. Built as one
+   inline SVG (see ribbonSvgHtml()) rather than a CSS tile, so each ribbon can
+   be a real filled band with rounded joins and its own smooth motion. Kept
+   in the page's own neutral border tones (not saturated brand color) per
+   request — reads as a faint tonal variation of the background, not a
+   colored decoration. */
+.auth-ribbons-wrap{position:absolute;left:0;right:0;top:6%;height:78%;z-index:0;pointer-events:none;overflow:hidden;}
+.auth-ribbons-wrap svg{display:block;width:100%;height:100%;}
+.auth-ribbon{transform-box:fill-box;}
+.auth-ribbon.r1{animation:ribbonFlow-2 20s ease-in-out infinite;}
+.auth-ribbon.r2{animation:ribbonFlowReverse-3 26s ease-in-out infinite;}
+.auth-ribbon.r3{animation:ribbonFlow-2 16s ease-in-out infinite;}
+.auth-ribbon.r4{animation:ribbonFlowReverse-3 23s ease-in-out infinite;}
+/* Percentage transforms are relative to the path's own bounding box
+   (transform-box:fill-box above), so these shift-fractions are exactly
+   "one repeated cycle" for a ribbon built from N cycles — 1/N of its own
+   width — regardless of viewport size, which is what keeps the horizontal
+   loop seamless. The translateY bob (returning to 0 every cycle) is what
+   makes it read as undulating instead of just sliding sideways. */
+@keyframes ribbonFlow-2{ 0%{transform:translate(0%,0);} 50%{transform:translate(-25%,3%);} 100%{transform:translate(-50%,0);} }
+@keyframes ribbonFlowReverse-3{ 0%{transform:translate(0%,0);} 50%{transform:translate(16.667%,-2.5%);} 100%{transform:translate(33.333%,0);} }
+@media(prefers-reduced-motion:reduce){ .auth-ribbon{animation:none;} }
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 .auth-topbar .logo-svg{height:clamp(40px,8vh,88px);}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
@@ -1959,6 +1956,41 @@ function authTopbar(){
 function authFooterLinks(){
   return `<div class="auth-footer-links"><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>`;
 }
+// Builds one closed "ribbon" shape: a top wavy edge (left→right) and a
+// bottom wavy edge (right→left, offset down by `thickness`), so the fill
+// reads as a flowing band rather than a thin stroked line. `cycles` full
+// wave repeats span the path, each `period` units wide — see ribbonSvgHtml()
+// for why every ribbon is built to the SAME total width regardless of its
+// own cycle count (period = totalWidth/cycles per ribbon).
+function ribbonPathD(period, amplitude, baseY, thickness, cycles){
+  let top = `M0 ${baseY}`;
+  for(let i=0;i<cycles;i++){
+    const x0=i*period, xm=x0+period/2, x1=x0+period;
+    top += ` C ${x0+period*0.25} ${baseY-amplitude} ${x0+period*0.25} ${baseY-amplitude} ${xm} ${baseY}`;
+    top += ` C ${xm+period*0.25} ${baseY+amplitude} ${xm+period*0.25} ${baseY+amplitude} ${x1} ${baseY}`;
+  }
+  const endX = cycles*period, baseY2 = baseY+thickness;
+  let bottom = '';
+  for(let i=cycles-1;i>=0;i--){
+    const x0=i*period, xm=x0+period/2;
+    bottom += ` C ${xm+period*0.25} ${baseY2+amplitude} ${xm+period*0.25} ${baseY2+amplitude} ${xm} ${baseY2}`;
+    bottom += ` C ${x0+period*0.25} ${baseY2-amplitude} ${x0+period*0.25} ${baseY2-amplitude} ${x0} ${baseY2}`;
+  }
+  return `${top} L ${endX} ${baseY2}${bottom} Z`;
+}
+function ribbonSvgHtml(){
+  const W = 4200, H = 900; // shared viewBox — every ribbon below is built to span exactly W (cycles*period=W each), so preserveAspectRatio="none" stretches all of them edge-to-edge together, none running out early.
+  // Few, big, broad sweeps (2-3 humps total) rather than many small repeats —
+  // closer to the reference's silk-ribbon look than a tight corrugated pattern.
+  const ribbons = [
+    {cls:'r1', d:ribbonPathD(W/2, 140, 180, 36, 2), color:'#D4D4D8', opacity:0.5},
+    {cls:'r2', d:ribbonPathD(W/3, 110, 380, 44, 3), color:'#DCE6EC', opacity:0.55},
+    {cls:'r3', d:ribbonPathD(W/2, 90, 560, 28, 2), color:'#E4E4E7', opacity:0.45},
+    {cls:'r4', d:ribbonPathD(W/3, 120, 700, 38, 3), color:'#DCE6EC', opacity:0.4},
+  ];
+  const paths = ribbons.map(r=>`<path class="auth-ribbon ${r.cls}" d="${r.d}" fill="${r.color}" opacity="${r.opacity}"/>`).join('');
+  return `<div class="auth-ribbons-wrap"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${paths}</svg></div>`;
+}
 function stepDotsHtml(total, current){
   let out = '<div class="step-dots">';
   for(let i=0;i<total;i++) out += `<span class="step-dot ${i===current?'active':(i<current?'done':'')}"></span>`;
@@ -1968,9 +2000,7 @@ function renderLanding(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-wave-line wave-1"></div>
-    <div class="auth-wave-line wave-2"></div>
-    <div class="auth-wave-line wave-3"></div>
+    ${ribbonSvgHtml()}
     ${authTopbar()}
     <div class="auth-main" style="align-items:flex-start;padding-top:clamp(20px,6vh,64px);">
       <div class="hero-wrap">
