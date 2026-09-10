@@ -316,6 +316,23 @@ textarea{resize:vertical;min-height:90px;}
 .signup-legal-accept input[type=checkbox]{width:auto;margin-top:3px;flex:0 0 auto;}
 .signup-legal-accept label{font-size:12px;color:var(--ink-tertiary);line-height:1.55;}
 .signup-legal-accept a{color:var(--accent-ink);font-weight:600;cursor:pointer;}
+
+/* Multi-step signup wizard — one focused screen at a time instead of every
+   field piled into a single long, dense card. */
+.step-dots{display:flex;gap:6px;justify-content:center;margin:16px 0 24px;}
+.step-dot{width:6px;height:6px;border-radius:50%;background:var(--border-strong);transition:width .15s,background .15s;}
+.step-dot.active{background:var(--accent-ink);width:20px;border-radius:3px;}
+.step-dot.done{background:var(--accent);}
+.signup-step{animation:signupStepIn .18s ease;}
+@keyframes signupStepIn{from{opacity:0;transform:translateX(8px);}to{opacity:1;transform:translateX(0);}}
+.signup-step-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-tertiary);margin-bottom:16px;}
+.signup-nav{display:flex;align-items:center;gap:10px;margin-top:24px;}
+.signup-nav .btn-block{flex:1;}
+.select-chip-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;}
+.select-chip{position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:11px 10px;border:1.5px solid var(--border-strong);border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-secondary);transition:border-color .15s,background .15s,color .15s;}
+.select-chip input{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}
+.select-chip:hover{border-color:var(--ink-tertiary);}
+.select-chip:has(input:checked){border-color:var(--ink);background:var(--ink);color:#fff;}
 select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352525B' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
 .process-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
 @media(max-width:768px){.process-grid{grid-template-columns:repeat(2,1fr);}}
@@ -1882,6 +1899,11 @@ function authTopbar(){
 function authFooterLinks(){
   return `<div class="auth-footer-links"><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>`;
 }
+function stepDotsHtml(total, current){
+  let out = '<div class="step-dots">';
+  for(let i=0;i<total;i++) out += `<span class="step-dot ${i===current?'active':(i<current?'done':'')}"></span>`;
+  return out+'</div>';
+}
 function renderLanding(){
   return `
   <div class="auth-shell">
@@ -1938,65 +1960,100 @@ function renderRoleSelect(){
 function renderSignupForm(){
   const role = STATE.signupRole;
   const es = role==='SUPPLIER';
+  const step = STATE.ui.signupStep||0;
+  const totalSteps = es ? 4 : 3;
+  const lastStep = totalSteps-1;
+  const show = (i)=> i===step ? '' : 'style="display:none;"';
+  const navBtns = (i, submit)=> `
+    <div class="signup-nav">
+      <button type="button" class="btn btn-secondary" onclick="App.signupPrevStep()"><i data-lucide="arrow-left"></i>${es?'Atrás':'Back'}</button>
+      ${submit
+        ? `<button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>${es?'Crear Cuenta':'Create Account'}</button>`
+        : `<button type="button" class="btn btn-primary btn-block" onclick="App.signupNextStep()">${es?'Siguiente':'Next'}<i data-lucide="arrow-right"></i></button>`}
+    </div>`;
+
+  const stepCompany = `
+    <div class="signup-step" data-step="0" ${show(0)}>
+      <div class="signup-step-title">${es?'Empresa y contacto':'Company & contact'}</div>
+      <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
+        <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
+      </div>
+      <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
+      ${navBtns(0,false)}
+    </div>`;
+
+  const stepLocation = `
+    <div class="signup-step" data-step="1" ${show(1)}>
+      <div class="signup-step-title">${es?'Ubicación y experiencia':'Location & industry'}</div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">${es?'Ciudad':'City'}</label><input type="text" name="city" required placeholder="${es?'ej. Monterrey':'e.g. Detroit'}"></div>
+        <div class="form-group"><label class="field-label">${es?'Estado':'State'}</label><input type="text" name="state" required placeholder="${es?'ej. Nuevo León':'e.g. MI'}"></div>
+      </div>
+      ${es ? `
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Años operando</label><input type="number" name="yearsOperating" min="0" required></div>
+        <div class="form-group"><label class="field-label">Cantidad de operadores</label><input type="number" name="operators" min="0" required></div>
+      </div>
+      ` : `
+      <div class="form-group"><label class="field-label">Industry</label>
+        <select name="industry" required>
+          <option value="" disabled selected>Select your industry</option>
+          ${INDUSTRIES.map(i=>`<option value="${i}">${i}</option>`).join('')}
+        </select>
+      </div>
+      `}
+      ${navBtns(1, !es && 1===lastStep)}
+    </div>`;
+
+  const stepCapabilities = es ? `
+    <div class="signup-step" data-step="2" ${show(2)}>
+      <div class="signup-step-title">Capacidades</div>
+      <div class="form-group">
+        <label class="field-label">Servicios que ofreces</label>
+        <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Selecciona todos los que apliquen.</div>
+        <div class="select-chip-grid">${PROCESSES.filter(p=>p!=='Other').map(p=>`
+          <label class="select-chip"><input type="checkbox" name="capabilities" value="${p}">${procES(p)}</label>`).join('')}</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;">
+        <label class="field-label">Certificaciones con las que cuentas</label>
+        <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Si no cuentas con ninguna todavía, puedes dejarlo en blanco.</div>
+        <div class="select-chip-grid">${CERTS.map(c=>`
+          <label class="select-chip"><input type="checkbox" name="certs" value="${c}">${c}</label>`).join('')}</div>
+      </div>
+      ${navBtns(2,false)}
+    </div>` : '';
+
+  const stepSecurity = `
+    <div class="signup-step" data-step="${lastStep}" ${show(lastStep)}>
+      <div class="signup-step-title">${es?'Seguridad':'Security'}</div>
+      <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="6" autocomplete="new-password"></div>
+      <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="6" autocomplete="new-password"></div>
+      <div class="signup-legal-accept">
+        <input type="checkbox" id="signup-legal-accept" required>
+        <label for="signup-legal-accept">${es
+          ? `Acepto los <a onclick="event.preventDefault();App.openLegalModal('terms')">Términos y Condiciones</a> y el <a onclick="event.preventDefault();App.openLegalModal('privacy')">Aviso de Privacidad</a> de INNOUS.`
+          : `I agree to INNOUS's <a onclick="event.preventDefault();App.openLegalModal('terms')">Terms of Service</a> and <a onclick="event.preventDefault();App.openLegalModal('privacy')">Privacy Policy</a>.`}</label>
+      </div>
+      ${navBtns(lastStep,true)}
+    </div>`;
+
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
     ${authTopbar()}
     <div class="auth-main">
-      <div class="auth-narrow" style="max-width:${es?'480px':'400px'};">
-        <div class="auth-back" onclick="STATE.authView='role-pick';renderAuthRoot();"><i data-lucide="arrow-left"></i>${es?'Atrás':'Back'}</div>
+      <div class="auth-narrow" style="max-width:${es?'520px':'400px'};">
         <div class="auth-card">
           <div class="auth-card-title">${es?'Crea tu cuenta de proveedor':'Create your client account'}</div>
           <div class="auth-card-sub">${es?'Empieza a recibir RFQs de clientes en Estados Unidos.':'Start sourcing verified manufacturing partners in Mexico.'}</div>
-          <form onsubmit="return App.submitSignup(event)">
-            <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
-            <div class="form-row">
-              <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
-              <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
-            </div>
-            <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
-            <div class="form-row">
-              <div class="form-group"><label class="field-label">${es?'Ciudad':'City'}</label><input type="text" name="city" required placeholder="${es?'ej. Monterrey':'e.g. Detroit'}"></div>
-              <div class="form-group"><label class="field-label">${es?'Estado':'State'}</label><input type="text" name="state" required placeholder="${es?'ej. Nuevo León':'e.g. MI'}"></div>
-            </div>
-            ${es ? `
-            <div class="form-row">
-              <div class="form-group"><label class="field-label">Años operando</label><input type="number" name="yearsOperating" min="0" required></div>
-              <div class="form-group"><label class="field-label">Cantidad de operadores</label><input type="number" name="operators" min="0" required></div>
-            </div>
-            <div class="form-group">
-              <label class="field-label">Servicios que ofreces</label>
-              <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Selecciona todos los que apliquen.</div>
-              <div class="cap-list">${PROCESSES.filter(p=>p!=='Other').map(p=>`
-                <label class="tag" style="cursor:pointer;background:var(--surface-alt);border:1px solid var(--border);display:inline-flex;align-items:center;gap:5px;">
-                  <input type="checkbox" name="capabilities" value="${p}" style="margin:0;">${procES(p)}
-                </label>`).join('')}</div>
-            </div>
-            <div class="form-group">
-              <label class="field-label">Certificaciones con las que cuentas</label>
-              <div class="field-hint" style="margin-top:0;margin-bottom:8px;">Si no cuentas con ninguna todavía, puedes dejarlo en blanco.</div>
-              <div class="cap-list">${CERTS.map(c=>`
-                <label class="tag" style="cursor:pointer;background:var(--surface-alt);border:1px solid var(--border);display:inline-flex;align-items:center;gap:5px;">
-                  <input type="checkbox" name="certs" value="${c}" style="margin:0;">${c}
-                </label>`).join('')}</div>
-            </div>
-            ` : `
-            <div class="form-group"><label class="field-label">Industry</label>
-              <select name="industry" required style="width:100%;padding:12px 14px;border-radius:9px;font-size:14px;background:var(--surface-alt);border:1px solid var(--border);">
-                <option value="" disabled selected>Select your industry</option>
-                ${INDUSTRIES.map(i=>`<option value="${i}">${i}</option>`).join('')}
-              </select>
-            </div>
-            `}
-            <div class="form-group"><label class="field-label">${es?'Contraseña':'Password'}</label><input type="password" name="password" required minlength="6" autocomplete="new-password"></div>
-            <div class="form-group"><label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label><input type="password" name="password2" required minlength="6" autocomplete="new-password"></div>
-            <div class="signup-legal-accept">
-              <input type="checkbox" id="signup-legal-accept" required>
-              <label for="signup-legal-accept">${es
-                ? `Acepto los <a onclick="event.preventDefault();App.openLegalModal('terms')">Términos y Condiciones</a> y el <a onclick="event.preventDefault();App.openLegalModal('privacy')">Aviso de Privacidad</a> de INNOUS.`
-                : `I agree to INNOUS's <a onclick="event.preventDefault();App.openLegalModal('terms')">Terms of Service</a> and <a onclick="event.preventDefault();App.openLegalModal('privacy')">Privacy Policy</a>.`}</label>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>${es?'Crear Cuenta':'Create Account'}</button>
+          ${stepDotsHtml(totalSteps, step)}
+          <form id="signup-form" onsubmit="return App.submitSignup(event)">
+            ${stepCompany}
+            ${stepLocation}
+            ${stepCapabilities}
+            ${stepSecurity}
           </form>
         </div>
         <div class="auth-switch">${es?'¿Ya tienes cuenta?':'Already have an account?'} <a onclick="App.goToLogin()">${es?'Inicia sesión':'Log in'}</a></div>
@@ -3663,7 +3720,7 @@ const App = {
   goToLogin(){ STATE.authView='login'; renderAuthRoot(); },
   goToSignup(){ STATE.authView='role-pick'; renderAuthRoot(); },
   backToLanding(){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); },
-  pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; renderAuthRoot(); },
+  pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; STATE.ui.signupStep=0; renderAuthRoot(); },
   async submitSignup(e){
     e.preventDefault();
     const f = new FormData(e.target);
@@ -3850,6 +3907,48 @@ const App = {
 
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
   openLegalModal(type){ openModal(legalModalHtml(type), true); },
+
+  /* ---- Multi-step signup wizard ---- */
+  signupStepValidate(stepEl){
+    const requiredInputs = stepEl.querySelectorAll('input[required], select[required]');
+    for(const el of requiredInputs){ if(!el.reportValidity()) return false; }
+    const capInputs = stepEl.querySelectorAll('input[name=capabilities]');
+    if(capInputs.length && !Array.from(capInputs).some(c=>c.checked)){
+      showToast(STATE.signupRole==='SUPPLIER' ? 'Selecciona al menos un servicio que ofreces' : 'Select at least one service you offer');
+      return false;
+    }
+    return true;
+  },
+  signupNextStep(){
+    const form = document.getElementById('signup-form');
+    const steps = Array.from(form.querySelectorAll('.signup-step'));
+    const cur = STATE.ui.signupStep||0;
+    if(!App.signupStepValidate(steps[cur])) return;
+    if(cur < steps.length-1){
+      steps[cur].style.display = 'none';
+      STATE.ui.signupStep = cur+1;
+      steps[cur+1].style.display = '';
+      App.afterSignupStepChange();
+    }
+  },
+  signupPrevStep(){
+    const cur = STATE.ui.signupStep||0;
+    if(cur===0){ STATE.authView='role-pick'; renderAuthRoot(); return; }
+    const form = document.getElementById('signup-form');
+    const steps = Array.from(form.querySelectorAll('.signup-step'));
+    steps[cur].style.display = 'none';
+    STATE.ui.signupStep = cur-1;
+    steps[cur-1].style.display = '';
+    App.afterSignupStepChange();
+  },
+  afterSignupStepChange(){
+    document.querySelectorAll('.step-dot').forEach((d,i)=>{
+      d.classList.toggle('active', i===STATE.ui.signupStep);
+      d.classList.toggle('done', i<STATE.ui.signupStep);
+    });
+    const m = document.querySelector('.auth-main'); if(m) m.scrollTop = 0;
+    lucide.createIcons();
+  },
 
   /* ---- Account settings (name / company / circular 1:1 photo) ---- */
   openAccountModal(){
