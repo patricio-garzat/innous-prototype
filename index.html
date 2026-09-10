@@ -4820,8 +4820,15 @@ const App = {
           (st.boxesByPage[n]||[]).forEach(b=>bctx.fillRect(b.x,b.y,b.w,b.h));
           const imgData = bake.toDataURL('image/jpeg', 0.92);
           const wPt = 612, hPt = wPt * bake.height/bake.width; // US Letter width, proportional height
-          if(!outDoc) outDoc = new jsPDF({ unit:'pt', format:[wPt, hPt] });
-          else outDoc.addPage([wPt, hPt]);
+          // jsPDF silently swaps width/height to match its orientation default
+          // ('p') unless told otherwise — most manufacturing drawings are
+          // landscape (wider than tall), so without this every such page came
+          // out narrower than the image actually drawn onto it, clipping the
+          // right side of the drawing. Passing the real orientation here stops
+          // jsPDF from doing that swap.
+          const orientation = wPt > hPt ? 'l' : 'p';
+          if(!outDoc) outDoc = new jsPDF({ unit:'pt', format:[wPt, hPt], orientation });
+          else outDoc.addPage([wPt, hPt], orientation);
           outDoc.addImage(imgData, 'JPEG', 0, 0, wPt, hPt);
         }
         blob = outDoc.output('blob');
