@@ -224,8 +224,9 @@ svg{display:block;}
 .badge-amber{background:var(--warning-soft);color:var(--warning);}
 .badge-red{background:var(--danger-soft);color:var(--danger);}
 .badge-dark{background:var(--ink);color:#fff;}
+.badge-purple{background:#F1E9FB;color:#6D28D9;} /* fully finished / archived — distinct from "gray" (not started yet) and "green" (actively in progress) */
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
-.dot-gray{background:var(--ink-tertiary);} .dot-blue{background:var(--accent);} .dot-green{background:var(--success);} .dot-amber{background:var(--warning);} .dot-red{background:var(--danger);}
+.dot-gray{background:var(--ink-tertiary);} .dot-blue{background:var(--accent);} .dot-green{background:var(--success);} .dot-amber{background:var(--warning);} .dot-red{background:var(--danger);} .dot-purple{background:#6D28D9;}
 
 .tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--surface-alt);border:1px solid var(--border);color:var(--ink-secondary);}
 .award-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:10.5px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;}
@@ -660,31 +661,48 @@ const RFQ_STATUS_META = {
   customer_review:{label:'Quotes Ready for Review',cls:'badge-amber'},
   awarded:{label:'Awarded',cls:'badge-green'},
   in_production:{label:'In Production',cls:'badge-green'},
-  completed:{label:'Completed',cls:'badge-gray'},
+  completed:{label:'Completed',cls:'badge-purple'}, // distinct from "gray" (not started) and "green" (actively moving) so a finished RFQ reads as finished, not stalled
 };
-const ORDER_STATUS_FLOW = ['order_confirmed','material_purchased','production_started','production_completed','quality_inspection','ready_to_ship','shipped','delivered'];
+/* Order / production timeline — exactly the 6 stages the client and supplier
+   both see. The supplier only ever advances it through 'quality_inspection':
+   once QC is done, logistics (Shipped → Delivered) is INNOUS's job alone, on
+   the INNOUS Order Detail page — see SUPPLIER_ORDER_STAGE_LIMIT below and
+   supplierNextOrderStatus()/innousNextOrderStatus(). */
+const ORDER_STATUS_FLOW = ['order_confirmed','in_production','production_finished','quality_inspection','shipped','delivered'];
+const SUPPLIER_ORDER_STAGE_LIMIT = 'quality_inspection';
 const ORDER_STATUS_META = {
   order_confirmed:{label:'Order Confirmed'},
-  material_purchased:{label:'Material Purchased'},
-  production_started:{label:'Production Started'},
-  production_completed:{label:'Production Completed'},
+  in_production:{label:'In Production'},
+  production_finished:{label:'Production Finished'},
   quality_inspection:{label:'Quality Inspection'},
-  ready_to_ship:{label:'Ready to Ship'},
   shipped:{label:'Shipped'},
   delivered:{label:'Delivered'},
 };
 /* Spanish labels for the Supplier portal only — same underlying status keys. */
 const ORDER_STATUS_ES = {
   order_confirmed:'Pedido Confirmado',
-  material_purchased:'Material Comprado',
-  production_started:'Producción Iniciada',
-  production_completed:'Producción Completada',
+  in_production:'En Producción',
+  production_finished:'Producción Terminada',
   quality_inspection:'Inspección de Calidad',
-  ready_to_ship:'Listo para Enviar',
   shipped:'Enviado',
   delivered:'Entregado',
 };
 function orderStatusLabel(status, es){ return es ? (ORDER_STATUS_ES[status]||status) : (ORDER_STATUS_META[status]?.label||status); }
+/* The supplier's production work ends the moment the order reaches
+   SUPPLIER_ORDER_STAGE_LIMIT (Quality Inspection) — returns the next status
+   for them to mark, or null once it's out of their hands. */
+function supplierNextOrderStatus(p){
+  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  if(idx >= ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT)) return null;
+  return ORDER_STATUS_FLOW[idx+1];
+}
+/* INNOUS takes over exactly where the supplier leaves off — Quality Inspection
+   onward (Shipped, Delivered) is logistics, and logistics is INNOUS's alone. */
+function innousNextOrderStatus(p){
+  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  if(idx < ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT)) return null;
+  return ORDER_STATUS_FLOW[idx+1];
+}
 
 /* An INNOUS-deleted example (non-account) customer/supplier shouldn't reappear
    after a refresh just because the demo seed data is rebuilt from scratch on
@@ -896,7 +914,7 @@ function buildProjects(){
         proj.selectedQuote = proj.shortlist.find(s=>s.supplierId===p.forceSupplier) || {supplierId:p.forceSupplier, supplierCost:q.quotedTotal, markupPct:15, customerPrice:q.quotedTotal*1.15, leadTimeDays:q.leadTimeDays, rating:q.rating};
       }
       proj.status = rng()>0.2 ? 'in_production':'awarded';
-      const stageIdx = proj.status==='awarded'?0:rnd(1,6);
+      const stageIdx = proj.status==='awarded'?0:rnd(1,4);
       setOrderState(proj, ORDER_STATUS_FLOW[stageIdx]);
     }
     else if(p.status==='completed'){
@@ -1048,8 +1066,8 @@ function setOrderState(proj, orderStatus){
     supplierCost: q ? q.supplierCost : 0,
     customerPrice: q ? q.customerPrice : 0,
     markupPct: q ? q.markupPct : 15,
-    paymentStatus: orderStatus==='delivered' ? 'Paid' : (ORDER_STATUS_FLOW.indexOf(orderStatus)>2 ? 'Deposit Received':'Awaiting Deposit'),
-    quality:{ inspectionRequired:true, status: ORDER_STATUS_FLOW.indexOf(orderStatus)>=4 ? (rng()>0.12?'approved':'ncr_open') : 'pending', documents:['first-article-report.pdf','dimensional-report.pdf'], certificates:['material-cert.pdf'], photos:3, ncr:[] },
+    paymentStatus: orderStatus==='delivered' ? 'Paid' : (ORDER_STATUS_FLOW.indexOf(orderStatus)>=2 ? 'Deposit Received':'Awaiting Deposit'),
+    quality:{ inspectionRequired:true, status: ORDER_STATUS_FLOW.indexOf(orderStatus)>=ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT) ? (rng()>0.12?'approved':'ncr_open') : 'pending', documents:['first-article-report.pdf','dimensional-report.pdf'], certificates:['material-cert.pdf'], photos:3, ncr:[] },
     logistics:{ origin: SUPPLIERS.find(s=>s.id===proj.selectedSupplierId)?.city+', Mexico', destination: proj.deliveryLocation, carrier: pick(['Estafeta Freight','FedEx Freight','Daxxo Logistics','R+L Carriers']), tracking: 'TRK-'+rnd(100000,999999), pickupDate: addDays(proj.deliveryDate,-14), estimatedDelivery: proj.deliveryDate, documents:['bill-of-lading.pdf','commercial-invoice.pdf'] },
   };
   if(proj.order.quality.status==='ncr_open'){ proj.order.quality.ncr=[{id:'NCR-'+rnd(100,999),issue:'Minor surface finish deviation on batch 2',status:'Under Review'}]; }
@@ -1133,6 +1151,24 @@ function persistRealData(){
     localStorage.setItem('innous_real_projects', JSON.stringify(PROJECTS.filter(p=>!p.isDemo)));
   }catch(e){}
 }
+/* The order/production flow was collapsed from 8 stages to 6 (see
+   ORDER_STATUS_FLOW) — any real order persisted from before that change would
+   carry one of the old status strings, which no longer means anything to
+   ORDER_STATUS_FLOW.indexOf(). Remap it once on load so an in-progress real
+   order keeps moving instead of getting stuck. */
+const LEGACY_ORDER_STATUS_MIGRATION = {
+  material_purchased:'in_production', production_started:'in_production',
+  production_completed:'production_finished', ready_to_ship:'shipped',
+};
+function migrateLegacyOrder(order){
+  if(!order) return;
+  const migrated = LEGACY_ORDER_STATUS_MIGRATION[order.status];
+  if(migrated) order.status = migrated;
+  if(order.status && ORDER_STATUS_FLOW.includes(order.status)){
+    const stageIdx = ORDER_STATUS_FLOW.indexOf(order.status);
+    order.milestones = ORDER_STATUS_FLOW.map((st,i)=>({key:st, label:ORDER_STATUS_META[st].label, done:i<=stageIdx, date: (order.milestones&&order.milestones[i]&&order.milestones[i].date) || null}));
+  }
+}
 function loadRealData(){
   try{
     const rc = reviveDates(JSON.parse(localStorage.getItem('innous_real_customers')||'[]'));
@@ -1140,7 +1176,7 @@ function loadRealData(){
     const rp = reviveDates(JSON.parse(localStorage.getItem('innous_real_projects')||'[]'));
     rc.forEach(c=>{ if(!CUSTOMERS.find(x=>x.id===c.id)) CUSTOMERS.push(c); });
     rs.forEach(s=>{ if(!SUPPLIERS.find(x=>x.id===s.id)) SUPPLIERS.push(s); });
-    rp.forEach(p=>{ if(!PROJECTS.find(x=>x.id===p.id)) PROJECTS.push(p); });
+    rp.forEach(p=>{ migrateLegacyOrder(p.order); if(!PROJECTS.find(x=>x.id===p.id)) PROJECTS.push(p); });
   }catch(e){}
 }
 function clearRealData(){
@@ -1205,16 +1241,21 @@ function statusBadge(p){
   if(typeof p==='object' && status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')){
     meta = {label:'Quotes Arriving', cls:'badge-blue'};
   }
-  return `<span class="badge ${meta.cls}"><span class="dot dot-${meta.cls==='badge-green'?'green':meta.cls==='badge-amber'?'amber':meta.cls==='badge-blue'?'blue':'gray'}"></span>${meta.label}</span>`;
+  const dotCls = {'badge-green':'green','badge-amber':'amber','badge-blue':'blue','badge-purple':'purple','badge-red':'red'}[meta.cls] || 'gray';
+  return `<span class="badge ${meta.cls}"><span class="dot dot-${dotCls}"></span>${meta.label}</span>`;
 }
 /* Who needs to act next on this RFQ — shown next to the status so it's obvious
-   whether the ball is with the client, INNOUS, or the supplier at any moment. */
+   whether the ball is with the client, INNOUS, or the supplier at any moment.
+   Once an order in production reaches Quality Inspection, responsibility for
+   it shifts from the supplier to INNOUS (logistics is INNOUS's job alone). */
 function rfqResponsibility(p){
   const map = {
     submitted:'INNOUS', under_review:'INNOUS',
     sourcing: p.supplierQuotes.some(q=>q.status==='submitted') ? 'INNOUS' : 'SUPPLIER',
     quotes_received:'INNOUS', customer_review:'CLIENT',
-    awarded:'INNOUS', in_production:'SUPPLIER', completed:null,
+    awarded:'INNOUS',
+    in_production: (p.order && innousNextOrderStatus(p)) ? 'INNOUS' : 'SUPPLIER',
+    completed:null,
   };
   return map[p.status] || null;
 }
@@ -1227,8 +1268,20 @@ function responsibilityChip(p, viewerRole){
   const text = isYou ? (es?'Te toca a ti':'Waiting on you') : `${es?'Espera a':'Waiting on'} ${label}`;
   return `<span class="badge ${isYou?'badge-amber':'badge-gray'}">${text}</span>`;
 }
+/* One color family per meaning, not per stage — gray = not started, green =
+   actively being made, blue = handed off / in transit, amber = needs a
+   decision, purple = fully finished. Keeps a 6-step timeline readable at a
+   glance instead of the old "everything but the last step is green". */
+const ORDER_STATUS_CLS = {
+  order_confirmed:'badge-gray',
+  in_production:'badge-green',
+  production_finished:'badge-blue',
+  quality_inspection:'badge-amber',
+  shipped:'badge-blue',
+  delivered:'badge-purple',
+};
 function orderStatusBadge(status, es){
-  const cls = status==='delivered' ? 'badge-gray' : (status==='quality_inspection'?'badge-amber':'badge-green');
+  const cls = ORDER_STATUS_CLS[status] || 'badge-gray';
   return `<span class="badge ${cls}">${orderStatusLabel(status, es)}</span>`;
 }
 function stars(rating){
@@ -1311,14 +1364,14 @@ function rfqStageMessage(p, audience){
   return '';
 }
 function orderStageMessage(p, audience){
+  // From Quality Inspection onward, logistics is INNOUS's job alone — the
+  // supplier's and client's messages both say so explicitly at that stage.
   const msgs = {
-    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Compra el material para comenzar."},
-    material_purchased:{client:"Materials have been purchased. Production will begin shortly.", innous:"Materials purchased — production should start soon.", supplier:"Material comprado. Actualiza a Producción Iniciada cuando empiece el trabajo."},
-    production_started:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"La producción está en curso. Actualiza el estatus cuando termines."},
-    production_completed:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production complete — confirm quality inspection.", supplier:"Producción completada. En espera de inspección de calidad."},
-    quality_inspection:{client:"Your order is undergoing quality inspection before shipping.", innous:"Quality inspection in progress.", supplier:"Inspección de calidad en curso."},
-    ready_to_ship:{client:"Your order passed inspection and is ready to ship.", innous:"Ready to ship — coordinate logistics.", supplier:"Listo para enviar. Coordina la recolección con logística."},
-    shipped:{client:"Your order is on its way.", innous:"Order shipped — track delivery below.", supplier:"Pedido enviado."},
+    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
+    in_production:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
+    production_finished:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production finished — confirm quality inspection.", supplier:"Producción terminada. Márcalo como Inspección de Calidad para mandarlo a revisión."},
+    quality_inspection:{client:"Your order is in quality inspection. Once it passes, INNOUS takes over shipping and delivery.", innous:"Quality inspection in progress — once it's approved, mark this order Shipped to move it into logistics.", supplier:"Inspección de calidad en curso. Tu parte del pedido termina aquí — de aquí en adelante, INNOUS se encarga de toda la logística."},
+    shipped:{client:"Your order is on its way — INNOUS is handling delivery logistics.", innous:"Order shipped — track delivery below and mark it Delivered once it arrives.", supplier:"Pedido enviado. La logística de entrega ya está en manos de INNOUS."},
     delivered:{client:"Delivered! This order is complete.", innous:"Delivered — order complete.", supplier:"Entregado — pedido completado."},
   };
   return (msgs[p.order.status]||{})[audience] || '';
@@ -1475,6 +1528,10 @@ function pendingItems(){
     PROJECTS.filter(p=>p.order && p.order.status==='delivered' && p.order.paymentStatus!=='Paid').forEach(p=>{
       items.push({navId:'orders', icon:'dollar-sign', text:`Collect final payment — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
+    PROJECTS.filter(p=>p.order && innousNextOrderStatus(p)).forEach(p=>{
+      const label = orderStatusLabel(innousNextOrderStatus(p));
+      items.push({navId:'orders', icon:'truck', text:`Mark as ${label} — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+    });
   } else { // SUPPLIER
     supplierInvited().filter(p=>{
       const q = supplierQuoteFor(p);
@@ -1483,8 +1540,7 @@ function pendingItems(){
       items.push({navId:'rfqs', icon:'file-text', text:`Cotizar — ${p.projectName}`, sub:p.id, path:'#/supplier/rfq/'+p.id});
     });
     supplierOrders().filter(p=>p.status!=='completed').forEach(p=>{
-      const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-      if(ORDER_STATUS_FLOW[stageIdx+1]){
+      if(supplierNextOrderStatus(p)){
         items.push({navId:'orders', icon:'cog', text:`Actualizar producción — ${p.projectName}`, sub:p.id, path:'#/supplier/order/'+p.id});
       }
     });
@@ -2507,11 +2563,14 @@ ROUTES['innous/order'] = function(id){
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
   const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
   const margin = p.order.customerPrice-p.order.supplierCost;
+  const nextStatus = innousNextOrderStatus(p);
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>${orderStatusBadge(p.order.status)}</div>
-    ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':'info')}
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
+      <div class="page-actions">${orderStatusBadge(p.order.status)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabel(nextStatus)}</button>`:''}</div>
+    </div>
+    ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':(nextStatus?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
@@ -2976,14 +3035,15 @@ ROUTES['supplier/order'] = function(id){
   const p = findProject(id); if(!p || p.selectedSupplierId!==STATE.supplierId || !p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
   const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabel(s, true));
-  const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
+  const nextStatus = supplierNextOrderStatus(p);
+  const bannerKind = p.order.status==='delivered' ? 'success' : (nextStatus ? 'action' : 'info');
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/supplier/orders">Pedidos Activos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div>
       <div class="page-actions">${orderStatusBadge(p.order.status, true)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabel(nextStatus, true)}</button>`:''}</div>
     </div>
-    ${stageBanner(orderStageMessage(p,'supplier'), nextStatus?'action':'success')}
+    ${stageBanner(orderStageMessage(p,'supplier'), bannerKind)}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-2">
       <div class="card card-pad">
@@ -3018,9 +3078,10 @@ ROUTES['supplier/production'] = function(){
     <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Actualiza el estatus de producción conforme avance el trabajo</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Estatus Actual</th><th></th></tr></thead><tbody>
       ${orders.map(p=>{
-        const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status); const nextStatus = ORDER_STATUS_FLOW[stageIdx+1];
+        const nextStatus = supplierNextOrderStatus(p);
+        const doneText = p.order.status==='delivered' ? 'Completo' : 'En logística (INNOUS)';
         return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p.order.status, true)}</td>
-        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabel(nextStatus, true)}</button>`:'<span class="td-sub">Completo</span>'}</td></tr>`;
+        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabel(nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
       }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
