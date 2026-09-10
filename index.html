@@ -671,6 +671,13 @@ const ORDER_STATUS_ES = {
 };
 function orderStatusLabel(status, es){ return es ? (ORDER_STATUS_ES[status]||status) : (ORDER_STATUS_META[status]?.label||status); }
 
+/* An INNOUS-deleted example (non-account) customer/supplier shouldn't reappear
+   after a refresh just because the demo seed data is rebuilt from scratch on
+   every page load — remember which example ids were deleted, same lifetime as
+   the "example data loaded" flag itself (both get cleared together). */
+function loadDeletedDemoIds(){ try{ return JSON.parse(localStorage.getItem('innous_deleted_demo')||'[]'); }catch(e){ return []; } }
+function saveDeletedDemoIds(ids){ try{ localStorage.setItem('innous_deleted_demo', JSON.stringify(ids)); }catch(e){} }
+
 /* ---------- Customers ---------- */
 const CUSTOMERS = [
   {id:'c1',company:'ABC Manufacturing',contact:'Diane Coleman',email:'dcoleman@abcmfg.com',phone:'(313) 555-0142',city:'Detroit, MI',industry:'Automotive',registeredAt:daysFromNow(-410)},
@@ -683,7 +690,7 @@ const CUSTOMERS = [
   {id:'c8',company:'Summit Agricultural Equipment',contact:'Gary Holt',email:'gholt@summitag.com',phone:'(515) 555-0154',city:'Des Moines, IA',industry:'Agriculture',registeredAt:daysFromNow(-97)},
   {id:'c9',company:'Vanguard Defense Systems',contact:'Nicole Park',email:'npark@vanguarddefense.com',phone:'(703) 555-0189',city:'Arlington, VA',industry:'Defense',registeredAt:daysFromNow(-62)},
   {id:'c10',company:'BrightPath Medical Devices',contact:'Aaron Feldman',email:'afeldman@brightpathmed.com',phone:'(612) 555-0116',city:'Minneapolis, MN',industry:'Medical Devices',registeredAt:daysFromNow(-23)},
-];
+].filter(c=>!loadDeletedDemoIds().includes(c.id));
 const INDUSTRIES = ['Automotive','Industrial Equipment','Heavy Machinery','Aerospace','Energy','Marine','Robotics','Agriculture','Defense','Medical Devices','Consumer Products','Electronics','Other'];
 
 /* ---------- Suppliers ---------- */
@@ -703,7 +710,7 @@ const SUPPLIERS = [
   {id:'s13',name:'Toluca Precision Works',contactName:'Emilio Zarate',email:'ezarate@tolucaprecision.mx',phone:'+52 722 214 6690',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',operators:74,yearsOperating:18,registeredAt:daysFromNow(-152),rating:4.9,onTime:97,quality:99,projects:171},
   {id:'s14',name:'Hermosillo Industrial Group',contactName:'Alejandra Duarte',email:'aduarte@hmoindgroup.mx',phone:'+52 662 289 4470',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',operators:81,yearsOperating:12,registeredAt:daysFromNow(-118),rating:4.5,onTime:90,quality:93,projects:104},
   {id:'s15',name:'Aguascalientes Advanced CNC',contactName:'Diego Fuentes',email:'dfuentes@agsadvcnc.mx',phone:'+52 449 916 5528',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',operators:96,yearsOperating:15,registeredAt:daysFromNow(-64),rating:4.9,onTime:98,quality:99,projects:196},
-];
+].filter(s=>!loadDeletedDemoIds().includes(s.id));
 
 /* ---------- Project / RFQ templates ---------- */
 const PROJECT_TEMPLATES = [
@@ -1143,8 +1150,8 @@ function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id
 function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, generalChat:[], rating:0, onTime:0, quality:0, projects:0, photo:null}; }
 function chatOf(entity){ if(!entity.generalChat) entity.generalChat=[]; return entity.generalChat; }
 function findProject(id){ return PROJECTS.find(p=>p.id===id); }
-function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Unknown Supplier'; }
-function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Unknown Customer'; }
+function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Deleted Supplier'; }
+function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Deleted Customer'; }
 
 /* ---------- Toast ---------- */
 function showToast(msg, kind){
@@ -2332,7 +2339,10 @@ ROUTES['innous/customer'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/customers">Customers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), 'var(--navy)', 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
+      <div class="page-actions">
+        <button class="btn btn-primary" onclick="App.startGeneralChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button>
+        <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
+      </div></div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Total RFQs', proj.length, 'submitted to date', 'file-text')}
       ${kpiCard('Active Orders', activeOrders, 'in production or awarded', 'cog')}
@@ -2395,7 +2405,10 @@ ROUTES['innous/supplier'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/suppliers">Suppliers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), 'var(--ink)', 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="App.startGeneralChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button></div></div>
+      <div class="page-actions">
+        <button class="btn btn-primary" onclick="App.startGeneralChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button>
+        <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
+      </div></div>
     <div class="grid grid-4" style="margin-bottom:20px;">
       ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'out of 5.0', 'star')}
       ${kpiCard('On-Time', s.onTime+'%', 'delivery performance', 'clock')}
@@ -3168,6 +3181,7 @@ const App = {
     localStorage.removeItem('innous_demo_loaded');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
+    localStorage.removeItem('innous_deleted_demo');
     clearRealData();
     location.reload();
   },
@@ -3176,6 +3190,7 @@ const App = {
     localStorage.setItem('innous_demo_loaded','1');
     localStorage.removeItem('innous_accounts');
     localStorage.removeItem('innous_session');
+    localStorage.removeItem('innous_deleted_demo');
     clearRealData();
     location.reload();
   },
@@ -3185,6 +3200,40 @@ const App = {
     saveSettings(STATE.settings);
     showToast('Settings saved', 'success');
     route();
+  },
+  /* ---- Delete a customer or supplier account (INNOUS only) ----
+     Revokes login access and removes their profile. Past RFQs/orders are
+     kept as historical records rather than silently erased — they just
+     display as "Deleted Customer"/"Deleted Supplier" from then on (see
+     customerName()/supplierName()), the same way a real ledger wouldn't
+     un-happen a completed order just because the account was closed. */
+  deleteCustomer(id){
+    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
+    const proj = PROJECTS.filter(p=>p.customerId===id);
+    const active = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
+    let msg = `Permanently delete the account for "${c.company}"? They will no longer be able to log in.`;
+    if(proj.length) msg += ` They have ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Customer".`;
+    if(!confirm(msg)) return;
+    CUSTOMERS.splice(CUSTOMERS.indexOf(c),1);
+    const accIdx = ACCOUNTS.findIndex(a=>a.refId===id);
+    if(accIdx>-1){ ACCOUNTS.splice(accIdx,1); saveAccounts(ACCOUNTS); }
+    else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) customer — remember so it stays gone after a refresh
+    showToast('Customer account deleted', 'success');
+    navigate('#/innous/customers');
+  },
+  deleteSupplier(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+    const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(id));
+    const active = proj.filter(p=>p.selectedSupplierId===id && ['awarded','in_production'].includes(p.status)).length;
+    let msg = `Permanently delete the account for "${s.name}"? They will no longer be able to log in.`;
+    if(proj.length) msg += ` They're on ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Supplier".`;
+    if(!confirm(msg)) return;
+    SUPPLIERS.splice(SUPPLIERS.indexOf(s),1);
+    const accIdx = ACCOUNTS.findIndex(a=>a.refId===id);
+    if(accIdx>-1){ ACCOUNTS.splice(accIdx,1); saveAccounts(ACCOUNTS); }
+    else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
+    showToast('Supplier account deleted', 'success');
+    navigate('#/innous/suppliers');
   },
 
   /* ---- Post-signup mini tour ---- */
