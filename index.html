@@ -1093,8 +1093,16 @@ async function enterAppAsUser(user){
   document.getElementById('auth-root').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
   lastRoutedHash = null;
-  const home = profile.role==='CLIENT' ? '#/client/dashboard' : profile.role==='SUPPLIER' ? '#/supplier/dashboard' : '#/innous/overview';
-  navigate(home);
+  // Render whatever page is already in the URL instead of always jumping to
+  // the dashboard — this matters most on a page reload (session restore in
+  // boot()), where the browser keeps the hash from before the refresh and
+  // the user expects to land back where they were, not on Overview. route()
+  // already falls back to this role's home page on its own when the hash is
+  // empty or belongs to a different role (e.g. a stale hash left over from
+  // a previous, different-role session on the same tab), so this is safe
+  // for the fresh login/signup paths too — there, there's normally no
+  // meaningful hash yet, so it falls back to home exactly as before.
+  route();
 }
 function buildProjects(){
   PROJECTS = [];
@@ -3721,6 +3729,13 @@ const App = {
   async logOut(){
     await sb.auth.signOut();
     STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
+    // Clear the hash so a different person logging in afterward on this same
+    // tab/computer (e.g. a shared office machine) always lands on their own
+    // home page, instead of accidentally inheriting whatever page the
+    // previous person had open — enterAppAsUser() now preserves an existing
+    // hash on login so refresh doesn't bounce people to Overview, so this is
+    // what keeps that safe for a logout → different login on the same tab.
+    history.replaceState(null,'',location.pathname+location.search);
     document.getElementById('app-shell').style.display='none';
     document.getElementById('auth-root').style.display='';
     renderAuthRoot();
