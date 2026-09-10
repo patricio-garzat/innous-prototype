@@ -9,6 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,500;0,700;1,400;1,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Renders the first page of an uploaded PDF drawing onto a canvas so INNOUS
+     can redact it (white boxes over a logo, etc.) before it's ever shared
+     with a supplier — see App.openRedactModal(). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 /* ============ RESET & TOKENS ============ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -349,6 +353,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 
 .file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);cursor:pointer;transition:border-color .15s,background .15s;}
 .file-drop:hover,.file-drop.drag-over{border-color:var(--accent);background:var(--accent-soft);}
+.redact-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:60vh;background:var(--surface-alt);text-align:center;}
+.redact-canvas-wrap canvas{max-width:100%;cursor:crosshair;display:block;margin:0 auto;}
 .file-drop svg{width:26px;height:26px;stroke:var(--ink-tertiary);margin:0 auto 10px;}
 .file-drop-title{font-size:13.5px;font-weight:600;}
 .file-drop-sub{font-size:12px;color:var(--ink-tertiary);margin-top:3px;}
@@ -913,6 +919,7 @@ let PROJECTS = [];
 const SUPABASE_URL = 'https://axbtkcfblzgyosxzxiud.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4YnRrY2ZibHpneW9zeHp4aXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDU2NDUsImV4cCI6MjEwNDU4MTY0NX0.7eXLIi2c-6dxVUAX0cbNe7B54KriVgDeH6Unq-UbUfc';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* Supabase rows use snake_case columns; the rest of this file expects the
    exact camelCase shape CUSTOMERS/SUPPLIERS always had, so every render
@@ -1456,7 +1463,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -1658,6 +1665,80 @@ function fileIconChip(f){
   // URL; older/demo files with no path just render as a static, unclickable chip.
   const clickAttrs = f.path ? `style="cursor:pointer;" onclick="App.openProjectFile('${escAttr(f.path)}')" title="Click to open"` : '';
   return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
+}
+/* ---- INNOUS-only file chip: shows the original (only INNOUS/client ever
+   see it) plus whether a supplier-safe redacted copy has been published. ---- */
+function innousFileChip(p, f, i){
+  const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
+  const isCad = ['step','dwg','dxf'].includes(f.type);
+  const statusBadge = isCad
+    ? `<span class="badge badge-gray">CAD — not shared</span>`
+    : f.redactedPath
+      ? `<span class="badge badge-green">Shared with supplier</span>`
+      : `<span class="badge badge-amber">Pending review</span>`;
+  const openOriginal = f.path ? `onclick="App.openProjectFile('${escAttr(f.path)}')" style="cursor:pointer;" title="View original (never seen by supplier)"` : '';
+  return `<div class="file-chip" style="flex-wrap:wrap;">
+    <div class="fc-icon" style="color:${meta.color};background:${meta.color}18;" ${openOriginal}>${meta.ext}</div>
+    <span class="fc-name" ${openOriginal}>${f.name}</span><span class="fc-size">${f.size}</span>
+    ${statusBadge}
+    ${!isCad?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.openRedactModal('${p.id}',${i})">${f.redactedPath?'Edit redaction':'Redact & share'}</button>`:''}
+  </div>`;
+}
+/* ---- Redaction editor (INNOUS-only): loads a PDF (via pdf.js, first page)
+   or an image onto a canvas so INNOUS can draw opaque white boxes over any
+   logo/identifying info before a redacted copy is ever exposed to a
+   supplier. Saves out as a flattened PNG — the original file is never
+   touched or shared. ---- */
+function redactModalHtml(){
+  const st = STATE.ui.redactState;
+  if(!st) return '';
+  if(st.loading){
+    return `
+    <div class="modal-header"><h3>Redact Drawing</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
+    <div class="modal-body" style="text-align:center;padding:60px 0;">
+      <div style="width:28px;height:28px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:boot-spin .8s linear infinite;margin:0 auto 14px;"></div>
+      <div class="td-sub">Loading ${escAttr(st.fileName)}…</div>
+    </div>`;
+  }
+  return `
+  <div class="modal-header"><h3>Redact Drawing</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="field-hint" style="margin-bottom:10px;">Click and drag to draw white boxes over any logo or identifying info — this is exactly what the supplier will see, nothing more. ${st.fileType==='pdf'?'(First page only.)':''}</div>
+    <div class="redact-canvas-wrap">
+      <canvas id="redact-canvas" onmousedown="App.redactMouseDown(event)" onmousemove="App.redactMouseMove(event)" onmouseup="App.redactMouseUp(event)" onmouseleave="App.redactMouseUp(event)"></canvas>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+      <div class="td-sub" id="redact-box-count">${st.boxes.length} box(es) placed</div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="App.undoRedactBox()"><i data-lucide="undo-2"></i>Undo last</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="App.clearRedactBoxes()"><i data-lucide="trash-2"></i>Clear all</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="App.closeRedactModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="App.saveRedaction()"><i data-lucide="check"></i>Publish to Supplier</button>
+  </div>`;
+}
+function redactCanvasCoords(e, canvas){
+  const rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX-rect.left) * (canvas.width/rect.width), y: (e.clientY-rect.top) * (canvas.height/rect.height) };
+}
+function redrawRedactCanvas(){
+  const st = STATE.ui.redactState;
+  const canvas = document.getElementById('redact-canvas');
+  if(!st || !canvas || !st.source) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(st.source, 0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#fff';
+  st.boxes.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+  if(st.drawing){
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillRect(st.drawing.x, st.drawing.y, st.drawing.w, st.drawing.h);
+    ctx.strokeStyle = '#00A3E0'; ctx.lineWidth = Math.max(1, canvas.width/500);
+    ctx.strokeRect(st.drawing.x, st.drawing.y, st.drawing.w, st.drawing.h);
+  }
 }
 function timelineComp(steps, currentIdx){
   return `<div class="timeline">${steps.map((label,i)=>{
@@ -2807,7 +2888,8 @@ ROUTES['innous/rfq'] = function(id){
       </div>
       <div class="card card-pad">
         <div class="section-title">Files</div>
-        <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
+        <div class="field-hint" style="margin-top:-4px;margin-bottom:8px;">Originals — never shared with the supplier until you redact and publish them below.</div>
+        <div class="file-list" style="margin-top:10px;">${p.files.map((f,i)=>innousFileChip(p,f,i)).join('')}</div>
         <hr class="divider">
         <div class="section-title">Customer Contact</div>
         ${(()=>{ const c = CUSTOMERS.find(x=>x.id===p.customerId); return c ? `
@@ -3479,7 +3561,7 @@ function supplierRfqCard(p){
       ${infoItem('Cantidad', p.quantity.toLocaleString())}
       ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
       ${infoItem('Ubicación', p.deliveryLocation)}
-      ${infoItem('Archivos', p.files.length+' adjuntos')}
+      ${infoItem('Archivos', p.files.filter(f=>f.redactedPath).length+' adjuntos')}
     </div>
     <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>
     <button class="btn ${submitted?'btn-secondary':'btn-primary'} btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">${submitted?'Ver Cotización Enviada':'Ver RFQ'}</button>
@@ -3513,8 +3595,12 @@ ROUTES['supplier/rfq'] = function(id){
       </div>
       <div class="card card-pad">
         <div class="section-title">Archivos</div>
-        <div class="file-list" style="margin-top:10px;">${p.files.map(fileIconChip).join('')}</div>
-        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>La identidad del comprador, las cotizaciones de otros proveedores y el precio final al cliente son gestionados por INNOUS y no se comparten con los proveedores.</div></div>
+        <div class="file-list" style="margin-top:10px;">${(()=>{
+          const visible = p.files.filter(f=>f.redactedPath);
+          if(visible.length) return visible.map(f=>fileIconChip({...f, path:f.redactedPath})).join('');
+          return `<div class="td-sub">${p.files.length ? 'INNOUS está revisando los archivos antes de compartirlos contigo.' : 'Sin archivos adjuntos.'}</div>`;
+        })()}</div>
+        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>La identidad del comprador, las cotizaciones de otros proveedores y el precio final al cliente son gestionados por INNOUS y no se comparten con los proveedores. Los dibujos que ves aquí ya fueron revisados por INNOUS para quitar cualquier información de contacto del cliente.</div></div>
       </div>
     </div>
     ${submitted ? supplierSubmittedQuoteCard(q) : supplierQuoteForm(p)}
@@ -4288,6 +4374,116 @@ const App = {
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
     window.open(data.signedUrl, '_blank');
   },
+  /* ---- Redaction editor (INNOUS only) ---- */
+  async openRedactModal(pid, idx){
+    const p = findProject(pid); if(!p) return;
+    const f = p.files[idx]; if(!f) return;
+    if(!['pdf','jpg','png'].includes(f.type)){ showToast('This file type can\'t be edited — CAD files are never shared with suppliers.'); return; }
+    if(!f.path){ showToast('This file has no original to open.'); return; }
+    const { data, error } = await sb.storage.from('project-files').createSignedUrl(f.path, 300);
+    if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
+    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, boxes:[], drawing:null, source:null, loading:true };
+    openModal(redactModalHtml(), true);
+    try{
+      let source, w, h;
+      if(f.type==='pdf'){
+        if(!window.pdfjsLib) throw new Error('PDF viewer failed to load');
+        const pdf = await pdfjsLib.getDocument(data.signedUrl).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({scale:2});
+        const off = document.createElement('canvas');
+        off.width = viewport.width; off.height = viewport.height;
+        await page.render({canvasContext: off.getContext('2d'), viewport}).promise;
+        source = off; w = off.width; h = off.height;
+      } else {
+        source = await new Promise((resolve,reject)=>{
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = ()=>resolve(img);
+          img.onerror = ()=>reject(new Error('Image failed to load'));
+          img.src = data.signedUrl;
+        });
+        w = source.naturalWidth; h = source.naturalHeight;
+      }
+      if(!STATE.ui.redactState || STATE.ui.redactState.projectId!==pid || STATE.ui.redactState.fileIndex!==idx) return; // modal was closed/changed mid-load
+      STATE.ui.redactState.source = source;
+      STATE.ui.redactState.loading = false;
+      document.querySelector('.modal').innerHTML = redactModalHtml();
+      lucide.createIcons();
+      const canvas = document.getElementById('redact-canvas');
+      canvas.width = w; canvas.height = h;
+      redrawRedactCanvas();
+    }catch(err){
+      console.error('openRedactModal failed', err);
+      showToast("Couldn't load the file to edit it.");
+      closeModal();
+      STATE.ui.redactState = null;
+    }
+  },
+  closeRedactModal(){ STATE.ui.redactState = null; closeModal(); },
+  redactMouseDown(e){
+    const st = STATE.ui.redactState; if(!st) return;
+    const {x,y} = redactCanvasCoords(e, e.target);
+    st.drawing = {x0:x, y0:y, x, y, w:0, h:0};
+  },
+  redactMouseMove(e){
+    const st = STATE.ui.redactState; if(!st || !st.drawing) return;
+    const {x,y} = redactCanvasCoords(e, e.target);
+    const d = st.drawing;
+    d.x = Math.min(d.x0, x); d.y = Math.min(d.y0, y);
+    d.w = Math.abs(x-d.x0); d.h = Math.abs(y-d.y0);
+    redrawRedactCanvas();
+  },
+  redactMouseUp(e){
+    const st = STATE.ui.redactState; if(!st || !st.drawing) return;
+    const d = st.drawing;
+    if(d.w>4 && d.h>4) st.boxes.push({x:d.x, y:d.y, w:d.w, h:d.h});
+    st.drawing = null;
+    redrawRedactCanvas();
+    const countEl = document.getElementById('redact-box-count');
+    if(countEl) countEl.textContent = `${st.boxes.length} box(es) placed`;
+  },
+  undoRedactBox(){
+    const st = STATE.ui.redactState; if(!st || !st.boxes.length) return;
+    st.boxes.pop();
+    redrawRedactCanvas();
+    document.getElementById('redact-box-count').textContent = `${st.boxes.length} box(es) placed`;
+  },
+  clearRedactBoxes(){
+    const st = STATE.ui.redactState; if(!st) return;
+    st.boxes = [];
+    redrawRedactCanvas();
+    document.getElementById('redact-box-count').textContent = '0 box(es) placed';
+  },
+  async saveRedaction(){
+    const st = STATE.ui.redactState; if(!st) return;
+    const canvas = document.getElementById('redact-canvas'); if(!canvas) return;
+    const p = findProject(st.projectId); if(!p) return;
+    const f = p.files[st.fileIndex]; if(!f) return;
+    const saveBtn = document.querySelector('.modal-footer .btn-primary'); if(saveBtn) saveBtn.disabled = true;
+    try{
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if(!blob){ showToast('No se pudo generar la imagen.'); if(saveBtn) saveBtn.disabled=false; return; }
+      const baseName = f.name.replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9._-]/g,'_');
+      const redactedPath = `${st.projectId}/redacted/${Date.now()}-${baseName}.png`;
+      const { error: upErr } = await sb.storage.from('project-files').upload(redactedPath, blob, { contentType:'image/png' });
+      if(upErr){ showToast(upErr.message); if(saveBtn) saveBtn.disabled=false; return; }
+      const newFiles = p.files.map((file,i)=> i===st.fileIndex ? {...file, redactedPath} : file);
+      if(!p.isDemo){
+        const { error: dbErr } = await sb.from('projects').update({ files:newFiles }).eq('id', st.projectId);
+        if(dbErr){ showToast(dbErr.message); if(saveBtn) saveBtn.disabled=false; return; }
+      }
+      p.files = newFiles;
+      STATE.ui.redactState = null;
+      closeModal();
+      showToast('Redacted version published to the supplier', 'success');
+      route();
+    }catch(err){
+      console.error('saveRedaction failed', err);
+      showToast('No se pudo guardar la versión editada.');
+      if(saveBtn) saveBtn.disabled = false;
+    }
+  },
   async submitRfq(e){
     e.preventDefault();
     const f = new FormData(e.target);
@@ -4311,10 +4507,13 @@ const App = {
       // Upload the real files now that the project row exists (Storage RLS
       // checks for a matching project owned by this client) — a failed
       // upload on one file doesn't block the RFQ itself, just that file.
+      // Files live under .../original/ — only the client and INNOUS can ever
+      // read that folder (see fix16). A supplier only ever sees a file once
+      // INNOUS explicitly redacts and publishes a copy under .../redacted/.
       const uploadedFiles = [];
       for(const item of filesToUpload){
         const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-        const path = `${id}/${Date.now()}-${safeName}`;
+        const path = `${id}/original/${Date.now()}-${safeName}`;
         const { error: upErr } = await sb.storage.from('project-files').upload(path, item.file);
         if(upErr){ showToast(`No se pudo subir ${item.name}: ${upErr.message}`); continue; }
         uploadedFiles.push({ name:item.name, type:item.type, size:item.size, path });
