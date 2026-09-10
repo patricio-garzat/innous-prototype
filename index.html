@@ -2353,6 +2353,7 @@ ROUTES['innous/rfq'] = function(id){
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+        <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Delete RFQ</button>
       </div>
     </div>
     ${stageBanner(rfqStageMessage(p,'innous'), ['submitted','under_review'].includes(p.status)?'action':'info')}
@@ -3479,6 +3480,22 @@ const App = {
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
     showToast('Supplier account deleted', 'success');
     navigate('#/innous/suppliers');
+  },
+  /* Unlike deleting a customer/supplier account, this really does erase the
+     RFQ — there's no "keep it for history" case here, since an RFQ with no
+     one left to attribute it to (its customer already deleted) is exactly
+     the clutter this exists to clean up. Real RFQs cascade-delete their
+     invitations/quotes/order/messages in the database automatically. */
+  async deleteRfq(id){
+    const p = findProject(id); if(!p) return;
+    if(!confirm(`Permanently delete RFQ ${p.id} ("${p.projectName}")? This can't be undone.`)) return;
+    PROJECTS.splice(PROJECTS.indexOf(p),1);
+    if(!p.isDemo){
+      const { error } = await sb.from('projects').delete().eq('id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    showToast('RFQ deleted', 'success');
+    navigate('#/innous/rfqs');
   },
 
   /* ---- Post-signup mini tour ---- */
