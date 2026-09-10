@@ -268,6 +268,28 @@ input[type=text],input[type=email],input[type=number],input[type=date],input[typ
 }
 input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
 textarea{resize:vertical;min-height:90px;}
+
+/* Account Settings — "Change password" row */
+.account-pw-toggle{display:flex;align-items:center;gap:12px;padding:13px 14px;margin-top:18px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);cursor:pointer;transition:border-color .15s,background .15s;}
+.account-pw-toggle:hover{border-color:var(--border-strong);}
+.account-pw-toggle.open{border-color:var(--border-strong);border-bottom-left-radius:0;border-bottom-right-radius:0;}
+.account-pw-toggle-icon{width:34px;height:34px;border-radius:9px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.account-pw-toggle-icon svg{width:16px;height:16px;stroke:var(--accent-ink);}
+.account-pw-toggle-text{flex:1;min-width:0;}
+.account-pw-toggle-title{font-size:13px;font-weight:700;color:var(--ink);}
+.account-pw-toggle-sub{font-size:11.5px;color:var(--ink-tertiary);margin-top:1px;}
+.account-pw-toggle-chev{width:16px;height:16px;stroke:var(--ink-tertiary);flex:0 0 auto;transition:transform .2s;}
+.account-pw-toggle.open .account-pw-toggle-chev{transform:rotate(180deg);}
+.account-pw-panel{padding:16px 14px;border:1px solid var(--border-strong);border-top:none;border-bottom-left-radius:12px;border-bottom-right-radius:12px;background:var(--surface);animation:accountPwPanelIn .16s ease;}
+@keyframes accountPwPanelIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.password-field{margin-bottom:14px;}
+.password-input-wrap{position:relative;}
+.password-input-wrap input{padding-right:40px;}
+.password-toggle-btn{position:absolute;top:50%;right:6px;transform:translateY(-50%);width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:none;border:none;border-radius:6px;color:var(--ink-tertiary);cursor:pointer;transition:color .15s,background .15s;}
+.password-toggle-btn:hover{color:var(--ink);background:var(--surface-alt);}
+.password-toggle-btn svg{width:16px;height:16px;}
+.account-pw-hint-ok{color:var(--success);font-weight:600;}
+.account-pw-hint-bad{color:var(--danger);font-weight:600;}
 select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352525B' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
 .process-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
 @media(max-width:768px){.process-grid{grid-template-columns:repeat(2,1fr);}}
@@ -1965,6 +1987,57 @@ const TOUR_STEPS = {
     {icon:'rocket', title:'Completa tu Perfil', text:'Agrega tus servicios, maquinaria y certificaciones para recibir más oportunidades.', cta:'Completar mi Perfil', ctaPath:'#/supplier/profile'},
   ],
 };
+function accountModalHtml(){
+  const es = STATE.role==='SUPPLIER';
+  const d = STATE.ui.accountDraft;
+  const {nameLabel, companyLabel, showCompany, initialsText} = STATE.ui.accountModalMeta;
+  const pwOpen = !!STATE.ui.accountShowPasswordSection;
+  return `
+  <div class="modal-header"><h3>${es?'Configuración de Cuenta':'Account Settings'}</h3><button class="modal-close" onclick="App.closeAccountModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="account-photo-row">
+      ${avatarHtml(d.photo, initialsText, 'var(--navy)', 64)}
+      <div>
+        <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="App.onPhotoSelected(this)">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('account-photo-input').click()"><i data-lucide="camera"></i>${es?'Cambiar foto':'Change photo'}</button>
+        <div class="field-hint">${es?'Se recorta a 1:1 y se muestra en círculo.':'Cropped to 1:1 and shown in a circle.'}</div>
+      </div>
+    </div>
+    <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
+    ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+    ${STATE.authMode==='account'?`
+    <div class="account-pw-toggle ${pwOpen?'open':''}" onclick="App.toggleAccountPasswordSection()">
+      <div class="account-pw-toggle-icon"><i data-lucide="lock"></i></div>
+      <div class="account-pw-toggle-text">
+        <div class="account-pw-toggle-title">${es?'Contraseña':'Password'}</div>
+        <div class="account-pw-toggle-sub">${es?'Cambiar tu contraseña':'Change your password'}</div>
+      </div>
+      <i data-lucide="chevron-down" class="account-pw-toggle-chev"></i>
+    </div>
+    ${pwOpen?`
+    <div class="account-pw-panel">
+      <div class="form-group password-field">
+        <label class="field-label">${es?'Nueva contraseña':'New password'}</label>
+        <div class="password-input-wrap">
+          <input type="password" id="account-new-password" autocomplete="new-password" oninput="App.checkAccountPasswordMatch()">
+          <button type="button" class="password-toggle-btn" onclick="App.togglePasswordVisibility('account-new-password', this)"><i data-lucide="eye"></i></button>
+        </div>
+      </div>
+      <div class="form-group password-field" style="margin-bottom:0;">
+        <label class="field-label">${es?'Confirmar contraseña':'Confirm password'}</label>
+        <div class="password-input-wrap">
+          <input type="password" id="account-new-password2" autocomplete="new-password" oninput="App.checkAccountPasswordMatch()">
+          <button type="button" class="password-toggle-btn" onclick="App.togglePasswordVisibility('account-new-password2', this)"><i data-lucide="eye"></i></button>
+        </div>
+        <div class="field-hint" id="account-pw-match-hint"></div>
+      </div>
+    </div>
+    `:''}
+    `:''}
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeAccountModal()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveAccount()"><i data-lucide="check"></i>${es?'Guardar':'Save'}</button></div>
+  `;
+}
 function tourModalHtml(){
   const steps = TOUR_STEPS[STATE.role];
   const i = STATE.ui.tourStep;
@@ -3635,33 +3708,36 @@ const App = {
       initialsText = 'IN';
       if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null};
     }
-    const d = STATE.ui.accountDraft;
-    openModal(`
-      <div class="modal-header"><h3>${es?'Configuración de Cuenta':'Account Settings'}</h3><button class="modal-close" onclick="App.closeAccountModal()"><i data-lucide="x"></i></button></div>
-      <div class="modal-body">
-        <div class="account-photo-row">
-          ${avatarHtml(d.photo, initialsText, 'var(--navy)', 64)}
-          <div>
-            <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="App.onPhotoSelected(this)">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('account-photo-input').click()"><i data-lucide="camera"></i>${es?'Cambiar foto':'Change photo'}</button>
-            <div class="field-hint">${es?'Se recorta a 1:1 y se muestra en círculo.':'Cropped to 1:1 and shown in a circle.'}</div>
-          </div>
-        </div>
-        <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
-        ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
-        ${STATE.authMode==='account'?`
-        <hr class="divider">
-        <div class="info-item-label" style="margin-bottom:10px;">${es?'Cambiar contraseña (opcional)':'Change password (optional)'}</div>
-        <div class="form-row">
-          <div class="form-group"><label class="field-label">${es?'Nueva contraseña':'New password'}</label><input type="password" id="account-new-password" placeholder="${es?'Dejar en blanco para no cambiar':'Leave blank to keep current'}" autocomplete="new-password"></div>
-          <div class="form-group"><label class="field-label">${es?'Confirmar':'Confirm'}</label><input type="password" id="account-new-password2" autocomplete="new-password"></div>
-        </div>
-        `:''}
-      </div>
-      <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeAccountModal()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveAccount()"><i data-lucide="check"></i>${es?'Guardar':'Save'}</button></div>
-    `);
+    STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, initialsText};
+    openModal(accountModalHtml());
   },
-  closeAccountModal(){ STATE.ui.accountDraft = null; closeModal(); },
+  reopenAccountModal(){
+    document.querySelector('.modal').innerHTML = accountModalHtml();
+    lucide.createIcons();
+  },
+  toggleAccountPasswordSection(){
+    STATE.ui.accountShowPasswordSection = !STATE.ui.accountShowPasswordSection;
+    App.reopenAccountModal();
+    if(STATE.ui.accountShowPasswordSection) document.getElementById('account-new-password')?.focus();
+  },
+  togglePasswordVisibility(fieldId, btn){
+    const el = document.getElementById(fieldId);
+    const showing = el.type==='text';
+    el.type = showing ? 'password' : 'text';
+    btn.innerHTML = showing ? '<i data-lucide="eye"></i>' : '<i data-lucide="eye-off"></i>';
+    lucide.createIcons();
+  },
+  checkAccountPasswordMatch(){
+    const pw1 = document.getElementById('account-new-password')?.value || '';
+    const pw2 = document.getElementById('account-new-password2')?.value || '';
+    const hint = document.getElementById('account-pw-match-hint');
+    if(!hint) return;
+    if(!pw2){ hint.textContent=''; hint.className='field-hint'; return; }
+    const es = STATE.role==='SUPPLIER';
+    if(pw1===pw2){ hint.textContent = (es?'✓ Coinciden':'✓ Passwords match'); hint.className='field-hint account-pw-hint-ok'; }
+    else { hint.textContent = (es?'Las contraseñas no coinciden':'Passwords don’t match'); hint.className='field-hint account-pw-hint-bad'; }
+  },
+  closeAccountModal(){ STATE.ui.accountDraft = null; STATE.ui.accountShowPasswordSection = false; closeModal(); },
   async saveAccount(){
     const es = STATE.role==='SUPPLIER';
     // Validate the password fields (cheap, no network) before touching anything —
