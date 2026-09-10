@@ -1129,6 +1129,7 @@ async function enterAppAsUser(user){
     await refreshRealProjects();
     await refreshRealSettings();
   }
+  await refreshNotifications();
   document.getElementById('auth-root').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
   lastRoutedHash = null;
@@ -1490,6 +1491,18 @@ async function refreshRealSettings(){
   if(!error && data){ STATE.settings = settingsRowToJs(data); saveSettings(STATE.settings); }
 }
 STATE.settings = loadSettings();
+
+/* ---------- Persistent, dismissible notifications (e.g. "INNOUS deleted
+   your RFQ") — separate from the bell's other section, which is just a
+   derived "needs your attention" list recomputed from current state and
+   was never meant to be something you individually dismiss. These are
+   real rows so they show up even if you weren't online when it happened,
+   on any device, until you open/dismiss them. ---------- */
+STATE.notifications = [];
+async function refreshNotifications(){
+  const { data, error } = await sb.from('notifications').select('*').is('read_at', null).order('created_at', {ascending:false});
+  if(!error && data) STATE.notifications = data;
+}
 
 /* ---------- Real-data persistence (RFQs/orders only, for now) ----------
    Customers and suppliers are real Supabase rows now (see enterAppAsUser
@@ -1900,10 +1913,20 @@ function renderShell(){
     </button>`).join('');
 
   const pending = pendingItems();
+  const notices = STATE.notifications||[];
   const countEl = document.getElementById('notif-count');
-  if(pending.length){ countEl.hidden = false; countEl.textContent = pending.length>9?'9+':pending.length; }
+  const badgeTotal = pending.length + notices.length;
+  if(badgeTotal){ countEl.hidden = false; countEl.textContent = badgeTotal>9?'9+':badgeTotal; }
   else { countEl.hidden = true; }
   document.getElementById('notif-menu').innerHTML = `
+    ${notices.length ? `
+    <div class="notif-menu-header">${es?'Avisos':'Notices'} (${notices.length})</div>
+    ${notices.map(n=>`
+      <button class="notif-item" style="align-items:flex-start;text-align:left;" onclick="App.dismissNotification('${n.id}')" title="${es?'Clic para cerrar':'Click to dismiss'}">
+        <div class="notif-item-icon" style="background:var(--danger-soft);"><i data-lucide="bell" style="stroke:var(--danger);"></i></div>
+        <div style="min-width:0;"><div class="notif-item-text">${n.title}</div>${n.body?`<div class="notif-item-sub">${n.body}</div>`:''}</div>
+      </button>`).join('')}
+    ` : ''}
     <div class="notif-menu-header">${es?'Pendientes':'Needs your attention'}${pending.length?` (${pending.length})`:''}</div>
     ${pending.length ? pending.map(it=>`
       <button class="notif-item" onclick="App.gotoNotif('${it.path}')">
@@ -4018,8 +4041,34 @@ const App = {
   async deleteRfq(id){
     const p = findProject(id); if(!p) return;
     if(!confirm(`Permanently delete RFQ ${p.id} ("${p.projectName}")? This can't be undone.`)) return;
+    // Gather who needs to be told BEFORE the row (and its invited_suppliers
+    // rows, via cascade) disappears — the client and every real invited
+    // supplier get a dismissible notification, so they find out even if
+    // they weren't online when this happened. Two separate calls so each
+    // gets the notice in their own portal's language (client=English,
+    // supplier=Spanish), matching the rest of the app.
+    const clientId = !p.isDemo && isRealAccountId(p.customerId) ? p.customerId : null;
+    const supplierIds = p.isDemo ? [] : p.invitedSupplierIds.filter(isRealAccountId);
     PROJECTS.splice(PROJECTS.indexOf(p),1);
     if(!p.isDemo){
+      if(clientId){
+        const { error: e1 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: [clientId],
+          p_title: `RFQ ${p.id} was deleted`,
+          p_body: `INNOUS deleted "${p.projectName}" — it's no longer part of your active RFQs.`,
+          p_project_id: p.id,
+        });
+        if(e1) console.error('innous_send_notification (client) failed', e1);
+      }
+      if(supplierIds.length){
+        const { error: e2 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: supplierIds,
+          p_title: `El RFQ ${p.id} fue eliminado`,
+          p_body: `INNOUS eliminó "${p.projectName}" — ya no forma parte de tus RFQs activos.`,
+          p_project_id: p.id,
+        });
+        if(e2) console.error('innous_send_notification (suppliers) failed', e2);
+      }
       const { error } = await sb.from('projects').delete().eq('id', id);
       if(error){ showToast(error.message); return; }
     }
@@ -4051,6 +4100,14 @@ const App = {
   toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('notif-menu').classList.remove('open'); document.getElementById('role-menu').classList.toggle('open'); },
   toggleNotifMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.remove('open'); document.getElementById('notif-menu').classList.toggle('open'); },
   gotoNotif(path){ document.getElementById('notif-menu').classList.remove('open'); navigate(path); },
+  async dismissNotification(id){
+    // Optimistic — disappears immediately on click ("once they open it"),
+    // then persists so it stays gone on every device/next login too.
+    STATE.notifications = (STATE.notifications||[]).filter(n=>n.id!==id);
+    renderShell();
+    const { error } = await sb.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
+    if(error) console.error('dismissNotification failed', error);
+  },
 
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
   openLegalModal(type){ openModal(legalModalHtml(type), true); },
