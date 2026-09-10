@@ -1891,11 +1891,14 @@ function innousFileChip(p, f, i){
     ${!isCad?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.openRedactModal('${p.id}',${i})">${f.redactedPath?'Edit redaction':'Redact & share'}</button>`:''}
   </div>`;
 }
-/* ---- Redaction editor (INNOUS-only): loads a PDF (via pdf.js, first page)
-   or an image onto a canvas so INNOUS can draw opaque white boxes over any
+/* ---- Redaction editor (INNOUS-only): loads a PDF (via pdf.js, every page —
+   boxes are tracked per page in boxesByPage, since a multi-page drawing
+   packet can carry a logo/title block on more than one sheet) or a single
+   image onto a canvas so INNOUS can draw opaque white boxes over any
    logo/identifying info before a redacted copy is ever exposed to a
-   supplier. Saves out as a flattened PNG — the original file is never
-   touched or shared. ---- */
+   supplier. A multi-page PDF saves out as a flattened multi-page PDF (one
+   image per original page, boxes baked in); a single image saves out as a
+   flattened PNG. The original file is never touched or shared. ---- */
 function redactModalHtml(){
   const st = STATE.ui.redactState;
   if(!st) return '';
@@ -1907,18 +1910,25 @@ function redactModalHtml(){
       <div class="td-sub">Loading ${escAttr(st.fileName)}…</div>
     </div>`;
   }
+  const totalBoxes = Object.values(st.boxesByPage).reduce((s,b)=>s+b.length, 0);
   return `
   <div class="modal-header"><h3>Redact Drawing</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
-    <div class="field-hint" style="margin-bottom:10px;">Click and drag to draw white boxes over any logo or identifying info — this is exactly what the supplier will see, nothing more. ${st.fileType==='pdf'?'(First page only.)':''}</div>
+    <div class="field-hint" style="margin-bottom:10px;">Click and drag to draw white boxes over any logo or identifying info — this is exactly what the supplier will see, nothing more. ${st.numPages>1?'Each page needs its own boxes — use Previous/Next below to go through all of them.':''}</div>
+    ${st.numPages>1?`
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;">
+      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Previous</button>
+      <div class="td-strong" id="redact-page-indicator">Page ${st.pageNum} of ${st.numPages}</div>
+      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum>=st.numPages?'disabled':''} onclick="App.loadRedactPage(${st.pageNum+1})">Next<i data-lucide="chevron-right"></i></button>
+    </div>` : ''}
     <div class="redact-canvas-wrap">
       <canvas id="redact-canvas" onmousedown="App.redactMouseDown(event)" onmousemove="App.redactMouseMove(event)" onmouseup="App.redactMouseUp(event)" onmouseleave="App.redactMouseUp(event)"></canvas>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
-      <div class="td-sub" id="redact-box-count">${st.boxes.length} box(es) placed</div>
+      <div class="td-sub" id="redact-box-count">${(st.boxesByPage[st.pageNum]||[]).length} box(es) on this page${st.numPages>1?` · ${totalBoxes} total`:''}</div>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn-secondary btn-sm" onclick="App.undoRedactBox()"><i data-lucide="undo-2"></i>Undo last</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="App.clearRedactBoxes()"><i data-lucide="trash-2"></i>Clear all</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="App.clearRedactBoxes()"><i data-lucide="trash-2"></i>Clear all on this page</button>
       </div>
     </div>
   </div>
@@ -1934,12 +1944,13 @@ function redactCanvasCoords(e, canvas){
 function redrawRedactCanvas(){
   const st = STATE.ui.redactState;
   const canvas = document.getElementById('redact-canvas');
-  if(!st || !canvas || !st.source) return;
+  const source = st && st.sources[st.pageNum];
+  if(!st || !canvas || !source) return;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.drawImage(st.source, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#fff';
-  st.boxes.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+  (st.boxesByPage[st.pageNum]||[]).forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
   if(st.drawing){
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillRect(st.drawing.x, st.drawing.y, st.drawing.w, st.drawing.h);
@@ -4682,37 +4693,30 @@ const App = {
     if(!f.path){ showToast('This file has no original to open.'); return; }
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(f.path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
-    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, boxes:[], drawing:null, source:null, loading:true };
+    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, numPages:1, pageNum:1, boxesByPage:{}, drawing:null, sources:{}, pdfDoc:null, loading:true };
     openModal(redactModalHtml(), true);
     try{
-      let source, w, h;
       if(f.type==='pdf'){
         if(!window.pdfjsLib) throw new Error('PDF viewer failed to load');
         const pdf = await pdfjsLib.getDocument(data.signedUrl).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({scale:2});
-        const off = document.createElement('canvas');
-        off.width = viewport.width; off.height = viewport.height;
-        await page.render({canvasContext: off.getContext('2d'), viewport}).promise;
-        source = off; w = off.width; h = off.height;
+        if(!STATE.ui.redactState || STATE.ui.redactState.projectId!==pid || STATE.ui.redactState.fileIndex!==idx) return; // modal was closed/changed mid-load
+        STATE.ui.redactState.pdfDoc = pdf;
+        STATE.ui.redactState.numPages = pdf.numPages;
       } else {
-        source = await new Promise((resolve,reject)=>{
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = ()=>resolve(img);
-          img.onerror = ()=>reject(new Error('Image failed to load'));
-          img.src = data.signedUrl;
+        const img = await new Promise((resolve,reject)=>{
+          const image = new Image();
+          image.crossOrigin = 'anonymous';
+          image.onload = ()=>resolve(image);
+          image.onerror = ()=>reject(new Error('Image failed to load'));
+          image.src = data.signedUrl;
         });
-        w = source.naturalWidth; h = source.naturalHeight;
+        if(!STATE.ui.redactState || STATE.ui.redactState.projectId!==pid || STATE.ui.redactState.fileIndex!==idx) return;
+        STATE.ui.redactState.sources[1] = img;
       }
-      if(!STATE.ui.redactState || STATE.ui.redactState.projectId!==pid || STATE.ui.redactState.fileIndex!==idx) return; // modal was closed/changed mid-load
-      STATE.ui.redactState.source = source;
       STATE.ui.redactState.loading = false;
       document.querySelector('.modal').innerHTML = redactModalHtml();
       lucide.createIcons();
-      const canvas = document.getElementById('redact-canvas');
-      canvas.width = w; canvas.height = h;
-      redrawRedactCanvas();
+      await App.loadRedactPage(1);
     }catch(err){
       console.error('openRedactModal failed', err);
       showToast("Couldn't load the file to edit it.");
@@ -4721,6 +4725,31 @@ const App = {
     }
   },
   closeRedactModal(){ STATE.ui.redactState = null; closeModal(); },
+  // Renders one page onto the canvas, rendering it via pdf.js the first time
+  // it's visited and reusing the same offscreen canvas on every later visit
+  // (so flipping back and forth between pages never loses boxes already
+  // drawn there, and doesn't re-render the page from scratch each time).
+  async loadRedactPage(n){
+    const st = STATE.ui.redactState; if(!st || n<1 || n>st.numPages) return;
+    st.pageNum = n;
+    if(!st.boxesByPage[n]) st.boxesByPage[n] = [];
+    if(!st.sources[n] && st.fileType==='pdf'){
+      const page = await st.pdfDoc.getPage(n);
+      const viewport = page.getViewport({scale:2});
+      const off = document.createElement('canvas');
+      off.width = viewport.width; off.height = viewport.height;
+      await page.render({canvasContext: off.getContext('2d'), viewport}).promise;
+      if(!STATE.ui.redactState || STATE.ui.redactState.pageNum!==n) return; // navigated away again while this page was still rendering
+      st.sources[n] = off;
+    }
+    const source = st.sources[n];
+    document.querySelector('.modal').innerHTML = redactModalHtml();
+    lucide.createIcons();
+    const canvas = document.getElementById('redact-canvas');
+    canvas.width = source.width || source.naturalWidth;
+    canvas.height = source.height || source.naturalHeight;
+    redrawRedactCanvas();
+  },
   redactMouseDown(e){
     const st = STATE.ui.redactState; if(!st) return;
     const {x,y} = redactCanvasCoords(e, e.target);
@@ -4737,36 +4766,75 @@ const App = {
   redactMouseUp(e){
     const st = STATE.ui.redactState; if(!st || !st.drawing) return;
     const d = st.drawing;
-    if(d.w>4 && d.h>4) st.boxes.push({x:d.x, y:d.y, w:d.w, h:d.h});
+    if(d.w>4 && d.h>4) st.boxesByPage[st.pageNum].push({x:d.x, y:d.y, w:d.w, h:d.h});
     st.drawing = null;
     redrawRedactCanvas();
     const countEl = document.getElementById('redact-box-count');
-    if(countEl) countEl.textContent = `${st.boxes.length} box(es) placed`;
+    if(countEl) countEl.textContent = `${st.boxesByPage[st.pageNum].length} box(es) on this page${st.numPages>1?` · ${Object.values(st.boxesByPage).reduce((s,b)=>s+b.length,0)} total`:''}`;
   },
   undoRedactBox(){
-    const st = STATE.ui.redactState; if(!st || !st.boxes.length) return;
-    st.boxes.pop();
+    const st = STATE.ui.redactState; if(!st || !st.boxesByPage[st.pageNum].length) return;
+    st.boxesByPage[st.pageNum].pop();
     redrawRedactCanvas();
-    document.getElementById('redact-box-count').textContent = `${st.boxes.length} box(es) placed`;
+    document.getElementById('redact-box-count').textContent = `${st.boxesByPage[st.pageNum].length} box(es) on this page${st.numPages>1?` · ${Object.values(st.boxesByPage).reduce((s,b)=>s+b.length,0)} total`:''}`;
   },
   clearRedactBoxes(){
     const st = STATE.ui.redactState; if(!st) return;
-    st.boxes = [];
+    st.boxesByPage[st.pageNum] = [];
     redrawRedactCanvas();
-    document.getElementById('redact-box-count').textContent = '0 box(es) placed';
+    document.getElementById('redact-box-count').textContent = `0 box(es) on this page${st.numPages>1?` · ${Object.values(st.boxesByPage).reduce((s,b)=>s+b.length,0)} total`:''}`;
   },
   async saveRedaction(){
     const st = STATE.ui.redactState; if(!st) return;
-    const canvas = document.getElementById('redact-canvas'); if(!canvas) return;
     const p = findProject(st.projectId); if(!p) return;
     const f = p.files[st.fileIndex]; if(!f) return;
     const saveBtn = document.querySelector('.modal-footer .btn-primary'); if(saveBtn) saveBtn.disabled = true;
     try{
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      if(!blob){ showToast('No se pudo generar la imagen.'); if(saveBtn) saveBtn.disabled=false; return; }
       const baseName = f.name.replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9._-]/g,'_');
-      const redactedPath = `${st.projectId}/redacted/${Date.now()}-${baseName}.png`;
-      const { error: upErr } = await sb.storage.from('project-files').upload(redactedPath, blob, { contentType:'image/png' });
+      let blob, redactedPath, contentType;
+      if(st.fileType==='pdf'){
+        // Rebuilds the whole drawing packet as a new PDF, one page at a time,
+        // each page's boxes baked directly into that page's image — this way
+        // a page the reviewer never even opened (so it has zero boxes) still
+        // makes it into the output exactly as it looked originally, instead
+        // of only publishing whichever single page got edited.
+        const { jsPDF } = window.jspdf;
+        let outDoc = null;
+        for(let n=1; n<=st.numPages; n++){
+          if(!st.sources[n]){
+            const page = await st.pdfDoc.getPage(n);
+            const viewport = page.getViewport({scale:2});
+            const off = document.createElement('canvas');
+            off.width = viewport.width; off.height = viewport.height;
+            await page.render({canvasContext: off.getContext('2d'), viewport}).promise;
+            st.sources[n] = off;
+          }
+          const source = st.sources[n];
+          // Bake onto a fresh copy rather than the live source canvas, so
+          // this never mutates whatever page is still on-screen mid-save.
+          const bake = document.createElement('canvas');
+          bake.width = source.width; bake.height = source.height;
+          const bctx = bake.getContext('2d');
+          bctx.drawImage(source, 0, 0);
+          bctx.fillStyle = '#fff';
+          (st.boxesByPage[n]||[]).forEach(b=>bctx.fillRect(b.x,b.y,b.w,b.h));
+          const imgData = bake.toDataURL('image/jpeg', 0.92);
+          const wPt = 612, hPt = wPt * bake.height/bake.width; // US Letter width, proportional height
+          if(!outDoc) outDoc = new jsPDF({ unit:'pt', format:[wPt, hPt] });
+          else outDoc.addPage([wPt, hPt]);
+          outDoc.addImage(imgData, 'JPEG', 0, 0, wPt, hPt);
+        }
+        blob = outDoc.output('blob');
+        redactedPath = `${st.projectId}/redacted/${Date.now()}-${baseName}.pdf`;
+        contentType = 'application/pdf';
+      } else {
+        const canvas = document.getElementById('redact-canvas'); if(!canvas) return;
+        blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        redactedPath = `${st.projectId}/redacted/${Date.now()}-${baseName}.png`;
+        contentType = 'image/png';
+      }
+      if(!blob){ showToast('No se pudo generar el archivo.'); if(saveBtn) saveBtn.disabled=false; return; }
+      const { error: upErr } = await sb.storage.from('project-files').upload(redactedPath, blob, { contentType });
       if(upErr){ showToast(upErr.message); if(saveBtn) saveBtn.disabled=false; return; }
       const newFiles = p.files.map((file,i)=> i===st.fileIndex ? {...file, redactedPath} : file);
       if(!p.isDemo){
