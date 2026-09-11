@@ -942,6 +942,13 @@ function fmtMoneyPdf(n){return '$'+Math.round(n).toLocaleString('en-US');}
 function fmtMoneyPdf2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtMXNPdf(n){return 'MX$'+Math.round(n).toLocaleString('en-US');}
 function fmtMXNPdf2(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// The 16% Mexican IVA on top of what the supplier quoted (q.quotedTotal /
+// p.order.supplierCostMxn) is what the supplier actually gets paid — see
+// generatePurchaseOrderPdf's own iva/totalConIva. Anywhere a "total" is
+// shown to the supplier (or to Innous previewing the PO), it needs to be
+// this figure, not the pre-tax quoted amount, so it always matches the PO.
+const IVA_RATE = 0.16;
+function withIva(n){ return n*(1+IVA_RATE); }
 function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
 function daysFromNow(n){return addDays(new Date('2026-09-08'),n);}
 
@@ -2291,7 +2298,7 @@ function generatePurchaseOrderPdf(p){
     doc.text(doc.splitTextToSize(o.poNotes, obsW-16), marginL+8, y+30);
   }
 
-  const subtotal = q.quotedTotal||0, iva = subtotal*0.16, totalConIva = subtotal+iva;
+  const subtotal = q.quotedTotal||0, iva = subtotal*IVA_RATE, totalConIva = withIva(subtotal);
   const totRows = [['Subtotal',fmtMXNPdf(subtotal)],['Descuento',fmtMXNPdf(0)],['Flete / maniobras',fmtMXNPdf(0)],['IVA 16%',fmtMXNPdf(iva)]];
   let ty = y;
   totRows.forEach(([label,val],i)=>{
@@ -3742,7 +3749,7 @@ function sentDocumentsSection(p){
       <div class="info-grid" style="margin-top:12px;">
         ${infoItem('PO Number', p.order.poNumber||'—')}
         ${infoItem('Supplier', supplier?supplier.name:'—')}
-        ${infoItem('Total', q?fmtMXN(q.quotedTotal):'—')}
+        ${infoItem('Total (IVA incl.)', q?fmtMXN(withIva(q.quotedTotal)):'—')}
         ${infoItem('Authorized', fmtDate(p.innousAuthorizedAt))}
       </div>
       <button class="btn btn-secondary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download Purchase Order (PDF)</button>
@@ -4737,7 +4744,9 @@ function supplierSubmittedQuoteCard(p, q){
       <div class="pricing-row"><span>Herramental</span><span>${q.tooling?fmtMXN(q.tooling):'—'}</span></div>
       <div class="pricing-row"><span>Preparación / Setup</span><span>${q.setup?fmtMXN(q.setup):'—'}</span></div>
       <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
-      <div class="pricing-row total"><span>Total de tu Cotización</span><span>${fmtMXN(q.quotedTotal)}</span></div>
+      <div class="pricing-row"><span>Subtotal</span><span>${fmtMXN(q.quotedTotal)}</span></div>
+      <div class="pricing-row"><span>IVA (16%)</span><span>${fmtMXN(q.quotedTotal*IVA_RATE)}</span></div>
+      <div class="pricing-row total"><span>Total de tu Cotización (IVA incluido)</span><span>${fmtMXN(withIva(q.quotedTotal))}</span></div>
     </div>
     <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:16px;">
       ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
@@ -4784,9 +4793,9 @@ ROUTES['supplier/quotes'] = function(){
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Mis Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones enviadas</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Total (IVA incluido)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/quote/${p.id}')">
-        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMXN2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMXN(withIva(q.quotedTotal))}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${supplierQuoteStatusBadge(p)}</td>
       </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
@@ -4850,7 +4859,7 @@ function supplierOrderCard(p){
     </div>
     <div style="display:flex;gap:22px;margin-top:12px;">
       ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
-      ${infoItem('Precio Acordado', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost))}
+      ${infoItem('Precio (IVA incl.)', p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost)))}
       ${infoItem('Entrega', fmtDate(p.deliveryDate))}
     </div>
     <div style="margin-top:16px;"><div class="bar-track"><div class="bar-fill" style="width:${((stageIdx+1)/ORDER_STATUS_FLOW.length*100)}%;"></div></div></div>
@@ -4879,7 +4888,7 @@ ROUTES['supplier/order'] = function(id){
         <div class="section-title">Detalles del Pedido</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
           ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
-          ${infoItem('Precio Acordado', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost))}
+          ${infoItem('Precio Acordado (IVA incluido)', p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost)))}
           ${infoItem('Material', p.material)}
           ${infoItem('Fecha de Entrega', fmtDate(p.deliveryDate))}
         </div>
