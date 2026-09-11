@@ -1182,6 +1182,10 @@ function quoteRowToJs(row){
   return {
     supplierId: row.supplier_id, status: row.status,
     unitPrice: row.unit_price, shipping: row.shipping||0,
+    // Per-item unit prices (fix42) for a multi-item RFQ — aligned by
+    // position with the project's own `items` array. Empty for a
+    // single-item RFQ, which still just uses unitPrice/quotedTotal above.
+    itemPrices: row.item_prices || [],
     quotedTotal: row.quoted_total, leadTimeDays: row.lead_time_days, paymentTerms: row.payment_terms||'',
     validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
     submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
@@ -2503,6 +2507,9 @@ function generatePurchaseOrderPdf(p){
     let unit = '—', importe = '—';
     if(singleItem){ unit = fmtMXNPdf2(q.unitPrice||0); importe = fmtMXNPdf(q.unitPrice?q.unitPrice*p.quantity:0); }
     else if(it.supplierCostMxn!=null){ importe = fmtMXNPdf(it.supplierCostMxn); unit = fmtMXNPdf2(it.quantity ? it.supplierCostMxn/it.quantity : it.supplierCostMxn); }
+    // Real per-item price the supplier submitted (fix42) — the other
+    // fallback besides a target-price item's pre-computed supplierCostMxn.
+    else if(q.itemPrices && q.itemPrices[i]){ importe = fmtMXNPdf(q.itemPrices[i].total); unit = fmtMXNPdf2(q.itemPrices[i].unitPrice); }
     return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', parte:'—', desc:doc.splitTextToSize(descText, cW.desc-12), unit, importe };
   });
   if(q.shipping) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:['Envío'], unit:fmtMXNPdf(q.shipping), importe:fmtMXNPdf(q.shipping) });
@@ -2528,7 +2535,7 @@ function generatePurchaseOrderPdf(p){
   doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
   ['cant','unidad','parte','desc','unit','importe'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
   y += 14;
-  if(!singleItem && items.some(it=>it.supplierCostMxn==null)){
+  if(!singleItem && items.some((it,i)=>it.supplierCostMxn==null && !(q.itemPrices && q.itemPrices[i]))){
     doc.setFont('Calibri','italic'); doc.setFontSize(6.8); doc.setTextColor(...inkSec);
     doc.text('Las partidas sin precio individual se cotizan como parte del paquete — ver Total abajo.', marginL, y);
     y += 12;
@@ -4359,6 +4366,28 @@ function getExchangeRate(pid){ if(STATE.ui.exchangeRateDrafts[pid]===undefined) 
 // the customer had already picked an option based on a price that didn't
 // include it.
 function getFreight(pid){ return STATE.ui.freightDrafts[pid] ?? 0; }
+// What the supplier actually quoted, rendered as pricing-panel rows (fix42)
+// — one combined row (unit price × total quantity) for a single-item RFQ,
+// or one row per item using that item's own submitted unit price
+// (q.itemPrices) for a multi-item RFQ. A single blended "unit price ×
+// total quantity" line stopped meaning anything once an RFQ could mix
+// different parts at different prices, so this is the one place that
+// distinction is decided — every INNOUS/supplier view of a supplier's raw
+// quote renders through this instead of duplicating the same branch three
+// times with slightly different labels.
+function supplierQuotePriceRows(p, q, opts={}){
+  const label = opts.label || 'Unit Price';
+  const unitsWord = opts.unitsWord || '';
+  const valueAttr = opts.strongValue ? ' class="td-strong"' : '';
+  if(q.itemPrices && q.itemPrices.length && p.items && p.items.length){
+    return p.items.map((it,i)=>{
+      const ip = q.itemPrices[i] || {unitPrice:0, total:0};
+      const desc = (it.description||'').length>40 ? it.description.slice(0,40)+'…' : (it.description||'');
+      return `<div class="pricing-row"><span>${label} ${i+1} — ${escAttr(desc)} (${fmtMXN2(ip.unitPrice)} × ${(it.quantity||0).toLocaleString()}${unitsWord})</span><span${valueAttr}>${fmtMXN(ip.total)}</span></div>`;
+    }).join('');
+  }
+  return `<div class="pricing-row"><span>${label} (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()}${unitsWord})</span><span${valueAttr}>${fmtMXN(q.unitPrice*p.quantity)}</span></div>`;
+}
 function quoteCompareCard(p, q, rate, freight, isShortlisted){
   const supplier = SUPPLIERS.find(s=>s.id===q.supplierId);
   const markup = getMarkup(p.id, q.supplierId);
@@ -4378,7 +4407,7 @@ function quoteCompareCard(p, q, rate, freight, isShortlisted){
     <hr class="divider">
     <div class="info-item-label" style="margin-bottom:6px;">Supplier's Quote</div>
     <div class="pricing-panel">
-      <div class="pricing-row"><span>Unit Price (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()})</span><span>${fmtMXN(q.unitPrice*p.quantity)}</span></div>
+      ${supplierQuotePriceRows(p, q)}
       <div class="pricing-row"><span>Shipping (supplier's)</span><span>${q.shipping?fmtMXN(q.shipping):'Included'}</span></div>
       <div class="pricing-row total"><span>Total Cost</span><span>${fmtMXN(q.quotedTotal)} <span style="font-weight:400;opacity:0.85;">(${fmtMoney(costUsd)})</span></span></div>
     </div>
@@ -4852,7 +4881,7 @@ ROUTES['innous/quote'] = function(pid, sid){
       <div class="section-title">Not Sent to Customer</div>
       <div class="section-sub">This supplier's quote was never added to the shortlist — the customer never saw it. Showing what the supplier submitted (in MXN, their own currency).</div>
       <div class="pricing-panel" style="margin-top:14px;">
-        <div class="pricing-row"><span>Unit Price (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()})</span><span class="td-strong">${fmtMXN(q.unitPrice*p.quantity)}</span></div>
+        ${supplierQuotePriceRows(p, q, {strongValue:true})}
         <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
         <div class="pricing-row total"><span>Total</span><span>${fmtMXN(q.quotedTotal)}</span></div>
       </div>
@@ -5359,13 +5388,12 @@ function targetPriceSupplierSection(p, q, declined, submitted){
 // the USD conversion for the client happen entirely downstream of this and
 // never appear here.
 function supplierSubmittedQuoteCard(p, q){
-  const unitTotal = q.unitPrice * p.quantity;
   return `
   <div class="card card-pad">
     <div class="section-title">Tu Cotización Enviada</div>
     <div class="section-sub">${procES(p.process)}${p.material?' · '+p.material:''} — ${p.quantity.toLocaleString()} pzas</div>
     <div class="pricing-panel" style="margin-top:14px;">
-      <div class="pricing-row"><span>Precio Unitario (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()} pzas)</span><span class="td-strong">${fmtMXN(unitTotal)}</span></div>
+      ${supplierQuotePriceRows(p, q, {label:'Precio Unitario', unitsWord:' pzas', strongValue:true})}
       <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
       <div class="pricing-row"><span>Subtotal</span><span>${fmtMXN(q.quotedTotal)}</span></div>
       <div class="pricing-row"><span>IVA (16%)</span><span>${fmtMXN(q.quotedTotal*IVA_RATE)}</span></div>
@@ -5390,18 +5418,36 @@ function supplierSubmittedQuoteCard(p, q){
 // values already in them — nothing typed is lost, worst case the cursor
 // jumps to the end of whatever field was mid-edit.
 function supplierQuoteForm(p){
+  // A multi-item RFQ (fix37) gets one unit-price input PER item instead of
+  // one for the whole thing — a single blended price stopped making sense
+  // once an RFQ could bundle different parts at different quantities (see
+  // fix42 / supplierQuotePriceRows). A single-item RFQ (still the common
+  // case, and every pre-existing RFQ) renders exactly as before.
+  const multiItem = !!(p.items && p.items.length>1);
   if(!STATE.ui.supplierQuoteDrafts[p.id]){
-    STATE.ui.supplierQuoteDrafts[p.id] = { unitPrice:'', leadTimeDays:'', validity:'30 días', notes:'' };
+    STATE.ui.supplierQuoteDrafts[p.id] = { unitPrice:'', itemPrices: multiItem ? p.items.map(()=>'') : [], leadTimeDays:'', validity:'30 días', notes:'' };
   }
   const d = STATE.ui.supplierQuoteDrafts[p.id];
+  if(multiItem && (!d.itemPrices || d.itemPrices.length!==p.items.length)) d.itemPrices = p.items.map((_,i)=>d.itemPrices?.[i] ?? '');
   const upd = (field)=>`App.updateSupplierQuoteDraft('${p.id}','${field}',this.value)`;
-  return `
-  <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
-    <div class="section-title">Enviar Tu Cotización</div>
+  const priceFieldsHtml = multiItem ? `
+    <div class="section-sub" style="margin:-2px 0 12px;">Este RFQ tiene ${p.items.length} partidas — pon el precio unitario de cada una.</div>
+    ${p.items.map((it,i)=>`
+      <div class="form-group">
+        <label class="field-label">Partida ${i+1} — ${escAttr((it.description||'').length>60?it.description.slice(0,60)+'…':(it.description||''))} (Cant. ${(it.quantity||0).toLocaleString()})</label>
+        <input type="number" step="0.01" min="0" required placeholder="Precio unitario, MXN" value="${escAttr(d.itemPrices[i])}" oninput="App.updateSupplierItemPrice('${p.id}',${i},this.value)">
+      </div>`).join('')}
+    <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28" value="${d.leadTimeDays}" oninput="${upd('leadTimeDays')}"></div>
+  ` : `
     <div class="form-row">
       <div class="form-group"><label class="field-label">Precio unitario (MXN)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 3,200.00" value="${d.unitPrice}" oninput="${upd('unitPrice')}"></div>
       <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28" value="${d.leadTimeDays}" oninput="${upd('leadTimeDays')}"></div>
     </div>
+  `;
+  return `
+  <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
+    <div class="section-title">Enviar Tu Cotización</div>
+    ${priceFieldsHtml}
     <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Cotiza en pesos mexicanos (MXN) — Innous convierte a dólares al armar la cotización formal para el cliente. Las condiciones de pago que verá el cliente las define Innous directamente.</div>
     <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity" onchange="${upd('validity')}">${['15 días','30 días','45 días','60 días'].map(v=>`<option ${d.validity===v?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="form-group"><label class="field-label">Notas</label><textarea name="notes" placeholder="Cualquier supuesto, exclusión o aclaración..." oninput="${upd('notes')}">${d.notes}</textarea></div>
@@ -6686,6 +6732,15 @@ const App = {
     if(!STATE.ui.supplierQuoteDrafts[pid]) STATE.ui.supplierQuoteDrafts[pid] = {};
     STATE.ui.supplierQuoteDrafts[pid][field] = val;
   },
+  // One unit-price field per item on a multi-item RFQ (fix42) — same
+  // no-route()-here reasoning as updateSupplierQuoteDraft: this fires on
+  // every keystroke, and re-rendering the whole form on each one would
+  // blow away focus while typing into whichever item's field is active.
+  updateSupplierItemPrice(pid,idx,val){
+    if(!STATE.ui.supplierQuoteDrafts[pid]) STATE.ui.supplierQuoteDrafts[pid] = { unitPrice:'', itemPrices:[], leadTimeDays:'', validity:'30 días', notes:'' };
+    if(!STATE.ui.supplierQuoteDrafts[pid].itemPrices) STATE.ui.supplierQuoteDrafts[pid].itemPrices = [];
+    STATE.ui.supplierQuoteDrafts[pid].itemPrices[idx] = val;
+  },
   async saveQuoteDetails(pid){
     const p = findProject(pid); if(!p) return;
     const d = STATE.ui.quoteDetailsDrafts[pid] || {};
@@ -6962,14 +7017,36 @@ const App = {
     e.preventDefault();
     const f = new FormData(e.target);
     const p = findProject(pid);
-    const unit = parseFloat(f.get('unitPrice'))||0;
+    const draft = STATE.ui.supplierQuoteDrafts[pid] || {};
+    const multiItem = !!(p.items && p.items.length>1);
+    // Multi-item RFQs (fix42) get a real per-item unit price instead of one
+    // blended number for the whole thing — itemPrices is what
+    // supplierQuotePriceRows() and the PO PDF read to show each item's own
+    // price, and productTotal (their sum) replaces the old unit*quantity
+    // math below. unit itself becomes the average price per piece across
+    // all items — a reasonable fallback for any legacy display that still
+    // expects a single unitPrice, never used for the actual math.
+    let unit, itemPrices, productTotal;
+    if(multiItem){
+      itemPrices = p.items.map((it,i)=>{
+        const ip = parseFloat(draft.itemPrices?.[i])||0;
+        return { unitPrice: ip, quantity: it.quantity||0, total: ip*(it.quantity||0) };
+      });
+      productTotal = itemPrices.reduce((s,ip)=>s+ip.total,0);
+      const totalQty = itemPrices.reduce((s,ip)=>s+ip.quantity,0);
+      unit = totalQty ? productTotal/totalQty : 0;
+    } else {
+      unit = parseFloat(f.get('unitPrice'))||0;
+      itemPrices = [];
+      productTotal = unit*p.quantity;
+    }
     const shipping = parseFloat(f.get('shipping'))||0;
-    const quotedTotal = unit*p.quantity+shipping;
+    const quotedTotal = productTotal+shipping;
     const leadTimeDays = parseInt(f.get('leadTimeDays'))||30;
     const paymentTerms = f.get('paymentTerms'), validity = f.get('validity'), notes = f.get('notes');
     const supplier = currentSupplier();
     let q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
-    const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, shipping, quotedTotal,
+    const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, itemPrices, shipping, quotedTotal,
       leadTimeDays, paymentTerms, validity, notes, documents:[], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
     if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
     if(p.status==='sourcing') p.status='sourcing';
@@ -6979,7 +7056,7 @@ const App = {
     logActivity(p, supplier.name, 'Supplier submitted a quote.');
     if(!p.isDemo){
       const { error } = await sb.from('supplier_quotes').update({
-        status:'submitted', unit_price:unit, shipping, quoted_total:quotedTotal,
+        status:'submitted', unit_price:unit, item_prices:itemPrices, shipping, quoted_total:quotedTotal,
         lead_time_days:leadTimeDays, payment_terms:paymentTerms, validity, notes, submitted_at:new Date().toISOString(),
       }).eq('project_id', pid).eq('supplier_id', STATE.supplierId);
       if(error){ showToast(error.message); return false; }
