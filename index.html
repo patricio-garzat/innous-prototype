@@ -2639,16 +2639,16 @@ function innousFileChip(p, f, i){
   const meta = FILE_TYPES[f.type]||{ext:f.type.toUpperCase(),color:'#71717A'};
   const isCad = ['step','dwg','dxf'].includes(f.type);
   const statusBadge = isCad
-    ? `<span class="badge badge-gray">CAD — not shared</span>`
+    ? `<span class="badge badge-gray">CAD — no se comparte</span>`
     : f.redactedPath
-      ? `<span class="badge badge-green">Shared with supplier</span>`
-      : `<span class="badge badge-amber">Pending review</span>`;
-  const openOriginal = f.path ? `onclick="App.openProjectFile('${escAttr(f.path)}')" style="cursor:pointer;" title="View original (never seen by supplier)"` : '';
+      ? `<span class="badge badge-green">Compartido con el proveedor</span>`
+      : `<span class="badge badge-amber">Pendiente de revisión</span>`;
+  const openOriginal = f.path ? `onclick="App.openProjectFile('${escAttr(f.path)}')" style="cursor:pointer;" title="Ver original (el proveedor nunca lo ve)"` : '';
   return `<div class="file-chip" style="flex-wrap:wrap;">
     <div class="fc-icon" style="color:${meta.color};background:${meta.color}18;" ${openOriginal}>${meta.ext}</div>
     <span class="fc-name" ${openOriginal}>${f.name}</span><span class="fc-size">${f.size}</span>
     ${statusBadge}
-    ${!isCad?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.openRedactModal('${p.id}',${i})">${f.redactedPath?'Edit redaction':'Redact & share'}</button>`:''}
+    ${!isCad?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.openRedactModal('${p.id}',${i})">${f.redactedPath?'Editar redacción':'Redactar y compartir'}</button>`:''}
   </div>`;
 }
 /* ---- Redaction editor (INNOUS-only): loads a PDF (via pdf.js, every page —
@@ -2664,37 +2664,37 @@ function redactModalHtml(){
   if(!st) return '';
   if(st.loading){
     return `
-    <div class="modal-header"><h3>Redact Drawing</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
+    <div class="modal-header"><h3>Redactar Plano</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
     <div class="modal-body" style="text-align:center;padding:60px 0;">
       <div style="width:28px;height:28px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:boot-spin .8s linear infinite;margin:0 auto 14px;"></div>
-      <div class="td-sub">Loading ${escAttr(st.fileName)}…</div>
+      <div class="td-sub">Cargando ${escAttr(st.fileName)}…</div>
     </div>`;
   }
   const totalBoxes = Object.values(st.boxesByPage).reduce((s,b)=>s+b.length, 0);
   return `
-  <div class="modal-header"><h3>Redact Drawing</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-header"><h3>Redactar Plano</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
-    <div class="field-hint" style="margin-bottom:10px;">Click and drag to draw white boxes over any logo or identifying info — this is exactly what the supplier will see, nothing more. ${st.numPages>1?'Each page needs its own boxes — use Previous/Next below to go through all of them.':''}</div>
+    <div class="field-hint" style="margin-bottom:10px;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
     ${st.numPages>1?`
     <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;">
-      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Previous</button>
-      <div class="td-strong" id="redact-page-indicator">Page ${st.pageNum} of ${st.numPages}</div>
-      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum>=st.numPages?'disabled':''} onclick="App.loadRedactPage(${st.pageNum+1})">Next<i data-lucide="chevron-right"></i></button>
+      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Anterior</button>
+      <div class="td-strong" id="redact-page-indicator">Página ${st.pageNum} de ${st.numPages}</div>
+      <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum>=st.numPages?'disabled':''} onclick="App.loadRedactPage(${st.pageNum+1})">Siguiente<i data-lucide="chevron-right"></i></button>
     </div>` : ''}
     <div class="redact-canvas-wrap">
       <canvas id="redact-canvas" onmousedown="App.redactMouseDown(event)" onmousemove="App.redactMouseMove(event)" onmouseup="App.redactMouseUp(event)" onmouseleave="App.redactMouseUp(event)"></canvas>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
-      <div class="td-sub" id="redact-box-count">${(st.boxesByPage[st.pageNum]||[]).length} box(es) on this page${st.numPages>1?` · ${totalBoxes} total`:''}</div>
+      <div class="td-sub" id="redact-box-count">${(st.boxesByPage[st.pageNum]||[]).length} cuadro(s) en esta página${st.numPages>1?` · ${totalBoxes} en total`:''}</div>
       <div style="display:flex;gap:8px;">
-        <button type="button" class="btn btn-secondary btn-sm" onclick="App.undoRedactBox()"><i data-lucide="undo-2"></i>Undo last</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="App.clearRedactBoxes()"><i data-lucide="trash-2"></i>Clear all on this page</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="App.undoRedactBox()"><i data-lucide="undo-2"></i>Deshacer último</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="App.clearRedactBoxes()"><i data-lucide="trash-2"></i>Borrar todos en esta página</button>
       </div>
     </div>
   </div>
   <div class="modal-footer">
-    <button class="btn btn-secondary" onclick="App.closeRedactModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="App.saveRedaction()"><i data-lucide="check"></i>Publish to Supplier</button>
+    <button class="btn btn-secondary" onclick="App.closeRedactModal()">Cancelar</button>
+    <button class="btn btn-primary" onclick="App.saveRedaction()"><i data-lucide="check"></i>Publicar al Proveedor</button>
   </div>`;
 }
 function redactCanvasCoords(e, canvas){
@@ -2760,11 +2760,12 @@ function stageBanner(text, tone, cta){
 // act on, so replacing both with one clear explanation reads better than a
 // dead progress bar plus a generic banner.
 function rejectedRfqBanner(p, audience){
-  const msg = audience==='innous' ? 'This RFQ was closed and the customer was notified.' : rfqStageMessage(p,'client');
+  const msg = audience==='innous' ? 'Este RFQ se cerró y se notificó al cliente.' : rfqStageMessage(p,'client');
+  const label = audience==='innous' ? 'Razón' : 'Reason';
   return `<div class="card card-pad" style="margin-bottom:20px;">
     ${stageBanner(msg, 'danger')}
-    ${p.rejectedReason?`<div class="info-item-label" style="margin-top:14px;">Reason</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.rejectedReason}</div>`:''}
-    ${p.rejectedAt?`<div class="field-hint" style="margin-top:10px;">Closed ${fmtDate(p.rejectedAt)}</div>`:''}
+    ${p.rejectedReason?`<div class="info-item-label" style="margin-top:14px;">${label}</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.rejectedReason}</div>`:''}
+    ${p.rejectedAt?`<div class="field-hint" style="margin-top:10px;">${audience==='innous'?'Cerrado el':'Closed'} ${fmtDate(p.rejectedAt)}</div>`:''}
   </div>`;
 }
 function rfqStageMessage(p, audience){
@@ -2783,15 +2784,15 @@ function rfqStageMessage(p, audience){
   }
   if(audience==='innous'){
     return ({
-      submitted:"New RFQ — review the details, then approve it to begin sourcing.",
-      under_review:"Pick suppliers from the recommended list below and send the RFQ to get quoting started.",
-      sourcing:"Suppliers have been invited. Waiting on their quotes.",
-      quotes_received:"Quotes are in — compare them below and build the customer shortlist.",
-      customer_review:"Shortlist sent to the customer — awaiting their decision.",
-      awarded: p.innousAuthorizedAt ? "Order confirmed — production is about to begin." : "The customer selected a supplier — authorize the project below to notify them and release the order.",
-      in_production:"Order is in production — track milestones on the order page.",
-      completed:"Project completed and delivered.",
-      rejected:"This RFQ was closed and the customer was notified.",
+      submitted:"RFQ nuevo — revisa los detalles y apruébalo para empezar el sourcing.",
+      under_review:"Elige proveedores de la lista recomendada de abajo y envía el RFQ para que empiecen a cotizar.",
+      sourcing:"Ya se invitó a los proveedores. Esperando sus cotizaciones.",
+      quotes_received:"Ya llegaron cotizaciones — compáralas abajo y arma el shortlist para el cliente.",
+      customer_review:"Shortlist enviado al cliente — esperando su decisión.",
+      awarded: p.innousAuthorizedAt ? "Pedido confirmado — la producción está por comenzar." : "El cliente eligió un proveedor — autoriza el proyecto abajo para notificarlo y liberar el pedido.",
+      in_production:"El pedido está en producción — sigue los hitos en la página del pedido.",
+      completed:"Proyecto completado y entregado.",
+      rejected:"Este RFQ se cerró y se notificó al cliente.",
     })[p.status] || '';
   }
   if(audience==='supplier'){
@@ -2823,7 +2824,7 @@ function orderStageMessage(p, audience){
   // From Quality Inspection onward, logistics is INNOUS's job alone — the
   // supplier's and client's messages both say so explicitly at that stage.
   if(p.order.status==='order_confirmed' && !p.innousAuthorizedAt){
-    if(audience==='innous') return "Authorize this project below to notify the supplier — they can't see this order or start production until you do.";
+    if(audience==='innous') return "Autoriza este proyecto abajo para notificar al proveedor — no puede ver este pedido ni empezar producción hasta que lo hagas.";
     if(audience==='supplier') return "Tu cotización fue enviada. INNOUS la está comparando con otros proveedores — te notificaremos si eres seleccionado.";
   }
   // Shipped needs to be unmistakable — the client already got a notification
@@ -2836,12 +2837,12 @@ function orderStageMessage(p, audience){
     return `Your order has shipped via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`;
   }
   const msgs = {
-    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
-    in_production:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
-    production_finished:{client:"Production is complete — the order is headed to quality inspection.", innous:"Production finished — confirm quality inspection.", supplier:"Producción terminada. Márcalo como Inspección de Calidad para mandarlo a revisión."},
-    quality_inspection:{client:"Your order is in quality inspection. Once it passes, INNOUS takes over shipping and delivery.", innous:"Quality inspection in progress — once it's approved, mark this order Shipped to move it into logistics.", supplier:"Inspección de calidad en curso. Tu parte del pedido termina aquí — de aquí en adelante, INNOUS se encarga de toda la logística."},
-    shipped:{client:"Your order is on its way — INNOUS is handling delivery logistics.", innous:"Order shipped — track delivery below and mark it Delivered once it arrives.", supplier:"Pedido enviado. La logística de entrega ya está en manos de INNOUS."},
-    delivered:{client:"Delivered! This order is complete.", innous:"Delivered — order complete.", supplier:"Entregado — pedido completado."},
+    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Pedido confirmado — coordina el arranque de producción con el proveedor.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
+    in_production:{client:"Your order is now in production.", innous:"Producción en curso con el proveedor.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
+    production_finished:{client:"Production is complete — the order is headed to quality inspection.", innous:"Producción terminada — confirma la inspección de calidad.", supplier:"Producción terminada. Márcalo como Inspección de Calidad para mandarlo a revisión."},
+    quality_inspection:{client:"Your order is in quality inspection. Once it passes, INNOUS takes over shipping and delivery.", innous:"Inspección de calidad en curso — en cuanto se apruebe, marca este pedido como Enviado para pasarlo a logística.", supplier:"Inspección de calidad en curso. Tu parte del pedido termina aquí — de aquí en adelante, INNOUS se encarga de toda la logística."},
+    shipped:{client:"Your order is on its way — INNOUS is handling delivery logistics.", innous:"Pedido enviado — sigue la entrega abajo y márcalo como Entregado en cuanto llegue.", supplier:"Pedido enviado. La logística de entrega ya está en manos de INNOUS."},
+    delivered:{client:"Delivered! This order is complete.", innous:"Entregado — pedido completado.", supplier:"Entregado — pedido completado."},
   };
   return (msgs[p.order.status]||{})[audience] || '';
 }
@@ -2856,18 +2857,18 @@ const NAV = {
     {id:'messages', label:'Messages', icon:'message-square', path:'#/client/messages'},
   ],
   INNOUS: [
-    {id:'overview', label:'Overview', icon:'layout-dashboard', path:'#/innous/overview'},
+    {id:'overview', label:'Resumen', icon:'layout-dashboard', path:'#/innous/overview'},
     {id:'rfqs', label:'RFQs', icon:'file-text', path:'#/innous/rfqs'},
-    {id:'customers', label:'Customers', icon:'building-2', path:'#/innous/customers'},
-    {id:'suppliers', label:'Suppliers', icon:'factory', path:'#/innous/suppliers'},
-    {id:'quotes', label:'Quotes', icon:'file-diff', path:'#/innous/quotes'},
-    {id:'orders', label:'Orders', icon:'package', path:'#/innous/orders'},
-    {id:'production', label:'Production', icon:'cog', path:'#/innous/production'},
-    {id:'quality', label:'Quality', icon:'shield-check', path:'#/innous/quality'},
-    {id:'logistics', label:'Logistics', icon:'truck', path:'#/innous/logistics'},
-    {id:'analytics', label:'Analytics', icon:'bar-chart-3', path:'#/innous/analytics'},
-    {id:'messages', label:'Messages', icon:'message-square', path:'#/innous/messages'},
-    {id:'settings', label:'Settings', icon:'settings', path:'#/innous/settings'},
+    {id:'customers', label:'Clientes', icon:'building-2', path:'#/innous/customers'},
+    {id:'suppliers', label:'Proveedores', icon:'factory', path:'#/innous/suppliers'},
+    {id:'quotes', label:'Cotizaciones', icon:'file-diff', path:'#/innous/quotes'},
+    {id:'orders', label:'Pedidos', icon:'package', path:'#/innous/orders'},
+    {id:'production', label:'Producción', icon:'cog', path:'#/innous/production'},
+    {id:'quality', label:'Calidad', icon:'shield-check', path:'#/innous/quality'},
+    {id:'logistics', label:'Logística', icon:'truck', path:'#/innous/logistics'},
+    {id:'analytics', label:'Analítica', icon:'bar-chart-3', path:'#/innous/analytics'},
+    {id:'messages', label:'Mensajes', icon:'message-square', path:'#/innous/messages'},
+    {id:'settings', label:'Configuración', icon:'settings', path:'#/innous/settings'},
   ],
   SUPPLIER: [
     {id:'dashboard', label:'Panel', icon:'layout-dashboard', path:'#/supplier/dashboard'},
@@ -2889,7 +2890,7 @@ const ROLE_META = {
 
 /* ---------- Shell rendering: topbar user chip + role menu + sidebar ---------- */
 function renderShell(){
-  const es = STATE.role==='SUPPLIER';
+  const es = STATE.role!=='CLIENT';
   const isAccount = STATE.authMode==='account';
   const showLogout = STATE.authMode!=='guest'; // account or demo — either way, there should be a way back to the landing page
   document.getElementById('nav-back-btn').disabled = navHistDepth<=0;
@@ -2976,8 +2977,8 @@ function renderShell(){
           <path fill="#fff" d="M834.1,339.1l-237.9,713.8h-238.4l238-713.8h238.3Z"/>
           <path fill="#fff" d="M1582.6,557.1c0,22.6-3.5,44.5-9.8,64.9-1.1,3.4-2.2,6.8-3.4,10.1l-140.2,420.6h-238.1l96.9-290.9,30.8-92.5c1.3-3.4,2.5-6.8,3.5-10.4,0-.3,0-.5.2-.8,1.9-7.7,3-15.7,3-24,0-53-42.9-95.9-95.8-95.9h-105.3l-171.5,514.3h-238.1l171.4-514.3,66.5-199.5h424.6c16.8,1,33.1,3.9,48.7,8.6,84.7,24.9,148,99.9,155.6,190.8.5,6.2.8,12.3.8,18.6Z"/>
         </svg>
-        <div class="sidebar-footer-card-title">${STATE.role==='INNOUS'?'Need help scaling sourcing?':STATE.role==='CLIENT'?'Have a new project?':'Crece con INNOUS'}</div>
-        <div class="sidebar-footer-card-sub">${STATE.role==='INNOUS'?'Invite more verified suppliers to your network.':STATE.role==='CLIENT'?'Submit an RFQ and get quotes in days, not weeks.':'Mantén tu perfil y capacidades actualizados para ganar más RFQs.'}</div>
+        <div class="sidebar-footer-card-title">${STATE.role==='INNOUS'?'¿Necesitas escalar el sourcing?':STATE.role==='CLIENT'?'Have a new project?':'Crece con INNOUS'}</div>
+        <div class="sidebar-footer-card-sub">${STATE.role==='INNOUS'?'Invita más proveedores verificados a tu red.':STATE.role==='CLIENT'?'Submit an RFQ and get quotes in days, not weeks.':'Mantén tu perfil y capacidades actualizados para ganar más RFQs.'}</div>
       </div>
     </div>`;
   lucide.createIcons();
@@ -2986,7 +2987,7 @@ function renderShell(){
    One list, tagged per item with which sidebar section it belongs to, so the notification
    bell, its dropdown, and the sidebar nav counters all agree with each other. */
 function pendingItems(){
-  const es = STATE.role==='SUPPLIER';
+  const es = STATE.role!=='CLIENT';
   const items = [];
   if(STATE.role==='CLIENT'){
     clientProjects().filter(p=>p.status==='customer_review').forEach(p=>{
@@ -2994,30 +2995,30 @@ function pendingItems(){
     });
   } else if(STATE.role==='INNOUS'){
     PROJECTS.filter(p=>p.status==='submitted').forEach(p=>{
-      items.push({navId:'rfqs', icon:'eye', text:`New RFQ to review — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'eye', text:`RFQ nuevo por revisar — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='under_review').forEach(p=>{
-      items.push({navId:'rfqs', icon:'search', text:`Invite suppliers to quote — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'search', text:`Invitar proveedores a cotizar — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')).forEach(p=>{
       const n = p.supplierQuotes.filter(q=>q.status==='submitted').length;
-      items.push({navId:'rfqs', icon:'inbox', text:`${n} new quote${n===1?'':'s'} received — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'inbox', text:`${n} cotización${n===1?'':'es'} nueva${n===1?'':'s'} recibida${n===1?'':'s'} — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='quotes_received').forEach(p=>{
-      items.push({navId:'rfqs', icon:'file-diff', text:`Build customer shortlist — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'file-diff', text:`Armar shortlist para el cliente — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.status==='awarded' && !p.innousAuthorizedAt).forEach(p=>{
-      items.push({navId:'rfqs', icon:'check-circle', text:`Authorize project — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
+      items.push({navId:'rfqs', icon:'check-circle', text:`Autorizar proyecto — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
     });
     PROJECTS.filter(p=>p.order && p.order.quality.status==='ncr_open').forEach(p=>{
-      items.push({navId:'quality', icon:'alert-triangle', text:`Quality issue open — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+      items.push({navId:'quality', icon:'alert-triangle', text:`Problema de calidad abierto — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
     PROJECTS.filter(p=>p.order && p.order.status==='delivered' && p.order.paymentStatus!=='Paid').forEach(p=>{
-      items.push({navId:'orders', icon:'dollar-sign', text:`Collect final payment — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+      items.push({navId:'orders', icon:'dollar-sign', text:`Cobrar pago final — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
     PROJECTS.filter(p=>p.order && innousNextOrderStatus(p)).forEach(p=>{
       const label = orderStatusLabelFor(p, innousNextOrderStatus(p));
-      items.push({navId:'orders', icon:'truck', text:`Mark as ${label} — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
+      items.push({navId:'orders', icon:'truck', text:`Marcar como ${label} — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
   } else { // SUPPLIER
     supplierInvited().filter(p=>{
@@ -3351,7 +3352,7 @@ const TOUR_STEPS = {
   ],
 };
 function accountModalHtml(){
-  const es = STATE.role==='SUPPLIER';
+  const es = STATE.role!=='CLIENT';
   const d = STATE.ui.accountDraft;
   const {nameLabel, companyLabel, showCompany, initialsText} = STATE.ui.accountModalMeta;
   const pwOpen = !!STATE.ui.accountShowPasswordSection;
@@ -3405,7 +3406,7 @@ function tourModalHtml(){
   const steps = TOUR_STEPS[STATE.role];
   const i = STATE.ui.tourStep;
   const step = steps[i];
-  const es = STATE.role==='SUPPLIER';
+  const es = STATE.role!=='CLIENT';
   const last = i===steps.length-1;
   return `
   <div class="modal-body" style="padding-top:34px;">
@@ -4063,35 +4064,35 @@ ROUTES['innous/overview'] = function(){
 
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Operations Overview</div><div class="brand-rule"></div><div class="page-subtitle">Platform-wide view across all customers and suppliers</div></div>
-      <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/innous/rfqs')"><i data-lucide="file-text"></i>All RFQs</button></div></div>
-    ${pending.length ? stageBanner(`You have <strong>${pending.length}</strong> item${pending.length===1?'':'s'} needing action — review, approve, or shortlist to keep RFQs moving.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">View List</button>`) : ''}
+    <div class="page-header"><div><div class="page-title">Resumen de Operaciones</div><div class="brand-rule"></div><div class="page-subtitle">Vista general de la plataforma, con todos los clientes y proveedores</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/innous/rfqs')"><i data-lucide="file-text"></i>Todos los RFQs</button></div></div>
+    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — revisa, aprueba o arma el shortlist para que los RFQs avancen.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:16px;">
-      ${kpiCard('Active RFQs', active.length, 'across full pipeline','file-text')}
-      ${kpiCard('Awaiting Quotes', awaitingQuotes.length, 'sourcing suppliers','send')}
-      ${kpiCard('Ready for Customer', readyForCustomer.length, 'quotes need shortlisting','file-diff')}
-      ${kpiCard('Active Orders', activeOrders.length, 'in production','package')}
+      ${kpiCard('RFQs Activos', active.length, 'en todo el proceso','file-text')}
+      ${kpiCard('Esperando Cotizaciones', awaitingQuotes.length, 'buscando proveedores','send')}
+      ${kpiCard('Listo para Cliente', readyForCustomer.length, 'cotizaciones por armar en shortlist','file-diff')}
+      ${kpiCard('Pedidos Activos', activeOrders.length, 'en producción','package')}
     </div>
     <div class="grid grid-3" style="margin-bottom:24px;">
-      ${kpiCard('Revenue (Portfolio)', fmtMoney(revenue), 'across active + completed orders','dollar-sign')}
-      ${kpiCard('Gross Margin', fmtMoney(margin), (margin/revenue*100).toFixed(1)+'% average margin','trending-up')}
-      ${kpiCard('Supplier Network', SUPPLIERS.length, 'verified manufacturing partners','factory')}
+      ${kpiCard('Ingresos (Portafolio)', fmtMoney(revenue), 'entre pedidos activos y completados','dollar-sign')}
+      ${kpiCard('Margen Bruto', fmtMoney(margin), (margin/revenue*100).toFixed(1)+'% margen promedio','trending-up')}
+      ${kpiCard('Red de Proveedores', SUPPLIERS.length, 'socios de manufactura verificados','factory')}
     </div>
     <div class="grid grid-2">
       <div class="card">
-        <div class="card-header"><h3>RFQs Needing Attention</h3><a href="#/innous/rfqs" class="btn btn-ghost btn-sm">View all</a></div>
+        <div class="card-header"><h3>RFQs que Necesitan Atención</h3><a href="#/innous/rfqs" class="btn btn-ghost btn-sm">Ver todos</a></div>
         <div class="table-wrap">${innousRfqMiniTable(PROJECTS.filter(p=>['submitted','under_review','quotes_received'].includes(p.status)).slice(0,6))}</div>
       </div>
       <div class="card">
-        <div class="card-header"><h3>Recent Activity</h3></div>
+        <div class="card-header"><h3>Actividad Reciente</h3></div>
         <div class="card-pad">${recent.map(a=>`<div class="activity-item"><div class="activity-dot"></div><div><div class="activity-text"><strong>${a.projId}</strong> — ${a.text}</div><div class="activity-time">${a.projName} · ${timeAgo(a.ts)}</div></div></div>`).join('')}</div>
       </div>
     </div>
   </div>`;
 };
 function innousRfqMiniTable(list){
-  if(!list.length) return emptyState('inbox','All caught up','No RFQs currently need review.');
-  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Status</th></tr></thead><tbody>
+  if(!list.length) return emptyState('inbox','Todo al día','No hay RFQs pendientes de revisión.');
+  return `<table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proyecto</th><th>Estatus</th></tr></thead><tbody>
     ${list.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td></tr>`).join('')}
   </tbody></table>`;
 }
@@ -4101,15 +4102,15 @@ ROUTES['innous/rfqs'] = function(){
   const sorted = [...PROJECTS].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} total requests across the platform</div></div></div>
+    <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} solicitudes en total en la plataforma</div></div></div>
     <div class="filter-bar">
-      <div class="search-bar" style="max-width:280px;"><i data-lucide="search"></i><input type="text" placeholder="Search RFQ, customer, project..." id="rfq-search" onkeyup="App.filterRfqTable()"></div>
-      <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">All Statuses</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}<option value="rejected">Rejected</option></select>
+      <div class="search-bar" style="max-width:280px;"><i data-lucide="search"></i><input type="text" placeholder="Buscar RFQ, cliente, proyecto..." id="rfq-search" onkeyup="App.filterRfqTable()"></div>
+      <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">Todos los Estatus</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}<option value="rejected">Rejected</option></select>
     </div>
     <div class="card">
       <div class="table-wrap"><table class="data-table data-table-fixed" id="rfq-table">
         <colgroup><col style="width:10%"><col style="width:12%"><col style="width:19%"><col style="width:10%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:12%"><col style="width:12%"><col style="width:8%"></colgroup>
-        <thead><tr><th>RFQ</th><th>Customer</th><th>Project</th><th>Process</th><th>Qty</th><th>Invited</th><th>Quotes</th><th>Status</th><th>Waiting On</th><th>Created</th></tr></thead><tbody>
+        <thead><tr><th>RFQ</th><th>Cliente</th><th>Proyecto</th><th>Proceso</th><th>Cant.</th><th>Invitados</th><th>Cotizaciones</th><th>Estatus</th><th>Turno</th><th>Creado</th></tr></thead><tbody>
         ${sorted.map(p=>{
           const submitted = p.supplierQuotes.filter(q=>q.status==='submitted').length;
           return `<tr class="row-link" data-status="${p.status}" data-search="${(p.id+' '+customerName(p.customerId)+' '+p.projectName).toLowerCase()}" onclick="navigate('#/innous/rfq/${p.id}')">
@@ -4123,7 +4124,7 @@ ROUTES['innous/rfqs'] = function(){
 
 /* ---- INNOUS RFQ Detail (the core workflow screen) ---- */
 ROUTES['innous/rfq'] = function(id){
-  const p = findProject(id); if(!p) return emptyState('search','RFQ not found','');
+  const p = findProject(id); if(!p) return emptyState('search','RFQ no encontrado','');
   const flowLabels = RFQ_STATUS_FLOW.map(s=>RFQ_STATUS_META[s].label);
   const curIdx = RFQ_STATUS_FLOW.indexOf(p.status);
   return `
@@ -4133,11 +4134,11 @@ ROUTES['innous/rfq'] = function(id){
       <div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${customerName(p.customerId)}</div></div>
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
-        ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
-        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
-        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
-        ${!['awarded','in_production','completed','rejected'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.openRejectRfqModal('${p.id}')"><i data-lucide="x-circle"></i>Reject / Close Project</button>`:''}
-        <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Delete RFQ</button>
+        ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Iniciar Revisión</button>`:''}
+        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Guarda primero los Detalles de la Orden de Compra abajo"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>`:''}
+        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>Ver Pedido</button>`:''}
+        ${!['awarded','in_production','completed','rejected'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.openRejectRfqModal('${p.id}')"><i data-lucide="x-circle"></i>Rechazar / Cerrar Proyecto</button>`:''}
+        <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Eliminar RFQ</button>
       </div>
     </div>
     ${p.status==='rejected' ? rejectedRfqBanner(p,'innous') : `
@@ -4146,29 +4147,29 @@ ROUTES['innous/rfq'] = function(id){
 
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
-        <div class="section-title">RFQ Information</div>
+        <div class="section-title">Información del RFQ</div>
         <div class="info-grid" style="margin-top:12px;">
-          ${infoItem('Customer', customerName(p.customerId))}
-          ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
-          ${infoItem('Delivery Location', p.deliveryLocation)}
-          ${p.targetPriceUsd?infoItem('Total Target Price', fmtMoney(p.targetPriceUsd)):''}
+          ${infoItem('Cliente', customerName(p.customerId))}
+          ${infoItem('Fecha de Entrega', fmtDate(p.deliveryDate))}
+          ${infoItem('Ubicación de Entrega', p.deliveryLocation)}
+          ${p.targetPriceUsd?infoItem('Target Price Total', fmtMoney(p.targetPriceUsd)):''}
         </div>
         <hr class="divider">
-        <div class="info-item-label">${p.items&&p.items.length>1?'Items':'Item'}</div>
-        ${rfqItemsBlock(p)}
+        <div class="info-item-label">${p.items&&p.items.length>1?'Partidas':'Partida'}</div>
+        ${rfqItemsBlock(p, {process:'Proceso', quantity:'Cantidad', material:'Material', item:'Partida', targetPrice:'Target Price', units:' pzas', translateProcess:true, legacyCols:'1fr 1fr 1fr', legacyQtyUnit:' pzas'})}
       </div>
       <div class="card card-pad">
-        <div class="section-title">Files</div>
-        <div class="field-hint" style="margin-top:-4px;margin-bottom:8px;">Originals — never shared with the supplier until you redact and publish them below.</div>
+        <div class="section-title">Archivos</div>
+        <div class="field-hint" style="margin-top:-4px;margin-bottom:8px;">Originales — nunca se comparten con el proveedor hasta que los redactes y publiques abajo.</div>
         <div class="file-list" style="margin-top:10px;">${p.files.map((f,i)=>innousFileChip(p,f,i)).join('')}</div>
         <hr class="divider">
-        <div class="section-title">Customer Contact</div>
+        <div class="section-title">Contacto del Cliente</div>
         ${(()=>{ const c = CUSTOMERS.find(x=>x.id===p.customerId); return c ? `
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
           <div class="avatar">${initials(c.contact)}</div>
           <div><div style="font-weight:600;font-size:13px;">${c.contact}</div><div class="td-sub">${c.email}</div></div>
         </div>
-        <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Message Customer about this RFQ</button>` : `<div class="td-sub" style="margin-top:10px;">This customer's account has been deleted.</div>`; })()}
+        <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Enviar Mensaje al Cliente sobre este RFQ</button>` : `<div class="td-sub" style="margin-top:10px;">La cuenta de este cliente fue eliminada.</div>`; })()}
       </div>
     </div>
 
@@ -4199,25 +4200,25 @@ function sentDocumentsSection(p){
   <div class="grid grid-2" style="margin-bottom:20px;">
     ${quoteSent ? `
     <div class="card card-pad">
-      <div class="section-title">Quote Sent to Customer</div>
+      <div class="section-title">Cotización Enviada al Cliente</div>
       <div class="info-grid" style="margin-top:12px;">
-        ${infoItem('Quote Number', p.order.quoteNumber||'—')}
-        ${infoItem('Customer', customerName(p.customerId))}
-        ${infoItem('Total Price', fmtMoney(p.order.customerPrice))}
-        ${infoItem('Prepared By', p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name)}
+        ${infoItem('Número de Cotización', p.order.quoteNumber||'—')}
+        ${infoItem('Cliente', customerName(p.customerId))}
+        ${infoItem('Precio Total', fmtMoney(p.order.customerPrice))}
+        ${infoItem('Preparado Por', p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name)}
       </div>
-      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Quote (PDF)</button>
+      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Descargar Cotización (PDF)</button>
     </div>` : ''}
     ${poSent ? `
     <div class="card card-pad">
-      <div class="section-title">Purchase Order Sent to Supplier</div>
+      <div class="section-title">Orden de Compra Enviada al Proveedor</div>
       <div class="info-grid" style="margin-top:12px;">
-        ${infoItem('PO Number', p.order.poNumber||'—')}
-        ${infoItem('Supplier', supplier?supplier.name:'—')}
+        ${infoItem('Número de OC', p.order.poNumber||'—')}
+        ${infoItem('Proveedor', supplier?supplier.name:'—')}
         ${infoItem('Total (IVA incl.)', q?fmtMXN(withIva(q.quotedTotal)):'—')}
-        ${infoItem('Authorized', fmtDate(p.innousAuthorizedAt))}
+        ${infoItem('Autorizado', fmtDate(p.innousAuthorizedAt))}
       </div>
-      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download Purchase Order (PDF)</button>
+      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Descargar Orden de Compra (PDF)</button>
     </div>` : ''}
   </div>`;
 }
@@ -4248,22 +4249,22 @@ function targetPriceSourcingSection(p){
   const marginMxn = marginUsd * rate;
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
-    <div class="section-title">Target Price Sourcing</div>
-    <div class="section-sub">The customer set a target price of ${fmtMoney(p.targetPriceUsd)}. ${locked ? 'The markup and exchange rate below are locked — every supplier invited sees this same budget.' : 'Set your markup and the exchange rate to use before inviting suppliers — once you send the first invite, these numbers lock in.'}</div>
+    <div class="section-title">Sourcing con Target Price</div>
+    <div class="section-sub">El cliente puso un target price de ${fmtMoney(p.targetPriceUsd)}. ${locked ? 'El markup y el tipo de cambio de abajo ya están bloqueados — todos los proveedores invitados ven este mismo presupuesto.' : 'Fija tu markup y el tipo de cambio a usar antes de invitar proveedores — en cuanto envíes la primera invitación, estos números se bloquean.'}</div>
     <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
       <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${markup}" style="width:100px;" ${locked?'disabled':`onchange="App.setMarkup('${p.id}','__target__', this.value)"`}></div>
-      <div><div class="field-label">Supplier Cost (USD)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMoney(supplierCostUsd)}</div></div>
+      <div><div class="field-label">Costo del Proveedor (USD)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMoney(supplierCostUsd)}</div></div>
     </div>
     <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:16px;">
-      <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
-      <div><div class="field-label">Supplier Budget (MXN)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMXN(budgetMxn)}</div></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio (MXN por USD)</label><input type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
+      <div><div class="field-label">Presupuesto del Proveedor (MXN)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMXN(budgetMxn)}</div></div>
     </div>
     <hr class="divider">
     <div style="display:flex;gap:32px;flex-wrap:wrap;">
-      <div><div class="field-label">INNOUS Margin (USD)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:2px;">${marginPct.toFixed(1)}% of target price</div></div>
-      <div><div class="field-label">INNOUS Margin (MXN)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
+      <div><div class="field-label">Margen de INNOUS (USD)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:2px;">${marginPct.toFixed(1)}% del target price</div></div>
+      <div><div class="field-label">Margen de INNOUS (MXN)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
     </div>
-    <div class="field-hint" style="margin-top:10px;">Suppliers only ever see the Supplier Budget in MXN — never the target price, your markup %, or this margin.</div>
+    <div class="field-hint" style="margin-top:10px;">Los proveedores solo ven el Presupuesto en MXN — nunca el target price, tu markup %, ni este margen.</div>
   </div>`;
 }
 function supplierMatchingSection(p){
@@ -4280,21 +4281,21 @@ function supplierMatchingSection(p){
   const rfqProcesses = (p.processList && p.processList.length) ? p.processList : (p.process||'').split(',').map(s=>s.trim()).filter(Boolean);
   const eligible = SUPPLIERS.filter(s=>rfqProcesses.some(proc=>s.capabilities.includes(proc)) && notYetInvited(s));
   const candidates = eligible.length ? eligible : SUPPLIERS.filter(notYetInvited);
-  if(!candidates.length) return p.invitedSupplierIds.length ? `<div class="card card-pad" style="margin-bottom:20px;"><div class="section-title">Recommended Suppliers</div><div class="section-sub">Every verified supplier for this process has already been invited.</div></div>` : '';
+  if(!candidates.length) return p.invitedSupplierIds.length ? `<div class="card card-pad" style="margin-bottom:20px;"><div class="section-title">Proveedores Recomendados</div><div class="section-sub">Ya se invitó a todos los proveedores verificados para este proceso.</div></div>` : '';
   const selected = STATE.ui.selectedInviteSuppliers;
   const already = p.invitedSupplierIds.length;
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div><div class="section-title">Recommended Suppliers</div><div class="section-sub">Matched by manufacturing process, capacity and quality history.${already?` ${already} already invited.`:''}</div></div>
-      <div style="font-size:13px;font-weight:600;">${selected.length} suppliers selected</div>
+      <div><div class="section-title">Proveedores Recomendados</div><div class="section-sub">Emparejados por proceso de manufactura, capacidad e historial de calidad.${already?` ${already} ya invitado${already===1?'':'s'}.`:''}</div></div>
+      <div style="font-size:13px;font-weight:600;">${selected.length} proveedores seleccionados</div>
     </div>
     <div class="grid grid-3">
       ${candidates.map(s=>supplierMatchCard(s, selected.includes(s.id))).join('')}
     </div>
     <hr class="divider">
     <div style="display:flex;justify-content:flex-end;">
-      <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="App.sendRfqToSuppliers('${p.id}')"><i data-lucide="send"></i>Send RFQ to ${selected.length||''} Supplier${selected.length===1?'':'s'}</button>
+      <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="App.sendRfqToSuppliers('${p.id}')"><i data-lucide="send"></i>Enviar RFQ a ${selected.length||''} Proveedor${selected.length===1?'':'es'}</button>
     </div>
   </div>`;
 }
@@ -4304,35 +4305,35 @@ function supplierMatchCard(s, isSelected){
   <div class="supplier-card ${isSelected?'selected':''}">
     <div class="supplier-card-top">
       <div style="display:flex;gap:10px;"><div class="supplier-avatar">${initials(s.name)}</div><div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>
-      ${isNew?'<span class="badge badge-blue">New</span>':''}
+      ${isNew?'<span class="badge badge-blue">Nuevo</span>':''}
     </div>
     <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
-    <div class="td-sub" style="margin:8px 0;">${s.machines.join(' · ')||'No machines listed yet'}</div>
-    ${isNew ? `<div class="field-hint" style="margin:8px 0;">No completed orders yet — rating, on-time % and quality % will populate after their first delivery.</div>` : `
+    <div class="td-sub" style="margin:8px 0;">${s.machines.join(' · ')||'Aún sin máquinas registradas'}</div>
+    ${isNew ? `<div class="field-hint" style="margin:8px 0;">Aún sin pedidos completados — el rating, % a tiempo y % de calidad se llenarán después de su primera entrega.</div>` : `
     <div class="mini-stat-grid">
-      <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
+      <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">A Tiempo</div></div>
       <div class="mini-stat"><div class="mini-stat-val">${s.rating}</div><div class="mini-stat-label">Rating</div></div>
-      <div class="mini-stat"><div class="mini-stat-val">${s.projects}</div><div class="mini-stat-label">Projects</div></div>
+      <div class="mini-stat"><div class="mini-stat-val">${s.projects}</div><div class="mini-stat-label">Proyectos</div></div>
     </div>`}
-    <div class="td-sub" style="margin-bottom:10px;">${s.capacity||'Capacity not set'}</div>
-    <button class="btn ${isSelected?'btn-primary':'btn-secondary'} btn-block btn-sm" onclick="App.toggleInviteSupplier('${s.id}')">${isSelected?'<i data-lucide=\'check\'></i>Selected':'Invite to RFQ'}</button>
+    <div class="td-sub" style="margin-bottom:10px;">${s.capacity||'Capacidad no definida'}</div>
+    <button class="btn ${isSelected?'btn-primary':'btn-secondary'} btn-block btn-sm" onclick="App.toggleInviteSupplier('${s.id}')">${isSelected?'<i data-lucide=\'check\'></i>Seleccionado':'Invitar al RFQ'}</button>
   </div>`;
 }
 function supplierResponsesSection(p){
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
-    <div class="section-title">Supplier Responses</div>
-    <div class="section-sub">${p.invitedSupplierIds.length} suppliers invited</div>
+    <div class="section-title">Respuestas de Proveedores</div>
+    <div class="section-sub">${p.invitedSupplierIds.length} proveedores invitados</div>
     <div class="grid grid-4">
       ${p.invitedSupplierIds.map((sid,i)=>{
         const q = p.supplierQuotes.find(x=>x.supplierId===sid);
         const submitted = q && q.status==='submitted';
         const declined = q && q.status==='declined';
         const s = SUPPLIERS.find(x=>x.id===sid);
-        const badge = declined ? ['badge-gray','Declined'] : submitted ? ['badge-green','Submitted'] : ['badge-amber','Pending'];
+        const badge = declined ? ['badge-gray','Rechazó'] : submitted ? ['badge-green','Enviada'] : ['badge-amber','Pendiente'];
         return `<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/suppliers')">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="font-weight:600;font-size:12.5px;">${s?s.name:'Deleted Supplier'}</div>
+            <div style="font-weight:600;font-size:12.5px;">${s?s.name:'Proveedor Eliminado'}</div>
             <span class="badge ${badge[0]}">${badge[1]}</span>
           </div>
           <div class="td-sub" style="margin-top:6px;">${s?s.city:'—'}</div>
@@ -4399,26 +4400,28 @@ function quoteCompareCard(p, q, rate, freight, isShortlisted){
   <div class="card card-pad" style="box-shadow:none;border:1px solid var(--border,#EAEAEA);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
       <div>
-        <div style="font-weight:700;font-size:14.5px;">${supplier?supplier.name:'Deleted Supplier'}</div>
-        <div class="td-sub">${supplier?`${supplier.city} · ${supplier.rating}★`:'—'} · ${q.leadTimeDays} days lead time</div>
+        <div style="font-weight:700;font-size:14.5px;">${supplier?supplier.name:'Proveedor Eliminado'}</div>
+        <div class="td-sub">${supplier?`${supplier.city} · ${supplier.rating}★`:'—'} · ${q.leadTimeDays} días de entrega</div>
       </div>
-      ${isShortlisted?'<span class="badge badge-green">Shortlisted</span>':`<button class="btn btn-primary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')"><i data-lucide="plus"></i>Add to Shortlist</button>`}
+      ${isShortlisted?'<span class="badge badge-green">En Shortlist</span>':`<button class="btn btn-primary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')"><i data-lucide="plus"></i>Agregar al Shortlist</button>`}
     </div>
     <hr class="divider">
-    <div class="info-item-label" style="margin-bottom:6px;">Supplier's Quote</div>
+    <div class="info-item-label" style="margin-bottom:6px;">Cotización del Proveedor</div>
     <div class="pricing-panel">
-      ${supplierQuotePriceRows(p, q)}
-      <div class="pricing-row"><span>Shipping (supplier's)</span><span>${q.shipping?fmtMXN(q.shipping):'Included'}</span></div>
-      <div class="pricing-row total"><span>Total Cost</span><span>${fmtMXN(q.quotedTotal)} <span style="font-weight:400;opacity:0.85;">(${fmtMoney(costUsd)})</span></span></div>
+      ${supplierQuotePriceRows(p, q, {label:'Precio Unitario'})}
+      <div class="pricing-row"><span>Envío (del proveedor)</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
+      <div class="pricing-row"><span>Costo Total (sin IVA)</span><span>${fmtMXN(q.quotedTotal)} <span style="font-weight:400;opacity:0.85;">(${fmtMoney(costUsd)})</span></span></div>
+      <div class="pricing-row"><span>IVA (16%)</span><span>${fmtMXN(q.quotedTotal*IVA_RATE)}</span></div>
+      <div class="pricing-row total"><span>Costo Total con IVA</span><span>${fmtMXN(withIva(q.quotedTotal))} <span style="font-weight:400;opacity:0.85;">(${fmtMoney(withIva(costUsd))})</span></span></div>
     </div>
-    <div class="info-item-label" style="margin:14px 0 8px;">Your Pricing</div>
+    <div class="info-item-label" style="margin:14px 0 8px;">Tu Precio al Cliente</div>
     <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap;">
       <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" value="${markup}" min="0" max="100" style="width:72px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)"></div>
-      <div><div class="field-label">INNOUS Margin</div><div style="font-size:16px;font-weight:700;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:1px;">${marginPct.toFixed(1)}% of customer price</div></div>
+      <div><div class="field-label">Margen de INNOUS</div><div style="font-size:16px;font-weight:700;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:1px;">${marginPct.toFixed(1)}% del precio al cliente</div></div>
     </div>
     <div class="pricing-panel" style="margin-top:12px;">
-      ${freight?`<div class="pricing-row"><span>Product Price</span><span>${fmtMoney(customerPrice-freight)}</span></div><div class="pricing-row"><span>Shipping (to customer)</span><span>${fmtMoney(freight)}</span></div>`:''}
-      <div class="pricing-row total"><span>Customer Price</span><span>${fmtMoney(customerPrice)}</span></div>
+      ${freight?`<div class="pricing-row"><span>Precio del Producto</span><span>${fmtMoney(customerPrice-freight)}</span></div><div class="pricing-row"><span>Envío (al cliente)</span><span>${fmtMoney(freight)}</span></div>`:''}
+      <div class="pricing-row total"><span>Precio al Cliente</span><span>${fmtMoney(customerPrice)}</span></div>
     </div>
   </div>`;
 }
@@ -4431,13 +4434,13 @@ function quoteComparisonSection(p){
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;">
-      <div><div class="section-title">Compare Supplier Quotes</div><div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal. Suppliers quote in MXN — set today's rate to convert to USD.</div></div>
+      <div><div class="section-title">Comparar Cotizaciones de Proveedores</div><div class="section-sub">El precio del proveedor es confidencial — solo visible dentro del portal de INNOUS. Los proveedores cotizan en MXN — pon el tipo de cambio de hoy para convertir a USD.</div></div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" step="0.01" min="0.01" value="${rate}" style="width:100px;" onchange="App.setExchangeRate('${p.id}', this.value)"></div>
-        <div class="form-group" style="margin:0;"><label class="field-label">Shipping to Customer (USD)</label><input type="number" step="0.01" min="0" value="${freight}" style="width:100px;" onchange="App.setFreight('${p.id}', this.value)"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio (MXN por USD)</label><input type="number" step="0.01" min="0.01" value="${rate}" style="width:100px;" onchange="App.setExchangeRate('${p.id}', this.value)"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Envío al Cliente (USD)</label><input type="number" step="0.01" min="0" value="${freight}" style="width:100px;" onchange="App.setFreight('${p.id}', this.value)"></div>
       </div>
     </div>
-    <div class="field-hint" style="margin-top:6px;">Set shipping before adding suppliers to the shortlist — it's baked into the customer price the moment each option is added, so the customer always sees the real total before picking.</div>
+    <div class="field-hint" style="margin-top:6px;">Fija el envío antes de agregar proveedores al shortlist — se incluye en el precio al cliente en el momento en que se agrega cada opción, así el cliente siempre ve el total real antes de elegir.</div>
     <div class="grid grid-2" style="margin-top:16px;">
       ${submitted.map(q=>quoteCompareCard(p, q, rate, freight, shortlisted.has(q.supplierId))).join('')}
     </div>
@@ -4446,10 +4449,10 @@ function quoteComparisonSection(p){
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <div class="td-sub">${p.shortlist.length} of 5 selected for customer shortlist</div>
-        ${p.shortlist.length && !quoteDetailsComplete(p) ? `<div class="td-sub" style="color:var(--danger);margin-top:2px;">Save the Formal Quote Details above first</div>` : ''}
+        <div class="td-sub">${p.shortlist.length} de 5 seleccionados para el shortlist del cliente</div>
+        ${p.shortlist.length && !quoteDetailsComplete(p) ? `<div class="td-sub" style="color:var(--danger);margin-top:2px;">Guarda primero los Detalles de la Cotización Formal de arriba</div>` : ''}
       </div>
-      <button class="btn btn-primary" ${(p.shortlist.length && quoteDetailsComplete(p))?'':'disabled'} onclick="App.sendQuotesToCustomer('${p.id}')"><i data-lucide="send"></i>Send Quotes to Customer</button>
+      <button class="btn btn-primary" ${(p.shortlist.length && quoteDetailsComplete(p))?'':'disabled'} onclick="App.sendQuotesToCustomer('${p.id}')"><i data-lucide="send"></i>Enviar Cotizaciones al Cliente</button>
     </div>
   </div>`;
 }
@@ -4457,15 +4460,15 @@ function quoteDetailsComplete(p){ return !!(p.quoteSalespersonName && p.quoteSal
 function shortlistPreview(p){
   return `
   <div style="margin:16px 0;">
-    <div class="info-item-label" style="margin-bottom:8px;">Customer Shortlist Preview</div>
-    <div class="section-sub" style="margin:-4px 0 8px;">Prices shown here already include shipping — exactly what the customer sees.</div>
+    <div class="info-item-label" style="margin-bottom:8px;">Vista Previa del Shortlist del Cliente</div>
+    <div class="section-sub" style="margin:-4px 0 8px;">Los precios de aquí ya incluyen el envío — exactamente lo que ve el cliente.</div>
     <div class="grid grid-5">
       ${p.shortlist.map(s=>`
         <div class="card card-pad" style="box-shadow:none;">
           <div class="td-sub">${supplierName(s.supplierId)}</div>
           <div style="font-weight:700;font-size:16px;">${fmtMoney(s.customerPrice)}</div>
-          <div class="td-sub">${s.leadTimeDays} days</div>
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger);padding-left:0;" onclick="App.removeFromShortlist('${p.id}','${s.supplierId}')"><i data-lucide="x" style="width:12px;height:12px;"></i>Remove</button>
+          <div class="td-sub">${s.leadTimeDays} días</div>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger);padding-left:0;" onclick="App.removeFromShortlist('${p.id}','${s.supplierId}')"><i data-lucide="x" style="width:12px;height:12px;"></i>Quitar</button>
         </div>`).join('')}
     </div>
   </div>`;
@@ -4473,10 +4476,10 @@ function shortlistPreview(p){
 function sentShortlistReadonlySection(p){
   return `
   <div class="card card-pad">
-    <div class="section-title">Shortlist Sent to Customer</div>
-    <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns are never shown to the customer — this pricing detail is visible only within INNOUS.</div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost (MXN)</th><th>Rate</th><th>Supplier Cost (USD)</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
-      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${s.supplierCostMxn?fmtMXN(s.supplierCostMxn):'—'}</td><td class="td-sub">${s.exchangeRate||'—'}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost-(s.freightUsd||0))}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
+    <div class="section-title">Shortlist Enviado al Cliente</div>
+    <div class="section-sub">Esperando la decisión de ${customerName(p.customerId)}. La identidad de los proveedores y el desglose de costos nunca se le muestran al cliente — este detalle de precios solo es visible dentro de INNOUS.</div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Proveedor</th><th>Costo del Proveedor (MXN)</th><th>Tipo de Cambio</th><th>Costo del Proveedor (USD)</th><th>Markup</th><th>Margen de INNOUS</th><th>Precio al Cliente</th><th>Tiempo de Entrega</th><th>Badge</th></tr></thead><tbody>
+      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${s.supplierCostMxn?fmtMXN(s.supplierCostMxn):'—'}</td><td class="td-sub">${s.exchangeRate||'—'}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost-(s.freightUsd||0))}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} días</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
     </tbody></table></div>
   </div>`;
 }
@@ -4517,30 +4520,30 @@ function quoteDetailsSection(p, opts){
   const upd = (field)=>`App.updateQuoteDetailDraft('${p.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-top:20px;">
-    <div class="section-title">Formal Quote Details</div>
+    <div class="section-title">Detalles de la Cotización Formal</div>
     <div class="section-sub">${required
-      ? 'What the customer\'s formal quote will say once they pick a supplier — fill these in and save before you can send this shortlist. The customer never sees any of this until they select.'
-      : 'These are what actually print on the customer\'s downloadable formal quote — never taken from the supplier\'s own numbers. Fill these in and save before the customer downloads their quote.'}</div>
-    ${!isConfirmed ? stageBanner(required ? 'Required — save these before "Send Quotes to Customer" unlocks below.' : 'Not confirmed yet — the customer\'s PDF will use generic defaults until you save these.', 'action') : ''}
+      ? 'Lo que dirá la cotización formal del cliente en cuanto elija un proveedor — llénalo y guárdalo antes de poder enviar este shortlist. El cliente nunca ve nada de esto hasta que elige.'
+      : 'Esto es lo que realmente se imprime en la cotización formal descargable del cliente — nunca sale de los números del proveedor. Llénalo y guárdalo antes de que el cliente descargue su cotización.'}</div>
+    ${!isConfirmed ? stageBanner(required ? 'Requerido — guarda esto antes de que se habilite "Enviar Cotizaciones al Cliente" abajo.' : 'Aún sin confirmar — el PDF del cliente usará valores genéricos hasta que guardes esto.', 'action') : ''}
     <div class="form-row" style="margin-top:14px;">
-      <div class="form-group"><label class="field-label">Salesperson Name</label><input type="text" value="${escAttr(d.salespersonName)}" oninput="${upd('salespersonName')}"></div>
-      <div class="form-group"><label class="field-label">Salesperson Email</label><input type="email" value="${escAttr(d.salespersonEmail)}" oninput="${upd('salespersonEmail')}"></div>
+      <div class="form-group"><label class="field-label">Nombre del Vendedor</label><input type="text" value="${escAttr(d.salespersonName)}" oninput="${upd('salespersonName')}"></div>
+      <div class="form-group"><label class="field-label">Correo del Vendedor</label><input type="email" value="${escAttr(d.salespersonEmail)}" oninput="${upd('salespersonEmail')}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Payment Terms</label><input type="text" value="${escAttr(d.paymentTerms)}" oninput="${upd('paymentTerms')}"></div>
-      <div class="form-group"><label class="field-label">Delivery Time (days)</label><input type="number" min="0" value="${d.deliveryDays}" oninput="${upd('deliveryDays')}"></div>
+      <div class="form-group"><label class="field-label">Condiciones de Pago</label><input type="text" value="${escAttr(d.paymentTerms)}" oninput="${upd('paymentTerms')}"></div>
+      <div class="form-group"><label class="field-label">Tiempo de Entrega (días)</label><input type="number" min="0" value="${d.deliveryDays}" oninput="${upd('deliveryDays')}"></div>
     </div>
-    <div class="info-item-label" style="margin-top:10px;">Commercial Terms — pre-filled with Innous's standard wording, adjust only if this deal is different</div>
+    <div class="info-item-label" style="margin-top:10px;">Condiciones Comerciales — prellenadas con el texto estándar de Innous, ajusta solo si este trato es diferente</div>
     <div class="form-row" style="margin-top:6px;">
-      <div class="form-group"><label class="field-label">Country of Origin</label><input type="text" value="${escAttr(d.countryOrigin)}" oninput="${upd('countryOrigin')}"></div>
-      <div class="form-group"><label class="field-label">Warranty</label><input type="text" value="${escAttr(d.warranty)}" oninput="${upd('warranty')}"></div>
+      <div class="form-group"><label class="field-label">País de Origen</label><input type="text" value="${escAttr(d.countryOrigin)}" oninput="${upd('countryOrigin')}"></div>
+      <div class="form-group"><label class="field-label">Garantía</label><input type="text" value="${escAttr(d.warranty)}" oninput="${upd('warranty')}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Quote Validity (days)</label><input type="number" min="0" value="${d.validityDays}" oninput="${upd('validityDays')}"></div>
-      <div class="form-group"><label class="field-label">Tooling / FAI / Certs.</label><input type="text" value="${escAttr(d.toolingNote)}" oninput="${upd('toolingNote')}"></div>
+      <div class="form-group"><label class="field-label">Vigencia de la Cotización (días)</label><input type="number" min="0" value="${d.validityDays}" oninput="${upd('validityDays')}"></div>
+      <div class="form-group"><label class="field-label">Herramental / FAI / Certificados</label><input type="text" value="${escAttr(d.toolingNote)}" oninput="${upd('toolingNote')}"></div>
     </div>
-    <div class="form-group" style="max-width:calc(50% - 8px);"><label class="field-label">Discount (USD)</label><input type="number" min="0" step="0.01" value="${d.discount}" oninput="${upd('discount')}"></div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveQuoteDetails('${p.id}')"><i data-lucide="save"></i>Save Quote Details</button></div>
+    <div class="form-group" style="max-width:calc(50% - 8px);"><label class="field-label">Descuento (USD)</label><input type="number" min="0" step="0.01" value="${d.discount}" oninput="${upd('discount')}"></div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveQuoteDetails('${p.id}')"><i data-lucide="save"></i>Guardar Detalles de la Cotización</button></div>
   </div>`;
 }
 
@@ -4585,9 +4588,9 @@ function purchaseOrderDetailsSection(p){
   const upd = (field)=>`App.updatePoDetailDraft('${p.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-top:20px;">
-    <div class="section-title">Purchase Order Details</div>
-    <div class="section-sub">What the supplier's formal Orden de Compra needs — fill these in and save before you can authorize and send this project to them.</div>
-    ${!isConfirmed ? stageBanner('Required — save these before "Authorize & Notify Supplier" unlocks.', 'action') : ''}
+    <div class="section-title">Detalles de la Orden de Compra</div>
+    <div class="section-sub">Lo que necesita la Orden de Compra formal del proveedor — llénalo y guárdalo antes de poder autorizar y enviarle el proyecto.</div>
+    ${!isConfirmed ? stageBanner('Requerido — guarda esto antes de que se habilite "Autorizar y Notificar al Proveedor".', 'action') : ''}
     <div class="info-item-label" style="margin-top:16px;">Proveedor (guardado en su perfil — solo se pide una vez)</div>
     <div class="form-row" style="margin-top:6px;">
       <div class="form-group"><label class="field-label">RFC del Proveedor</label><input type="text" value="${escAttr(d.supplierRfc)}" placeholder="XXXX000000XX0" oninput="${upd('supplierRfc')}"></div>
@@ -4607,7 +4610,7 @@ function purchaseOrderDetailsSection(p){
       <div class="form-group"><label class="field-label">Forma de Pago</label><input type="text" value="${escAttr(d.paymentMethod)}" oninput="${upd('paymentMethod')}"></div>
     </div>
     <div class="form-group"><label class="field-label">Observaciones / Instrucciones Especiales</label><textarea oninput="${upd('notes')}">${escAttr(d.notes)}</textarea></div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Save Purchase Order Details</button></div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Guardar Detalles de la Orden de Compra</button></div>
   </div>`;
 }
 
@@ -4615,8 +4618,8 @@ function purchaseOrderDetailsSection(p){
 ROUTES['innous/customers'] = function(){
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Customers</div><div class="page-subtitle">${CUSTOMERS.length} active accounts</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Company</th><th>Contact</th><th>Industry</th><th>Location</th><th>RFQs</th><th>Active Orders</th><th>Completed</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Clientes</div><div class="page-subtitle">${CUSTOMERS.length} cuentas activas</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Empresa</th><th>Contacto</th><th>Industria</th><th>Ubicación</th><th>RFQs</th><th>Pedidos Activos</th><th>Completados</th></tr></thead><tbody>
       ${CUSTOMERS.map(c=>{
         const proj = PROJECTS.filter(p=>p.customerId===c.id);
         const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
@@ -4629,42 +4632,42 @@ ROUTES['innous/customers'] = function(){
 
 /* ---- INNOUS Customer Detail ---- */
 ROUTES['innous/customer'] = function(id){
-  const c = CUSTOMERS.find(x=>x.id===id); if(!c) return emptyState('search','Customer not found','');
+  const c = CUSTOMERS.find(x=>x.id===id); if(!c) return emptyState('search','Cliente no encontrado','');
   const proj = PROJECTS.filter(p=>p.customerId===c.id);
   const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
   const completed = proj.filter(p=>p.status==='completed').length;
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/innous/customers">Customers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
-    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), null, 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Customer since ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
+    <div class="breadcrumb"><a href="#/innous/customers">Clientes</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), null, 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Cliente desde ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
-        <button class="btn btn-primary" onclick="App.startChat('client','${c.id}')"><i data-lucide="message-square"></i>Send Message</button>
-        <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
+        <button class="btn btn-primary" onclick="App.startChat('client','${c.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
+        <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
     <div class="grid grid-3" style="margin-bottom:20px;">
-      ${kpiCard('Total RFQs', proj.length, 'submitted to date', 'file-text')}
-      ${kpiCard('Active Orders', activeOrders, 'in production or awarded', 'cog')}
-      ${kpiCard('Completed Orders', completed, 'delivered to date', 'check-circle')}
+      ${kpiCard('Total de RFQs', proj.length, 'enviados a la fecha', 'file-text')}
+      ${kpiCard('Pedidos Activos', activeOrders, 'en producción o adjudicados', 'cog')}
+      ${kpiCard('Pedidos Completados', completed, 'entregados a la fecha', 'check-circle')}
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Contact Information</div>
+      <div class="section-title">Información de Contacto</div>
       <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Contact Name</div><div class="info-item-val">${c.contact||'—'}</div></div>
-        <div><div class="info-item-label">Email</div><div class="info-item-val">${c.email||'—'}</div></div>
-        <div><div class="info-item-label">Phone</div><div class="info-item-val">${c.phone||'—'}</div></div>
+        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${c.contact||'—'}</div></div>
+        <div><div class="info-item-label">Correo</div><div class="info-item-val">${c.email||'—'}</div></div>
+        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${c.phone||'—'}</div></div>
       </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Company Information</div>
+      <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Industry</div><div class="info-item-val">${c.industry||'—'}</div></div>
-        <div><div class="info-item-label">Location</div><div class="info-item-val">${c.city||'—'}</div></div>
-        <div><div class="info-item-label">Registered</div><div class="info-item-val">${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
+        <div><div class="info-item-label">Industria</div><div class="info-item-val">${c.industry||'—'}</div></div>
+        <div><div class="info-item-label">Ubicación</div><div class="info-item-val">${c.city||'—'}</div></div>
+        <div><div class="info-item-label">Registrado</div><div class="info-item-val">${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
       </div>
     </div>
     ${customerBillingSection(c)}
     ${proj.length ? `
-    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">RFQ History</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Status</th><th>Created</th></tr></thead><tbody>
+    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">Historial de RFQs</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Estatus</th><th>Creado</th></tr></thead><tbody>
       ${proj.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td></tr>`).join('')}
     </tbody></table></div></div>` : ''}
   </div>`;
@@ -4680,13 +4683,13 @@ function customerBillingSection(c){
   const upd = (field)=>`App.updateCustomerBillingDraft('${c.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-bottom:16px;">
-    <div class="section-title">Billing Info — for Quotes</div>
-    <div class="section-sub">Auto-fills the "Quotation To" box on this customer's formal quote PDF — fill in once, applies to every future RFQ from them.</div>
+    <div class="section-title">Datos de Facturación — para Cotizaciones</div>
+    <div class="section-sub">Llena automáticamente el cuadro "Quotation To" en el PDF de cotización formal de este cliente — llénalo una vez y aplica a todos sus futuros RFQs.</div>
     <div class="form-row" style="margin-top:12px;">
-      <div class="form-group"><label class="field-label">Position / Department</label><input type="text" value="${escAttr(d.position)}" placeholder="e.g. Procurement Manager" oninput="${upd('position')}"></div>
-      <div class="form-group"><label class="field-label">Address</label><input type="text" value="${escAttr(d.address)}" placeholder="Street, city, state, country, ZIP" oninput="${upd('address')}"></div>
+      <div class="form-group"><label class="field-label">Puesto / Departamento</label><input type="text" value="${escAttr(d.position)}" placeholder="ej. Gerente de Compras" oninput="${upd('position')}"></div>
+      <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, ciudad, estado, país, C.P." oninput="${upd('address')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerBillingInfo('${c.id}')"><i data-lucide="save"></i>Save Billing Info</button></div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerBillingInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
 
@@ -4694,7 +4697,7 @@ function customerBillingSection(c){
 ROUTES['innous/suppliers'] = function(){
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Suppliers</div><div class="page-subtitle">${SUPPLIERS.length} verified manufacturing partners across Mexico</div></div></div>
+    <div class="page-header"><div><div class="page-title">Proveedores</div><div class="page-subtitle">${SUPPLIERS.length} socios de manufactura verificados en México</div></div></div>
     <div class="grid grid-3">
       ${SUPPLIERS.map(s=>{
         const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
@@ -4704,9 +4707,9 @@ ROUTES['innous/suppliers'] = function(){
           <div class="supplier-card-top"><div style="display:flex;gap:10px;">${avatar}<div><div style="font-weight:700;font-size:13.5px;">${s.name}</div><div class="td-sub">${s.city}</div></div></div>${stars(s.rating)}</div>
           <div class="cap-list">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('')}${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
           <div class="mini-stat-grid">
-            <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">On-Time</div></div>
-            <div class="mini-stat"><div class="mini-stat-val">${won}</div><div class="mini-stat-label">Won</div></div>
-            <div class="mini-stat"><div class="mini-stat-val">${proj.length}</div><div class="mini-stat-label">Invited</div></div>
+            <div class="mini-stat"><div class="mini-stat-val">${s.onTime}%</div><div class="mini-stat-label">A Tiempo</div></div>
+            <div class="mini-stat"><div class="mini-stat-val">${won}</div><div class="mini-stat-label">Ganados</div></div>
+            <div class="mini-stat"><div class="mini-stat-val">${proj.length}</div><div class="mini-stat-label">Invitado</div></div>
           </div>
           <div class="td-sub">${s.capacity}</div>
         </div>`;
@@ -4717,56 +4720,56 @@ ROUTES['innous/suppliers'] = function(){
 
 /* ---- INNOUS Supplier Detail ---- */
 ROUTES['innous/supplier'] = function(id){
-  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Supplier not found','');
+  const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Proveedor no encontrado','');
   const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
   const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/innous/suppliers">Suppliers</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
-    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), null, 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Partner since ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
+    <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
+    <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), null, 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Socio desde ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
-        <button class="btn btn-primary" onclick="App.startChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Send Message</button>
-        <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Delete Account</button>
+        <button class="btn btn-primary" onclick="App.startChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
+        <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
     <div class="grid grid-4" style="margin-bottom:20px;">
-      ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'out of 5.0', 'star')}
-      ${kpiCard('On-Time', s.onTime+'%', 'delivery performance', 'clock')}
-      ${kpiCard('Quality', s.quality+'%', 'acceptance rate', 'shield-check')}
-      ${kpiCard('Won Projects', won, 'of '+proj.length+' invited', 'trophy')}
+      ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'de 5.0', 'star')}
+      ${kpiCard('A Tiempo', s.onTime+'%', 'desempeño de entrega', 'clock')}
+      ${kpiCard('Calidad', s.quality+'%', 'tasa de aceptación', 'shield-check')}
+      ${kpiCard('Proyectos Ganados', won, 'de '+proj.length+' invitados', 'trophy')}
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Contact Information</div>
+      <div class="section-title">Información de Contacto</div>
       <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Contact Name</div><div class="info-item-val">${s.contactName||'—'}</div></div>
-        <div><div class="info-item-label">Email</div><div class="info-item-val">${s.email||'—'}</div></div>
-        <div><div class="info-item-label">Phone</div><div class="info-item-val">${s.phone||'—'}</div></div>
+        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${s.contactName||'—'}</div></div>
+        <div><div class="info-item-label">Correo</div><div class="info-item-val">${s.email||'—'}</div></div>
+        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${s.phone||'—'}</div></div>
       </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Company Information</div>
+      <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Location</div><div class="info-item-val">${s.city||'—'}</div></div>
-        <div><div class="info-item-label">Operators</div><div class="info-item-val">${s.operators||'—'}</div></div>
-        <div><div class="info-item-label">Years Operating</div><div class="info-item-val">${s.yearsOperating||'—'}</div></div>
-        <div><div class="info-item-label">Registered on INNOUS</div><div class="info-item-val">${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
-        <div><div class="info-item-label">Capacity</div><div class="info-item-val">${s.capacity||'—'}</div></div>
+        <div><div class="info-item-label">Ubicación</div><div class="info-item-val">${s.city||'—'}</div></div>
+        <div><div class="info-item-label">Operadores</div><div class="info-item-val">${s.operators||'—'}</div></div>
+        <div><div class="info-item-label">Años Operando</div><div class="info-item-val">${s.yearsOperating||'—'}</div></div>
+        <div><div class="info-item-label">Registrado en INNOUS</div><div class="info-item-val">${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
+        <div><div class="info-item-label">Capacidad</div><div class="info-item-val">${s.capacity||'—'}</div></div>
       </div>
     </div>
     ${supplierBillingSection(s)}
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Services Offered</div>
-      <div class="cap-list" style="margin-top:10px;">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+      <div class="section-title">Servicios Ofrecidos</div>
+      <div class="cap-list" style="margin-top:10px;">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Machinery &amp; Equipment</div>
-      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+      <div class="section-title">Maquinaria y Equipo</div>
+      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
     <div class="card card-pad">
-      <div class="section-title">Certifications</div>
-      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">None listed</span>'}</div>
+      <div class="section-title">Certificaciones</div>
+      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
     ${proj.length ? `
-    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">RFQ History</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Project</th><th>Status</th><th>Invited</th></tr></thead><tbody>
+    <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">Historial de RFQs</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Estatus</th><th>Invitado</th></tr></thead><tbody>
       ${proj.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td></tr>`).join('')}
     </tbody></table></div></div>` : ''}
   </div>`;
@@ -4783,13 +4786,13 @@ function supplierBillingSection(s){
   const upd = (field)=>`App.updateSupplierBillingDraft('${s.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-bottom:16px;">
-    <div class="section-title">Billing Info — for Purchase Orders</div>
-    <div class="section-sub">Auto-fills the "Proveedor" box on this supplier's Orden de Compra — fill in once, applies to every future order with them.</div>
+    <div class="section-title">Datos de Facturación — para Órdenes de Compra</div>
+    <div class="section-sub">Llena automáticamente el cuadro "Proveedor" en la Orden de Compra de este proveedor — llénalo una vez y aplica a todos sus futuros pedidos.</div>
     <div class="form-row" style="margin-top:12px;">
       <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" placeholder="XXXX000000XX0" oninput="${upd('rfc')}"></div>
       <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, número, colonia, C.P., ciudad, estado" oninput="${upd('address')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierBillingInfo('${s.id}')"><i data-lucide="save"></i>Save Billing Info</button></div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierBillingInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
 
@@ -4799,11 +4802,11 @@ ROUTES['innous/quotes'] = function(){
   rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Quotes</div><div class="page-subtitle">${rows.length} supplier quotes submitted across all RFQs</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Supplier</th><th>Total Cost (MXN)</th><th>Lead Time</th><th>Submitted</th><th>Shortlisted</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones de proveedores enviadas en todos los RFQs</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proveedor</th><th>Costo Total (MXN)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>En Shortlist</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
-        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
-        <td>${p.targetPriceSupplierBudgetMxn ? '<span class="badge badge-blue">Target Price</span>' : p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Yes</span>':'<span class="badge badge-gray">No</span>'}</td>
+        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td>${p.targetPriceSupplierBudgetMxn ? '<span class="badge badge-blue">Target Price</span>' : p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Sí</span>':'<span class="badge badge-gray">No</span>'}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -4818,9 +4821,9 @@ ROUTES['innous/quotes'] = function(){
    view has); if it didn't, that it was never sent. INNOUS's own cost/margin
    context sits below either way, since this view is INNOUS-only. */
 ROUTES['innous/quote'] = function(pid, sid){
-  const p = findProject(pid); if(!p) return emptyState('search','Quote not found','');
+  const p = findProject(pid); if(!p) return emptyState('search','Cotización no encontrada','');
   const q = p.supplierQuotes.find(x=>x.supplierId===sid);
-  if(!q) return emptyState('search','Quote not found','');
+  if(!q) return emptyState('search','Cotización no encontrada','');
   const shortlisted = p.shortlist.find(s=>s.supplierId===sid);
   // A target-price RFQ never goes through the shortlist/comparison step at
   // all — the first supplier to accept is awarded directly (see
@@ -4831,63 +4834,63 @@ ROUTES['innous/quote'] = function(pid, sid){
   const isTargetPriceAward = !!p.targetPriceSupplierBudgetMxn && q.status==='submitted';
   return `
   <div class="content-inner" style="max-width:700px;">
-    <div class="breadcrumb"><a href="#/innous/quotes">Quotes</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="breadcrumb"><a href="#/innous/quotes">Cotizaciones</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${supplierName(sid)} → ${customerName(p.customerId)}</div></div>
-      ${isTargetPriceAward?'<span class="badge badge-blue">Awarded — Target Price</span>':shortlisted?'<span class="badge badge-green">Sent to Customer</span>':'<span class="badge badge-gray">Not Shortlisted</span>'}
+      ${isTargetPriceAward?'<span class="badge badge-blue">Adjudicado — Target Price</span>':shortlisted?'<span class="badge badge-green">Enviada al Cliente</span>':'<span class="badge badge-gray">No en Shortlist</span>'}
     </div>
     ${isTargetPriceAward ? `
     <div class="card card-pad">
-      <div class="section-title">Awarded via Target Price</div>
-      <div class="section-sub">The customer set a fixed target price for this RFQ — ${supplierName(sid)} was the first supplier to accept it, so the project was awarded directly. No shortlist or customer comparison happened; that's the whole point of a target price.</div>
+      <div class="section-title">Adjudicado por Target Price</div>
+      <div class="section-sub">El cliente fijó un target price para este RFQ — ${supplierName(sid)} fue el primer proveedor en aceptarlo, así que el proyecto se adjudicó directo. No hubo shortlist ni comparación del cliente; ese es todo el sentido de un target price.</div>
       <div class="pricing-panel" style="margin-top:14px;">
-        <div class="pricing-row"><span>Customer Target Price (USD)</span><span class="td-strong">${fmtMoney(p.targetPriceUsd)}</span></div>
-        <div class="pricing-row"><span>Supplier Budget (MXN)</span><span>${fmtMXN(p.targetPriceSupplierBudgetMxn)}</span></div>
-        <div class="pricing-row"><span>Lead Time</span><span>${q.leadTimeDays} days</span></div>
+        <div class="pricing-row"><span>Target Price del Cliente (USD)</span><span class="td-strong">${fmtMoney(p.targetPriceUsd)}</span></div>
+        <div class="pricing-row"><span>Presupuesto del Proveedor (MXN)</span><span>${fmtMXN(p.targetPriceSupplierBudgetMxn)}</span></div>
+        <div class="pricing-row"><span>Tiempo de Entrega</span><span>${q.leadTimeDays} días</span></div>
       </div>
     </div>
     <div class="card card-pad" style="margin-top:16px;">
-      <div class="section-title">Internal Details</div>
-      <div class="section-sub">Visible only within INNOUS.</div>
+      <div class="section-title">Detalles Internos</div>
+      <div class="section-sub">Visible solo dentro de INNOUS.</div>
       <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:12px;">
         ${infoItem('Markup', (p.targetPriceMarkupPct??'—')+'%')}
-        ${infoItem('Exchange Rate', p.targetPriceExchangeRate??'—')}
-        ${infoItem('Supplier Cost (MXN)', fmtMXN(p.targetPriceSupplierBudgetMxn))}
-        ${infoItem('INNOUS Margin (USD)', p.order?fmtMoney(p.order.customerPrice-p.order.supplierCost):'—')}
+        ${infoItem('Tipo de Cambio', p.targetPriceExchangeRate??'—')}
+        ${infoItem('Costo del Proveedor (MXN)', fmtMXN(p.targetPriceSupplierBudgetMxn))}
+        ${infoItem('Margen de INNOUS (USD)', p.order?fmtMoney(p.order.customerPrice-p.order.supplierCost):'—')}
       </div>
     </div>` : shortlisted ? `
     <div class="card card-pad">
-      <div class="section-title">What the Customer Was Shown</div>
-      <div class="section-sub">Exactly the price and lead time ${customerName(p.customerId)} saw for this option — supplier identity, cost, and INNOUS's margin were never part of it.</div>
+      <div class="section-title">Lo que Vio el Cliente</div>
+      <div class="section-sub">Exactamente el precio y tiempo de entrega que vio ${customerName(p.customerId)} para esta opción — la identidad del proveedor, el costo y el margen de INNOUS nunca fueron parte de esto.</div>
       <div class="pricing-panel" style="margin-top:14px;">
-        <div class="pricing-row"><span>Customer Price (USD)</span><span class="td-strong">${fmtMoney(shortlisted.customerPrice)}</span></div>
-        <div class="pricing-row"><span>Lead Time</span><span>${shortlisted.leadTimeDays} days</span></div>
-        <div class="pricing-row"><span>Quality Rating</span><span>${shortlisted.rating||0} / 5.0</span></div>
+        <div class="pricing-row"><span>Precio al Cliente (USD)</span><span class="td-strong">${fmtMoney(shortlisted.customerPrice)}</span></div>
+        <div class="pricing-row"><span>Tiempo de Entrega</span><span>${shortlisted.leadTimeDays} días</span></div>
+        <div class="pricing-row"><span>Calidad</span><span>${shortlisted.rating||0} / 5.0</span></div>
         ${shortlisted.badge?`<div class="pricing-row"><span>Badge</span><span class="award-badge ${BADGE_CLASS[shortlisted.badge]}">${shortlisted.badge}</span></div>`:''}
       </div>
     </div>
     <div class="card card-pad" style="margin-top:16px;">
-      <div class="section-title">Internal Details</div>
-      <div class="section-sub">Visible only within INNOUS.</div>
+      <div class="section-title">Detalles Internos</div>
+      <div class="section-sub">Visible solo dentro de INNOUS.</div>
       <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:12px;">
-        ${infoItem('Supplier Cost (MXN)', shortlisted.supplierCostMxn?fmtMXN(shortlisted.supplierCostMxn):'—')}
-        ${infoItem('Exchange Rate', shortlisted.exchangeRate||'—')}
-        ${infoItem('Supplier Cost (USD)', fmtMoney(shortlisted.supplierCost))}
+        ${infoItem('Costo del Proveedor (MXN)', shortlisted.supplierCostMxn?fmtMXN(shortlisted.supplierCostMxn):'—')}
+        ${infoItem('Tipo de Cambio', shortlisted.exchangeRate||'—')}
+        ${infoItem('Costo del Proveedor (USD)', fmtMoney(shortlisted.supplierCost))}
         ${infoItem('Markup', shortlisted.markupPct+'%')}
-        ${infoItem('Shipping (USD)', fmtMoney(shortlisted.freightUsd||0))}
-        ${infoItem('INNOUS Margin', fmtMoney(shortlisted.customerPrice-shortlisted.supplierCost-(shortlisted.freightUsd||0)))}
+        ${infoItem('Envío (USD)', fmtMoney(shortlisted.freightUsd||0))}
+        ${infoItem('Margen de INNOUS', fmtMoney(shortlisted.customerPrice-shortlisted.supplierCost-(shortlisted.freightUsd||0)))}
       </div>
     </div>` : `
     <div class="card card-pad">
-      <div class="section-title">Not Sent to Customer</div>
-      <div class="section-sub">This supplier's quote was never added to the shortlist — the customer never saw it. Showing what the supplier submitted (in MXN, their own currency).</div>
+      <div class="section-title">No Enviada al Cliente</div>
+      <div class="section-sub">Esta cotización del proveedor nunca se agregó al shortlist — el cliente nunca la vio. Mostrando lo que envió el proveedor (en MXN, su propia moneda).</div>
       <div class="pricing-panel" style="margin-top:14px;">
-        ${supplierQuotePriceRows(p, q, {strongValue:true})}
+        ${supplierQuotePriceRows(p, q, {label:'Precio Unitario', strongValue:true})}
         <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
         <div class="pricing-row total"><span>Total</span><span>${fmtMXN(q.quotedTotal)}</span></div>
       </div>
       <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:16px;">
-        ${infoItem('Lead Time', q.leadTimeDays+' days')}
-        ${infoItem('Submitted', fmtDate(q.submittedAt))}
+        ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
+        ${infoItem('Enviada', fmtDate(q.submittedAt))}
       </div>
     </div>`}
   </div>`;
@@ -4898,8 +4901,8 @@ ROUTES['innous/orders'] = function(){
   const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Orders</div><div class="page-subtitle">${orders.length} orders — active and completed</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Supplier Cost</th><th>Customer Price</th><th>Margin</th><th>Production</th><th>Payment</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Pedidos</div><div class="page-subtitle">${orders.length} pedidos — activos y completados</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th><th>Pago</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
         <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))}</td>
@@ -4911,45 +4914,45 @@ ROUTES['innous/orders'] = function(){
 
 /* ---- INNOUS Order Detail ---- */
 ROUTES['innous/order'] = function(id){
-  const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
+  const p = findProject(id); if(!p||!p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
   const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabelFor(p, s));
   const margin = p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0);
   const nextStatus = innousNextOrderStatus(p);
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
+    <div class="breadcrumb"><a href="#/innous/orders">Pedidos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p)}
-        <button class="btn btn-secondary" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Message Customer</button>
-        <button class="btn btn-secondary" onclick="App.startChat('supplier','${p.selectedSupplierId}','${p.id}')"><i data-lucide="message-square"></i>Message Supplier</button>
-        <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Purchase Order (PDF)</button>
-        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
-        ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
-        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
+        <button class="btn btn-secondary" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Cliente</button>
+        <button class="btn btn-secondary" onclick="App.startChat('supplier','${p.selectedSupplierId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Proveedor</button>
+        <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Orden de Compra (PDF)</button>
+        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Guarda primero los Detalles de la Orden de Compra abajo"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>`:''}
+        ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Deshacer Última Actualización</button>`:''}
+        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
     ${!p.innousAuthorizedAt ? purchaseOrderDetailsSection(p) : ''}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
-      ${kpiCard('Supplier Cost', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
-      ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId)+(p.order.freightUsd?' · incl. '+fmtMoney(p.order.freightUsd)+' shipping':''), 'dollar-sign')}
-      ${kpiCard('Gross Margin', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margin ('+p.order.markupPct+'% markup)', 'trending-up')}
+      ${kpiCard('Costo del Proveedor', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost), 'pagado a '+supplierName(p.selectedSupplierId), 'factory')}
+      ${kpiCard('Precio al Cliente', fmtMoney(p.order.customerPrice), 'cobrado a '+customerName(p.customerId)+(p.order.freightUsd?' · incl. '+fmtMoney(p.order.freightUsd)+' de envío':''), 'dollar-sign')}
+      ${kpiCard('Margen Bruto', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margen ('+p.order.markupPct+'% markup)', 'trending-up')}
     </div>
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
-        <div class="section-title">Quality</div>
+        <div class="section-title">Calidad</div>
         ${qualityBlock(p)}
       </div>
       <div class="card card-pad">
-        <div class="section-title">Logistics</div>
+        <div class="section-title">Logística</div>
         ${logisticsBlock(p)}
       </div>
     </div>
     <div class="card card-pad">
-      <div class="section-title">Payment Status</div>
-      <div class="section-sub">Billing is between INNOUS and each party — set this as deposits and payouts actually happen. It's independent of the production timeline.</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Supplier payout (IVA incl.): ${p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost))}</span></div>
+      <div class="section-title">Estatus de Pago</div>
+      <div class="section-sub">La facturación es entre INNOUS y cada parte — actualiza esto conforme realmente sucedan los depósitos y pagos. Es independiente de la línea de tiempo de producción.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Cliente: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Pago al proveedor (IVA incl.): ${p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost))}</span></div>
       <div class="markup-chip-row">
         ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
       </div>
@@ -4958,19 +4961,19 @@ ROUTES['innous/order'] = function(id){
 };
 function qualityBlock(p){
   const q = p.order.quality;
-  const statusMap = {pending:['badge-gray','Pending'],approved:['badge-green','Approved'],ncr_open:['badge-red','NCR Open']};
+  const statusMap = {pending:['badge-gray','Pendiente'],approved:['badge-green','Aprobada'],ncr_open:['badge-red','NCR Abierto']};
   const [cls,label] = statusMap[q.status]||['badge-gray',q.status];
   return `
   <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-    ${infoItem('Inspection Required', q.inspectionRequired?'Yes':'No')}
-    ${infoItem('Inspection Status', `<span class="badge ${cls}">${label}</span>`)}
+    ${infoItem('Inspección Requerida', q.inspectionRequired?'Sí':'No')}
+    ${infoItem('Estatus de Inspección', `<span class="badge ${cls}">${label}</span>`)}
   </div>
-  <div class="info-item-label" style="margin-top:12px;">Documents &amp; Certificates</div>
+  <div class="info-item-label" style="margin-top:12px;">Documentos y Certificados</div>
   <div class="file-list" style="margin-top:8px;">${[...q.documents,...q.certificates].map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
-  <div class="td-sub" style="margin-top:8px;">${q.photos} inspection photos on file</div>
+  <div class="td-sub" style="margin-top:8px;">${q.photos} fotos de inspección registradas</div>
   ${q.ncr.length? `<div class="confidential-note" style="margin-top:10px;background:var(--danger-soft);border-color:#F9C6C6;color:var(--danger);"><i data-lucide="alert-triangle"></i><div>${q.ncr.map(n=>`${n.id}: ${n.issue} — ${n.status}`).join('<br>')}</div></div>`:''}
-  ${q.status!=='approved' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;margin-right:8px;color:var(--success);" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check-circle-2"></i>Approve Quality</button>` : ''}
-  ${q.status!=='ncr_open' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;color:var(--danger);" onclick="App.setQualityStatus('${p.id}','ncr_open')"><i data-lucide="alert-triangle"></i>Reject — Open NCR</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:12px;" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check"></i>Resolve NCR &amp; Approve</button>`}
+  ${q.status!=='approved' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;margin-right:8px;color:var(--success);" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check-circle-2"></i>Aprobar Calidad</button>` : ''}
+  ${q.status!=='ncr_open' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;color:var(--danger);" onclick="App.setQualityStatus('${p.id}','ncr_open')"><i data-lucide="alert-triangle"></i>Rechazar — Abrir NCR</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:12px;" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check"></i>Resolver NCR y Aprobar</button>`}
   `;
 }
 function logisticsBlock(p){
@@ -4978,14 +4981,14 @@ function logisticsBlock(p){
   const pickup = isPickupOrder(p);
   return `
   <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-    ${infoItem('Origin', l.origin)}
-    ${infoItem('Destination', pickup?'Customer Pickup':l.destination)}
-    ${pickup ? '' : infoItem('Carrier', l.carrier||'Not shipped yet')}
-    ${pickup ? '' : infoItem('Tracking #', l.tracking||'—')}
-    ${pickup ? '' : infoItem('Pickup Date (from supplier)', fmtDate(l.pickupDate))}
-    ${infoItem(pickup?'Ready Date':'Est. Delivery', fmtDate(l.estimatedDelivery))}
+    ${infoItem('Origen', l.origin)}
+    ${infoItem('Destino', pickup?'Recolección del Cliente':l.destination)}
+    ${pickup ? '' : infoItem('Transportista', l.carrier||'Aún sin enviar')}
+    ${pickup ? '' : infoItem('No. de Rastreo', l.tracking||'—')}
+    ${pickup ? '' : infoItem('Fecha de Recolección (del proveedor)', fmtDate(l.pickupDate))}
+    ${infoItem(pickup?'Fecha Lista':'Entrega Estimada', fmtDate(l.estimatedDelivery))}
   </div>
-  <div class="info-item-label" style="margin-top:12px;">Shipping Documents</div>
+  <div class="info-item-label" style="margin-top:12px;">Documentos de Envío</div>
   <div class="file-list" style="margin-top:8px;">${l.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#2952CC;background:#2952CC18;">DOC</div><span class="fc-name">${d}</span></div>`).join('')}</div>
   `;
 }
@@ -4996,7 +4999,7 @@ ROUTES['innous/production'] = function(){
   const groups = ORDER_STATUS_FLOW.map(st=>({st, items: orders.filter(p=>p.order.status===st)}));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Production</div><div class="page-subtitle">${orders.length} orders in active production</div></div></div>
+    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">${orders.length} pedidos en producción activa</div></div></div>
     <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;">
       ${groups.map(g=>`
         <div style="min-width:230px;flex:0 0 230px;">
@@ -5006,7 +5009,7 @@ ROUTES['innous/production'] = function(){
               <div style="font-weight:700;font-size:12.5px;">${p.projectName}</div>
               <div class="td-sub mono">${p.id}</div>
               <div class="td-sub" style="margin-top:6px;">${supplierName(p.selectedSupplierId)}</div>
-            </div>`).join('') || `<div class="td-sub" style="padding:10px 0;">Empty</div>`}
+            </div>`).join('') || `<div class="td-sub" style="padding:10px 0;">Vacío</div>`}
           </div>
         </div>`).join('')}
     </div>
@@ -5018,11 +5021,11 @@ ROUTES['innous/quality'] = function(){
   const orders = PROJECTS.filter(p=>p.order);
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Quality</div><div class="page-subtitle">Inspection status across all orders</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Inspection Required</th><th>Status</th><th>NCR</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Calidad</div><div class="page-subtitle">Estatus de inspección en todos los pedidos</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Inspección Requerida</th><th>Estatus</th><th>NCR</th></tr></thead><tbody>
       ${orders.map(p=>{
-        const q=p.order.quality; const statusMap={pending:['badge-gray','Pending'],approved:['badge-green','Approved'],ncr_open:['badge-red','NCR Open']}; const [cls,label]=statusMap[q.status]||['badge-gray',q.status];
-        return `<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td><td>${q.inspectionRequired?'Yes':'No'}</td><td><span class="badge ${cls}">${label}</span></td><td>${q.ncr.length?`<span class="badge badge-red">${q.ncr.length} open</span>`:'—'}</td></tr>`;
+        const q=p.order.quality; const statusMap={pending:['badge-gray','Pendiente'],approved:['badge-green','Aprobada'],ncr_open:['badge-red','NCR Abierto']}; const [cls,label]=statusMap[q.status]||['badge-gray',q.status];
+        return `<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td><td>${q.inspectionRequired?'Sí':'No'}</td><td><span class="badge ${cls}">${label}</span></td><td>${q.ncr.length?`<span class="badge badge-red">${q.ncr.length} abierto${q.ncr.length===1?'':'s'}</span>`:'—'}</td></tr>`;
       }).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -5033,8 +5036,8 @@ ROUTES['innous/logistics'] = function(){
   const orders = PROJECTS.filter(p=>p.order);
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Logistics</div><div class="page-subtitle">Shipping and delivery across all orders</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Origin</th><th>Destination</th><th>Carrier</th><th>Tracking</th><th>Est. Delivery</th><th>Status</th></tr></thead><tbody>
+    <div class="page-header"><div><div class="page-title">Logística</div><div class="page-subtitle">Envío y entrega en todos los pedidos</div></div></div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Origen</th><th>Destino</th><th>Transportista</th><th>Rastreo</th><th>Entrega Estimada</th><th>Estatus</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.order.logistics.origin}</td><td>${p.order.logistics.destination}</td><td>${p.order.logistics.carrier}</td><td class="mono">${p.order.logistics.tracking}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td><td>${orderStatusBadge(p)}</td></tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -5074,39 +5077,39 @@ ROUTES['innous/analytics'] = function(){
 
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Analytics</div><div class="page-subtitle">Platform performance across sourcing and fulfillment</div></div></div>
+    <div class="page-header"><div><div class="page-title">Analítica</div><div class="page-subtitle">Desempeño de la plataforma en sourcing y cumplimiento</div></div></div>
     <div class="grid grid-4" style="margin-bottom:16px;">
-      ${kpiCard('RFQs This Month', thisMonth, 'new requests submitted','file-text')}
-      ${kpiCard('Win Rate', winRate+'%', 'shortlist → awarded order','target')}
-      ${kpiCard('Avg. Markup', avgMarkup+'%', 'across all awarded orders','percent')}
-      ${kpiCard('Avg. Project Value', fmtMXN(avgValue), 'per awarded order','dollar-sign')}
+      ${kpiCard('RFQs Este Mes', thisMonth, 'nuevas solicitudes enviadas','file-text')}
+      ${kpiCard('Tasa de Cierre', winRate+'%', 'shortlist → pedido adjudicado','target')}
+      ${kpiCard('Markup Promedio', avgMarkup+'%', 'en todos los pedidos adjudicados','percent')}
+      ${kpiCard('Valor Promedio de Proyecto', fmtMXN(avgValue), 'por pedido adjudicado','dollar-sign')}
     </div>
     <div class="grid grid-2" style="margin-bottom:16px;">
-      ${kpiCard('Revenue', fmtMXN(revenue), 'across active + completed orders','trending-up')}
-      ${kpiCard('Gross Margin', fmtMXN(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% blended margin','wallet')}
+      ${kpiCard('Ingresos', fmtMXN(revenue), 'entre pedidos activos y completados','trending-up')}
+      ${kpiCard('Margen Bruto', fmtMXN(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% margen combinado','wallet')}
     </div>
     <div class="grid grid-2">
       <div class="card card-pad">
-        <div class="section-title">Top Customers by Revenue</div>
+        <div class="section-title">Top Clientes por Ingresos</div>
         <div style="margin-top:14px;">${topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtMXN(val)}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
-        <div class="section-title">Top Suppliers by Orders Won</div>
+        <div class="section-title">Top Proveedores por Pedidos Ganados</div>
         <div style="margin-top:14px;">${topSuppliers.map(([sid,val])=>`<div class="bar-row"><div class="bar-label">${supplierName(sid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxSup*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
       </div>
     </div>
     <div class="grid grid-2" style="margin-top:16px;">
       <div class="card card-pad">
-        <div class="section-title">Most Requested Manufacturing Process</div>
+        <div class="section-title">Proceso de Manufactura Más Solicitado</div>
         <div style="margin-top:14px;">${topProcess.map(([proc,val])=>`<div class="bar-row"><div class="bar-label">${proc}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxProc*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
-        <div class="section-title">Response Times</div>
+        <div class="section-title">Tiempos de Respuesta</div>
         <div style="margin-top:14px;">
-          <div class="pricing-row"><span>Average supplier response time</span><span class="td-strong">3.4 days</span></div>
-          <div class="pricing-row"><span>Average customer decision time</span><span class="td-strong">2.1 days</span></div>
-          <div class="pricing-row"><span>Average time to first quote</span><span class="td-strong">4.8 days</span></div>
-          <div class="pricing-row"><span>Average time RFQ → award</span><span class="td-strong">11.6 days</span></div>
+          <div class="pricing-row"><span>Tiempo promedio de respuesta del proveedor</span><span class="td-strong">3.4 días</span></div>
+          <div class="pricing-row"><span>Tiempo promedio de decisión del cliente</span><span class="td-strong">2.1 días</span></div>
+          <div class="pricing-row"><span>Tiempo promedio a la primera cotización</span><span class="td-strong">4.8 días</span></div>
+          <div class="pricing-row"><span>Tiempo promedio RFQ → adjudicación</span><span class="td-strong">11.6 días</span></div>
         </div>
       </div>
     </div>
@@ -5138,15 +5141,15 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
   const msgs = active ? chatThread(owner, active.threadName) : [];
   return `
   <div class="content-inner messages-shell">
-    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct conversations with customers and suppliers.</div></div>
-      <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
+    <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Conversaciones directas con clientes y proveedores.</div></div>
+      <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>Nuevo Chat</button>
     </div>
     <div class="chat-panel">
       <div class="chat-list">
         ${rows.map(r=>`<div class="chat-list-item ${active&&active.key===r.key?'active':''}" onclick="App.openInnousChatThread('${r.key}')">
           ${avatarHtml(r.photo, initials(r.personName), r.type==='client'?'var(--accent)':'var(--ink)', 34)}
-          <div><div style="font-weight:600;font-size:13px;">${escAttr(r.personName)}</div><div class="td-sub">${r.type==='client'?'Customer':'Supplier'} · ${escAttr(r.threadName)}</div></div>
-        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+          <div><div style="font-weight:600;font-size:13px;">${escAttr(r.personName)}</div><div class="td-sub">${r.type==='client'?'Cliente':'Proveedor'} · ${escAttr(r.threadName)}</div></div>
+        </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
       <div class="chat-thread">
         ${active? `
@@ -5155,17 +5158,17 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
             ${avatarHtml(owner.photo, initials(active.personName), active.type==='client'?'var(--accent)':'var(--ink)', 40)}
             <div style="min-width:0;">
               <div style="font-weight:700;">${escAttr(active.personName)} <span class="td-sub" style="font-weight:400;">· ${escAttr(active.threadName)}</span></div>
-              <div class="td-sub">${active.type==='client'?'Customer':'Supplier'}${active.email?' · '+escAttr(active.email):''}${active.phone?' · '+escAttr(active.phone):''}</div>
+              <div class="td-sub">${active.type==='client'?'Cliente':'Proveedor'}${active.email?' · '+escAttr(active.email):''}${active.phone?' · '+escAttr(active.phone):''}</div>
             </div>
           </div>
           <div style="display:flex;gap:6px;flex:0 0 auto;">
-            <button class="btn btn-secondary btn-sm" onclick="navigate('#/innous/${active.type==='client'?'customer':'supplier'}/${active.id}')" title="View profile"><i data-lucide="user"></i></button>
-            <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Delete chat"><i data-lucide="trash-2"></i></button>
+            <button class="btn btn-secondary btn-sm" onclick="navigate('#/innous/${active.type==='client'?'customer':'supplier'}/${active.id}')" title="Ver perfil"><i data-lucide="user"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
           </div>
         </div>
-        <div class="chat-messages">${chatMessagesHtml(msgs, 'innous', active.personName, 'No messages yet — say hello.')}</div>
-        ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Message ${active.personName}...`)}
-        ` : emptyState('message-square','No conversations yet','')}
+        <div class="chat-messages">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}</div>
+        ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
+        ` : emptyState('message-square','Aún no hay conversaciones','')}
       </div>
     </div>
   </div>`;
@@ -5177,48 +5180,48 @@ ROUTES['innous/settings'] = function(){
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
-    <div class="page-header"><div><div class="page-title">Settings</div><div class="page-subtitle">Platform configuration</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Save Changes</button></div></div>
+    <div class="page-header"><div><div class="page-title">Configuración</div><div class="page-subtitle">Configuración de la plataforma</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Company</div>
-      <div class="section-sub">Used on the formal PDF quote a client can download once they select a supplier, and on the supplier's Purchase Order letterhead.</div>
+      <div class="section-title">Empresa</div>
+      <div class="section-sub">Se usa en la cotización formal en PDF que el cliente puede descargar al elegir un proveedor, y en el membrete de la Orden de Compra del proveedor.</div>
       <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
-        <div class="form-group"><label class="field-label">Region</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
+        <div class="form-group"><label class="field-label">Razón Social</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
+        <div class="form-group"><label class="field-label">Región</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
       </div>
-      <div class="form-group"><label class="field-label">Address</label><input type="text" value="${escAttr(d.address)}" oninput="STATE.ui.settingsDraft.address=this.value"></div>
+      <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" oninput="STATE.ui.settingsDraft.address=this.value"></div>
       <div class="form-row">
         <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" oninput="STATE.ui.settingsDraft.rfc=this.value"></div>
         <div class="form-group"><label class="field-label">Teléfono</label><input type="text" value="${escAttr(d.phone)}" oninput="STATE.ui.settingsDraft.phone=this.value"></div>
       </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Default Pricing</div>
-      <div class="section-sub">Applied as a starting point when comparing new supplier quotes.</div>
-      <div class="form-group" style="margin-top:12px;"><label class="field-label">Default Markup</label>
+      <div class="section-title">Precios por Defecto</div>
+      <div class="section-sub">Se aplica como punto de partida al comparar nuevas cotizaciones de proveedores.</div>
+      <div class="form-group" style="margin-top:12px;"><label class="field-label">Markup por Defecto</label>
         <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<button type="button" class="markup-chip ${m===d.defaultMarkupPct?'active':''}" onclick="App.setDraftMarkup(${m})">${m}%</button>`).join('')}</div>
       </div>
-      <div class="form-group"><label class="field-label">Default Exchange Rate (MXN per 1 USD)</label><input type="number" step="0.01" min="0.01" value="${d.defaultExchangeRate}" oninput="STATE.ui.settingsDraft.defaultExchangeRate=parseFloat(this.value)||DEFAULT_SETTINGS.defaultExchangeRate"></div>
-      <div class="section-sub">Suppliers quote in MXN — this is the starting rate INNOUS sees when converting a supplier's quote to USD for the customer. It's always editable per RFQ too, right where you compare quotes, since the real rate moves daily.</div>
+      <div class="form-group"><label class="field-label">Tipo de Cambio por Defecto (MXN por 1 USD)</label><input type="number" step="0.01" min="0.01" value="${d.defaultExchangeRate}" oninput="STATE.ui.settingsDraft.defaultExchangeRate=parseFloat(this.value)||DEFAULT_SETTINGS.defaultExchangeRate"></div>
+      <div class="section-sub">Los proveedores cotizan en MXN — este es el tipo de cambio inicial que ve INNOUS al convertir la cotización de un proveedor a USD para el cliente. Siempre se puede ajustar por RFQ, justo donde comparas cotizaciones, ya que el tipo de cambio real cambia día a día.</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Notifications</div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.newRfq?'checked':''} onchange="STATE.ui.settingsDraft.notif.newRfq=this.checked"><span>New RFQ submitted</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.quoteReceived?'checked':''} onchange="STATE.ui.settingsDraft.notif.quoteReceived=this.checked"><span>Supplier quote received</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.customerSelects?'checked':''} onchange="STATE.ui.settingsDraft.notif.customerSelects=this.checked"><span>Customer selects a quote</span></div></div>
-      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.weeklySummary?'checked':''} onchange="STATE.ui.settingsDraft.notif.weeklySummary=this.checked"><span>Weekly analytics summary</span></div></div>
+      <div class="section-title">Notificaciones</div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.newRfq?'checked':''} onchange="STATE.ui.settingsDraft.notif.newRfq=this.checked"><span>Nuevo RFQ enviado</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.quoteReceived?'checked':''} onchange="STATE.ui.settingsDraft.notif.quoteReceived=this.checked"><span>Cotización de proveedor recibida</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.customerSelects?'checked':''} onchange="STATE.ui.settingsDraft.notif.customerSelects=this.checked"><span>El cliente elige una cotización</span></div></div>
+      <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.weeklySummary?'checked':''} onchange="STATE.ui.settingsDraft.notif.weeklySummary=this.checked"><span>Resumen semanal de analítica</span></div></div>
     </div>
     <div class="card card-pad" style="border-color:#F9C6C6;">
-      <div class="section-title" style="color:var(--danger);">Example Data</div>
+      <div class="section-title" style="color:var(--danger);">Datos de Ejemplo</div>
       <div class="section-sub">${localStorage.getItem('innous_demo_loaded')==='1'
-        ? 'Example customers, suppliers and RFQs are currently loaded, for exploring the platform\'s full richness.'
-        : 'The platform is running on real accounts only — no example data loaded. You can load a set of example customers, suppliers and RFQs to explore the full platform.'}</div>
+        ? 'Actualmente hay clientes, proveedores y RFQs de ejemplo cargados, para explorar toda la riqueza de la plataforma.'
+        : 'La plataforma está corriendo solo con cuentas reales — no hay datos de ejemplo cargados. Puedes cargar un set de clientes, proveedores y RFQs de ejemplo para explorar la plataforma completa.'}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
         ${localStorage.getItem('innous_demo_loaded')==='1'
-          ? `<button class="btn btn-danger" onclick="App.clearExampleData()"><i data-lucide="trash-2"></i>Clear Example Data</button>`
-          : `<button class="btn btn-secondary" onclick="App.loadExampleData()"><i data-lucide="database"></i>Load Example Data</button>`}
+          ? `<button class="btn btn-danger" onclick="App.clearExampleData()"><i data-lucide="trash-2"></i>Borrar Datos de Ejemplo</button>`
+          : `<button class="btn btn-secondary" onclick="App.loadExampleData()"><i data-lucide="database"></i>Cargar Datos de Ejemplo</button>`}
       </div>
-      <div class="field-hint" style="margin-top:10px;">Either action also clears any real test accounts signed up on this browser (your INNOUS login is automatically re-provisioned).</div>
+      <div class="field-hint" style="margin-top:10px;">Cualquiera de las dos acciones también borra las cuentas de prueba reales registradas en este navegador (tu acceso de INNOUS se vuelve a crear automáticamente).</div>
     </div>
   </div>`;
 };
@@ -5828,7 +5831,7 @@ const App = {
     if(error){ showToast(error.message); return; }
     STATE.settings = next;
     saveSettings(STATE.settings); // local cache only — the Supabase row above is now the source of truth
-    showToast('Settings saved', 'success');
+    showToast('Configuración guardada', 'success');
     route();
   },
   /* ---- Delete a customer or supplier account (INNOUS only) ----
@@ -5841,8 +5844,8 @@ const App = {
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const proj = PROJECTS.filter(p=>p.customerId===id);
     const active = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
-    let msg = `Permanently delete the account for "${c.company}"? They will no longer be able to log in.`;
-    if(proj.length) msg += ` They have ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Customer".`;
+    let msg = `¿Eliminar de forma permanente la cuenta de "${c.company}"? Ya no podrán iniciar sesión.`;
+    if(proj.length) msg += ` Tienen ${proj.length} RFQ${proj.length===1?'':'s'} registrado${proj.length===1?'':'s'}${active?` (${active} aún activo${active===1?'':'s'})`:''} — se quedan en el sistema para el historial, pero aparecerán como "Deleted Customer".`;
     if(!confirm(msg)) return;
     CUSTOMERS.splice(CUSTOMERS.indexOf(c),1);
     if(isRealAccountId(id)){
@@ -5854,22 +5857,22 @@ const App = {
       const { error } = await sb.rpc('innous_delete_account', { p_user_id: id });
       if(error){ showToast(error.message); return; }
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) customer — remember so it stays gone after a refresh
-    showToast('Customer account deleted', 'success');
+    showToast('Cuenta del cliente eliminada', 'success');
     navigate('#/innous/customers');
   },
   async deleteSupplier(id){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
     const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(id));
     const active = proj.filter(p=>p.selectedSupplierId===id && ['awarded','in_production'].includes(p.status)).length;
-    let msg = `Permanently delete the account for "${s.name}"? They will no longer be able to log in.`;
-    if(proj.length) msg += ` They're on ${proj.length} RFQ${proj.length===1?'':'s'} on record${active?` (${active} still active)`:''} — those stay in the system for history, but will show as "Deleted Supplier".`;
+    let msg = `¿Eliminar de forma permanente la cuenta de "${s.name}"? Ya no podrán iniciar sesión.`;
+    if(proj.length) msg += ` Están en ${proj.length} RFQ${proj.length===1?'':'s'} registrado${proj.length===1?'':'s'}${active?` (${active} aún activo${active===1?'':'s'})`:''} — se quedan en el sistema para el historial, pero aparecerán como "Deleted Supplier".`;
     if(!confirm(msg)) return;
     SUPPLIERS.splice(SUPPLIERS.indexOf(s),1);
     if(isRealAccountId(id)){
       const { error } = await sb.rpc('innous_delete_account', { p_user_id: id });
       if(error){ showToast(error.message); return; }
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
-    showToast('Supplier account deleted', 'success');
+    showToast('Cuenta del proveedor eliminada', 'success');
     navigate('#/innous/suppliers');
   },
   /* Unlike deleting a customer/supplier account, this really does erase the
@@ -5879,7 +5882,7 @@ const App = {
      invitations/quotes/order/messages in the database automatically. */
   async deleteRfq(id){
     const p = findProject(id); if(!p) return;
-    if(!confirm(`Permanently delete RFQ ${p.id} ("${p.projectName}")? This can't be undone.`)) return;
+    if(!confirm(`¿Eliminar de forma permanente el RFQ ${p.id} ("${p.projectName}")? Esto no se puede deshacer.`)) return;
     // Gather who needs to be told BEFORE the row (and its invited_suppliers
     // rows, via cascade) disappears — the client and every real invited
     // supplier get a dismissible notification, so they find out even if
@@ -5911,7 +5914,7 @@ const App = {
       const { error } = await sb.from('projects').delete().eq('id', id);
       if(error){ showToast(error.message); return; }
     }
-    showToast('RFQ deleted', 'success');
+    showToast('RFQ eliminado', 'success');
     navigate('#/innous/rfqs');
   },
   // "Reject / Close Project" (fix38) — for when INNOUS just can't make this
@@ -5923,21 +5926,21 @@ const App = {
     const p = findProject(pid); if(!p) return;
     STATE.ui.rejectRfqReason = '';
     openModal(`
-      <div class="modal-header"><h3>Reject / Close Project</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-header"><h3>Rechazar / Cerrar Proyecto</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="field-hint" style="margin-bottom:12px;">This closes RFQ ${p.id} ("${escAttr(p.projectName)}") for good — the customer is notified immediately and sees this reason on their RFQ page. Use this when the project genuinely isn't workable (e.g. no supplier was willing to take it), not as a way to just tidy up the list.</div>
-        <div class="form-group"><label class="field-label">Reason (shown to the customer)</label><textarea id="reject-rfq-reason" placeholder="e.g. We were unable to find a manufacturing partner with the right capacity and capabilities for this project within a reasonable timeframe." oninput="STATE.ui.rejectRfqReason=this.value"></textarea></div>
+        <div class="field-hint" style="margin-bottom:12px;">Esto cierra el RFQ ${p.id} ("${escAttr(p.projectName)}") de forma definitiva — se notifica al cliente de inmediato y ve esta razón en su página del RFQ. Úsalo cuando el proyecto genuinamente no sea viable (ej. ningún proveedor quiso tomarlo), no solo para limpiar la lista.</div>
+        <div class="form-group"><label class="field-label">Razón (se le muestra al cliente)</label><textarea id="reject-rfq-reason" placeholder="ej. No pudimos encontrar un socio de manufactura con la capacidad y capacidades correctas para este proyecto en un tiempo razonable." oninput="STATE.ui.rejectRfqReason=this.value"></textarea></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="App.confirmRejectRfq('${p.id}')"><i data-lucide="x-circle"></i>Close Project &amp; Notify Customer</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-danger" onclick="App.confirmRejectRfq('${p.id}')"><i data-lucide="x-circle"></i>Cerrar Proyecto y Notificar al Cliente</button>
       </div>
     `);
   },
   async confirmRejectRfq(pid){
     const p = findProject(pid); if(!p) return;
     const reason = (STATE.ui.rejectRfqReason||'').trim();
-    if(!reason){ showToast('A reason is required — the customer will see it.'); return; }
+    if(!reason){ showToast('Se requiere una razón — el cliente la verá.'); return; }
     const now = new Date();
     p.status = 'rejected'; p.rejectedReason = reason; p.rejectedAt = now;
     logActivity(p, 'INNOUS', `RFQ closed: ${reason}`);
@@ -5971,7 +5974,7 @@ const App = {
         if(e2) console.error('innous_send_notification (suppliers) failed', e2);
       }
     }
-    showToast('RFQ closed', 'success');
+    showToast('RFQ cerrado', 'success');
     route();
   },
 
@@ -6090,7 +6093,7 @@ const App = {
   /* ---- Account settings (name / company / circular 1:1 photo) ---- */
   openAccountModal(){
     document.getElementById('role-menu')?.classList.remove('open');
-    const es = STATE.role==='SUPPLIER';
+    const es = STATE.role!=='CLIENT';
     let rec, nameLabel, companyLabel, showCompany, initialsText;
     if(STATE.role==='CLIENT'){
       rec = currentClient();
@@ -6133,13 +6136,13 @@ const App = {
     const hint = document.getElementById('account-pw-match-hint');
     if(!hint) return;
     if(!pw2){ hint.textContent=''; hint.className='field-hint'; return; }
-    const es = STATE.role==='SUPPLIER';
+    const es = STATE.role!=='CLIENT';
     if(pw1===pw2){ hint.textContent = (es?'✓ Coinciden':'✓ Passwords match'); hint.className='field-hint account-pw-hint-ok'; }
     else { hint.textContent = (es?'Las contraseñas no coinciden':'Passwords don’t match'); hint.className='field-hint account-pw-hint-bad'; }
   },
   closeAccountModal(){ STATE.ui.accountDraft = null; STATE.ui.accountShowPasswordSection = false; closeModal(); },
   async saveAccount(){
-    const es = STATE.role==='SUPPLIER';
+    const es = STATE.role!=='CLIENT';
     // Validate the password fields (cheap, no network) before touching anything —
     // and do the profile-field save BEFORE the password change, not after: changing
     // the password rotates the session's access token, and an update sent right
@@ -6184,7 +6187,7 @@ const App = {
 
   /* ---- 1:1 photo cropper (pure canvas, no dependencies) ---- */
   openCropModal(dataUrl){
-    const es = STATE.role==='SUPPLIER';
+    const es = STATE.role!=='CLIENT';
     STATE.ui.cropState = {scale:1, x:0, y:0, coverW:0, coverH:0, dataUrl};
     openModal(`
       <div class="modal-header"><h3>${es?'Ajustar foto':'Adjust photo'}</h3><button class="modal-close" onclick="App.cancelCrop()"><i data-lucide="x"></i></button></div>
@@ -6562,7 +6565,7 @@ const App = {
       p.files = newFiles;
       STATE.ui.redactState = null;
       closeModal();
-      showToast('Redacted version published to the supplier', 'success');
+      showToast('Versión redactada publicada al proveedor', 'success');
       route();
     }catch(err){
       console.error('saveRedaction failed', err);
@@ -6712,7 +6715,7 @@ const App = {
       if(e3){ showToast(e3.message); return; }
     }
     STATE.ui.selectedInviteSuppliers = [];
-    showToast(`RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}`, 'success');
+    showToast(`RFQ enviado a ${newIds.length} proveedor${newIds.length===1?'':'es'}`, 'success');
     route();
   },
 
@@ -6766,7 +6769,7 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     Object.assign(p, next);
-    showToast('Quote details saved', 'success');
+    showToast('Detalles de la cotización guardados', 'success');
     route();
   },
   updatePoDetailDraft(pid,field,val){
@@ -6803,7 +6806,7 @@ const App = {
     if(supplier){ supplier.rfc = next.supplierRfc; supplier.address = next.supplierAddress; }
     Object.assign(p.order, { poBuyerName: next.poBuyerName, poDeliveryLocation: next.poDeliveryLocation, poReceptionHours: next.poReceptionHours,
       poIncoterm: next.poIncoterm, poPaymentTerms: next.poPaymentTerms, poPaymentMethod: next.poPaymentMethod, poNotes: next.poNotes });
-    showToast('Purchase order details saved', 'success');
+    showToast('Detalles de la Orden de Compra guardados', 'success');
     route();
   },
   updateCustomerBillingDraft(id,field,val){
@@ -6819,7 +6822,7 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     Object.assign(c, next);
-    showToast('Billing info saved', 'success');
+    showToast('Datos de facturación guardados', 'success');
     route();
   },
   updateSupplierBillingDraft(id,field,val){
@@ -6835,12 +6838,12 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     Object.assign(s, next);
-    showToast('Billing info saved', 'success');
+    showToast('Datos de facturación guardados', 'success');
     route();
   },
   async addToShortlist(pid,sid){
     const p = findProject(pid);
-    if(p.shortlist.length>=5){ showToast('Shortlist already has 5 options'); return; }
+    if(p.shortlist.length>=5){ showToast('El shortlist ya tiene 5 opciones'); return; }
     const q = p.supplierQuotes.find(x=>x.supplierId===sid);
     const markup = getMarkup(pid,sid);
     const exchangeRate = getExchangeRate(pid);
@@ -6875,7 +6878,7 @@ const App = {
         if(e2){ showToast(e2.message); return; }
       }
     }
-    showToast('Added to customer shortlist');
+    showToast('Agregado al shortlist del cliente');
     route();
   },
   async removeFromShortlist(pid,sid){
@@ -6893,15 +6896,15 @@ const App = {
     const p = findProject(pid);
     // Defensive re-check, not just the button's disabled state — matches
     // quoteDetailsComplete() used to gray the button out in the first place.
-    if(!quoteDetailsComplete(p)){ showToast('Save the Formal Quote Details before sending.'); return; }
-    if(!confirm(`Send ${p.shortlist.length} quote${p.shortlist.length===1?'':'s'} to ${customerName(p.customerId)}? They'll be able to see and select from this shortlist right away.`)) return;
+    if(!quoteDetailsComplete(p)){ showToast('Guarda los Detalles de la Cotización Formal antes de enviar.'); return; }
+    if(!confirm(`¿Enviar ${p.shortlist.length} cotización${p.shortlist.length===1?'':'es'} a ${customerName(p.customerId)}? Podrán ver y elegir de este shortlist de inmediato.`)) return;
     p.status = 'customer_review';
     logActivity(p,'INNOUS', `${p.shortlist.length} supplier quotes reviewed and shortlisted. Sent to customer for decision.`);
     if(!p.isDemo){
       const { error } = await sb.from('projects').update({status:p.status}).eq('id',pid);
       if(error){ showToast(error.message); return; }
     }
-    showToast(`${p.shortlist.length} quotes sent to ${customerName(p.customerId)}`, 'success');
+    showToast(`${p.shortlist.length} cotizaciones enviadas a ${customerName(p.customerId)}`, 'success');
     navigate('#/innous/rfq/'+pid);
   },
   viewQuoteDetail(pid,sid){
@@ -6972,7 +6975,7 @@ const App = {
     const p = findProject(pid); if(!p || !p.selectedSupplierId || p.innousAuthorizedAt) return;
     // Defensive re-check, not just the button's disabled state — same
     // pattern as sendQuotesToCustomer/quoteDetailsComplete.
-    if(!purchaseOrderDetailsComplete(p)){ showToast('Save the Purchase Order Details before authorizing.'); return; }
+    if(!purchaseOrderDetailsComplete(p)){ showToast('Guarda los Detalles de la Orden de Compra antes de autorizar.'); return; }
     const now = new Date();
     if(!p.isDemo){
       const { error } = await sb.from('projects').update({ innous_authorized_at: now.toISOString() }).eq('id', pid);
@@ -6988,7 +6991,7 @@ const App = {
       }
     }
     p.innousAuthorizedAt = now;
-    showToast('Project authorized — supplier notified', 'success');
+    showToast('Proyecto autorizado — proveedor notificado', 'success');
     route();
   },
 
@@ -7102,7 +7105,7 @@ const App = {
       const { error } = await sb.from('projects').update({ status: p.status, activity: p.activity }).eq('id', p.id);
       if(error){ showToast(error.message); return; }
     }
-    showToast('RFQ status updated');
+    showToast('Estatus del RFQ actualizado');
     route();
   },
   // Every transition is a single click, except the one into "Shipped" —
@@ -7120,7 +7123,7 @@ const App = {
     const label = orderStatusLabelFor(p, next, isSupplier);
     const sure = isSupplier
       ? confirm(`¿Confirmas que quieres marcar este pedido como "${label}"? Si te equivocas, podrás regresarlo después.`)
-      : confirm(`Mark this order as "${label}"? If this was a mistake, you can revert it afterward.`);
+      : confirm(`¿Marcar este pedido como "${label}"? Si fue un error, podrás regresarlo después.`);
     if(!sure) return;
     await App._doAdvanceOrderStatus(pid, next);
   },
@@ -7136,9 +7139,7 @@ const App = {
     const prev = ORDER_STATUS_FLOW[idx-1];
     const isSupplier = STATE.role==='SUPPLIER';
     const label = orderStatusLabelFor(p, prev, isSupplier);
-    const sure = isSupplier
-      ? confirm(`¿Regresar este pedido a "${label}"? Esto deshace la última actualización de estatus.`)
-      : confirm(`Revert this order back to "${label}"? This undoes the last status update.`);
+    const sure = confirm(`¿Regresar este pedido a "${label}"? Esto deshace la última actualización de estatus.`);
     if(!sure) return;
     const wasShipped = p.order.status==='shipped';
     const wasCompleted = p.status==='completed';
@@ -7184,33 +7185,33 @@ const App = {
     const etaVal = l.estimatedDelivery ? new Date(l.estimatedDelivery).toISOString().slice(0,10) : '';
     if(isPickupOrder(p)){
       openModal(`
-        <div class="modal-header"><h3>Mark as Ready for Pickup</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+        <div class="modal-header"><h3>Marcar como Listo para Recolección</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
         <div class="modal-body">
-          <div class="field-hint" style="margin-bottom:12px;">This customer chose Pickup — there's no shipment to track. Confirm the ready date and they're notified to come collect it.</div>
-          <div class="form-group"><label class="field-label">Ready Date</label><input type="date" id="ship-eta" value="${etaVal}"></div>
-          <div class="pricing-panel"><div class="pricing-row"><span>Pickup Location</span><span class="td-strong">${escAttr(l.origin||'—')}</span></div></div>
+          <div class="field-hint" style="margin-bottom:12px;">Este cliente eligió Recolección — no hay envío que rastrear. Confirma la fecha lista y se le notifica para que venga a recogerlo.</div>
+          <div class="form-group"><label class="field-label">Fecha Lista</label><input type="date" id="ship-eta" value="${etaVal}"></div>
+          <div class="pricing-panel"><div class="pricing-row"><span>Ubicación de Recolección</span><span class="td-strong">${escAttr(l.origin||'—')}</span></div></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="package-check"></i>Mark as Ready &amp; Notify Customer</button>
+          <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="package-check"></i>Marcar como Listo y Notificar al Cliente</button>
         </div>
       `);
       return;
     }
     openModal(`
-      <div class="modal-header"><h3>Mark as Shipped</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-header"><h3>Marcar como Enviado</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="field-hint" style="margin-bottom:12px;">Enter the real shipment details below — this is exactly what the customer sees and uses to track their order, and they're notified the moment you confirm.</div>
+        <div class="field-hint" style="margin-bottom:12px;">Pon los datos reales del envío abajo — esto es exactamente lo que el cliente ve y usa para rastrear su pedido, y se le notifica en cuanto confirmes.</div>
         <div class="form-row">
-          <div class="form-group"><label class="field-label">Carrier</label><input type="text" id="ship-carrier" placeholder="e.g. FedEx Freight" value="${escAttr(l.carrier||'')}"></div>
-          <div class="form-group"><label class="field-label">Tracking Number</label><input type="text" id="ship-tracking" placeholder="e.g. 1Z999AA10123456784" value="${escAttr(l.tracking||'')}"></div>
+          <div class="form-group"><label class="field-label">Transportista</label><input type="text" id="ship-carrier" placeholder="ej. FedEx Freight" value="${escAttr(l.carrier||'')}"></div>
+          <div class="form-group"><label class="field-label">Número de Rastreo</label><input type="text" id="ship-tracking" placeholder="ej. 1Z999AA10123456784" value="${escAttr(l.tracking||'')}"></div>
         </div>
-        <div class="form-group"><label class="field-label">Estimated Delivery</label><input type="date" id="ship-eta" value="${etaVal}"></div>
-        <div class="pricing-panel"><div class="pricing-row"><span>Destination</span><span class="td-strong">${escAttr(l.destination)}</span></div></div>
+        <div class="form-group"><label class="field-label">Entrega Estimada</label><input type="date" id="ship-eta" value="${etaVal}"></div>
+        <div class="pricing-panel"><div class="pricing-row"><span>Destino</span><span class="td-strong">${escAttr(l.destination)}</span></div></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="truck"></i>Mark as Shipped &amp; Notify Customer</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="truck"></i>Marcar como Enviado y Notificar al Cliente</button>
       </div>
     `);
   },
@@ -7225,7 +7226,7 @@ const App = {
     }
     const carrier = document.getElementById('ship-carrier').value.trim();
     const tracking = document.getElementById('ship-tracking').value.trim();
-    if(!carrier || !tracking){ showToast('Carrier and tracking number are required.'); return; }
+    if(!carrier || !tracking){ showToast('El transportista y el número de rastreo son requeridos.'); return; }
     p.order.logistics.carrier = carrier;
     p.order.logistics.tracking = tracking;
     if(eta) p.order.logistics.estimatedDelivery = new Date(eta+'T00:00:00');
@@ -7290,7 +7291,7 @@ const App = {
       const { error } = await sb.from('orders').update({payment_status: status}).eq('project_id', pid);
       if(error){ showToast(error.message); return; }
     }
-    showToast(`Payment status set to ${status}`, 'success');
+    showToast(`Estatus de pago actualizado a ${status}`, 'success');
     route();
   },
   async setQualityStatus(pid, status){
@@ -7308,7 +7309,7 @@ const App = {
       if(error){ showToast(error.message); return; }
       await persistSupplierMetrics(p.selectedSupplierId);
     }
-    showToast(status==='approved' ? 'Quality approved' : 'Quality rejected — NCR opened', status==='approved'?'success':undefined);
+    showToast(status==='approved' ? 'Calidad aprobada' : 'Calidad rechazada — NCR abierto', status==='approved'?'success':undefined);
     route();
   },
 
@@ -7360,18 +7361,18 @@ const App = {
   openNewChatModal(){
     if(STATE.role==='INNOUS'){
       openModal(`
-        <div class="modal-header"><h3>New Chat</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+        <div class="modal-header"><h3>Nuevo Chat</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
         <div class="modal-body">
-          <div class="form-group"><label class="field-label">With</label>
-            <select id="new-chat-type" onchange="App.renderNewChatTargetOptions()"><option value="client">Customer</option><option value="supplier">Supplier</option></select>
+          <div class="form-group"><label class="field-label">Con</label>
+            <select id="new-chat-type" onchange="App.renderNewChatTargetOptions()"><option value="client">Cliente</option><option value="supplier">Proveedor</option></select>
           </div>
-          <div class="form-group"><label class="field-label">Who</label><select id="new-chat-target">${CUSTOMERS.map(c=>`<option value="${c.id}">${escAttr(c.company)} — ${escAttr(c.contact)}</option>`).join('') || '<option value="">No customers yet</option>'}</select></div>
-          <div class="form-group"><label class="field-label">Chat name</label><input type="text" id="new-chat-name" placeholder="e.g. RFQ-2026-0004"></div>
+          <div class="form-group"><label class="field-label">Quién</label><select id="new-chat-target">${CUSTOMERS.map(c=>`<option value="${c.id}">${escAttr(c.company)} — ${escAttr(c.contact)}</option>`).join('') || '<option value="">Aún no hay clientes</option>'}</select></div>
+          <div class="form-group"><label class="field-label">Nombre del chat</label><input type="text" id="new-chat-name" placeholder="ej. RFQ-2026-0004"></div>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitNewChat()"><i data-lucide="message-square-plus"></i>Start Chat</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitNewChat()"><i data-lucide="message-square-plus"></i>Iniciar Chat</button></div>
       `);
     } else {
-      const es = STATE.role==='SUPPLIER';
+      const es = STATE.role!=='CLIENT';
       openModal(`
         <div class="modal-header"><h3>${es?'Nuevo Chat':'New Chat'}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
         <div class="modal-body">
@@ -7387,12 +7388,12 @@ const App = {
     const opts = type==='client'
       ? CUSTOMERS.map(c=>`<option value="${c.id}">${escAttr(c.company)} — ${escAttr(c.contact)}</option>`)
       : SUPPLIERS.map(s=>`<option value="${s.id}">${escAttr(s.name)} — ${escAttr(s.contactName)}</option>`);
-    document.getElementById('new-chat-target').innerHTML = opts.join('') || `<option value="">${type==='client'?'No customers yet':'No suppliers yet'}</option>`;
+    document.getElementById('new-chat-target').innerHTML = opts.join('') || `<option value="">${type==='client'?'Aún no hay clientes':'Aún no hay proveedores'}</option>`;
   },
   submitNewChat(fixedType, fixedId){
     let type = fixedType, id = fixedId;
     if(!type){ type = document.getElementById('new-chat-type').value; id = document.getElementById('new-chat-target').value; }
-    if(!id){ showToast('Choose someone to chat with first.'); return; }
+    if(!id){ showToast('Elige primero con quién chatear.'); return; }
     const name = document.getElementById('new-chat-name').value;
     App.startChat(type, id, name);
   },
@@ -7461,18 +7462,19 @@ const App = {
   // a Quote — that would show the client's price and INNOUS's margin).
   openShareCardModal(key){
     const [ownerType] = key.split(':');
+    const es = STATE.role!=='CLIENT';
     openModal(`
-      <div class="modal-header"><h3>Share</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-header"><h3>${es?'Compartir':'Share'}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="form-group"><label class="field-label">What</label>
+        <div class="form-group"><label class="field-label">${es?'Qué':'What'}</label>
           <select id="share-card-type" onchange="App.renderShareCardOptions('${key}')">
             <option value="rfq">RFQ</option>
-            ${ownerType==='client' ? `<option value="quote">Formal Quote</option>` : `<option value="po">Purchase Order</option>`}
+            ${ownerType==='client' ? `<option value="quote">${es?'Cotización Formal':'Formal Quote'}</option>` : `<option value="po">${es?'Orden de Compra':'Purchase Order'}</option>`}
           </select>
         </div>
-        <div class="form-group"><label class="field-label">Which one</label><select id="share-card-project"></select></div>
+        <div class="form-group"><label class="field-label">${es?'Cuál':'Which one'}</label><select id="share-card-project"></select></div>
       </div>
-      <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitShareCard('${key}')"><i data-lucide="share-2"></i>Share</button></div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitShareCard('${key}')"><i data-lucide="share-2"></i>${es?'Compartir':'Share'}</button></div>
     `);
     App.renderShareCardOptions(key);
   },
@@ -7482,12 +7484,12 @@ const App = {
     const list = ownerType==='client'
       ? PROJECTS.filter(p=>p.customerId===ownerId && (cardType!=='quote' || p.order))
       : PROJECTS.filter(p=>p.invitedSupplierIds.includes(ownerId) && (cardType!=='po' || (p.order && p.selectedSupplierId===ownerId && p.innousAuthorizedAt)));
-    document.getElementById('share-card-project').innerHTML = list.map(p=>`<option value="${p.id}">${p.id} — ${escAttr(p.projectName)}</option>`).join('') || `<option value="">None available yet</option>`;
+    document.getElementById('share-card-project').innerHTML = list.map(p=>`<option value="${p.id}">${p.id} — ${escAttr(p.projectName)}</option>`).join('') || `<option value="">${STATE.role!=='CLIENT'?'Aún no hay ninguno disponible':'None available yet'}</option>`;
   },
   submitShareCard(key){
     const cardType = document.getElementById('share-card-type').value;
     const projectId = document.getElementById('share-card-project').value;
-    if(!projectId){ showToast('Nothing to share yet.'); return; }
+    if(!projectId){ showToast(STATE.role!=='CLIENT'?'Aún no hay nada que compartir.':'Nothing to share yet.'); return; }
     App.sendChatCard(key, cardType, projectId);
   },
   async sendChatCard(key, cardType, projectId){
@@ -7513,7 +7515,7 @@ const App = {
   async deleteChat(type, id, threadName){
     const owner = type==='client' ? CUSTOMERS.find(c=>c.id===id) : SUPPLIERS.find(s=>s.id===id);
     if(!owner) return;
-    if(!confirm(`Delete the "${threadName}" chat? This can't be undone.`)) return;
+    if(!confirm(`¿Eliminar el chat "${threadName}"? Esto no se puede deshacer.`)) return;
     if(isRealAccountId(id)){
       const { error } = await sb.from('messages_general').delete().eq('owner_type', type).eq('owner_id', id).eq('thread_name', threadName);
       if(error){ showToast(error.message); return; }
@@ -7521,7 +7523,7 @@ const App = {
     if(owner.chats) delete owner.chats[threadName];
     const key = type+':'+id+':'+threadName;
     if(STATE.ui.activeChatKey===key) STATE.ui.activeChatKey = null;
-    showToast('Chat deleted', 'success');
+    showToast('Chat eliminado', 'success');
     navigate(STATE.role==='INNOUS' ? '#/innous/messages' : STATE.role==='CLIENT' ? '#/client/messages' : '#/supplier/messages');
   },
 };
