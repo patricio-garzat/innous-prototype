@@ -980,6 +980,10 @@ function customerRowToJs(row){
 function supplierRowToJs(row){
   return {
     id: row.user_id, name: row.name, contactName: row.contact_name||'', email: row.email||'', phone: row.phone||'',
+    // Fixed company data (doesn't change order to order) — filled in once
+    // from the Purchase Order Details form the first time it's needed, then
+    // auto-filled from here on. See App.savePurchaseOrderDetails.
+    rfc: row.rfc||'', address: row.address||'',
     city: row.city||'', capabilities: row.capabilities||[], machines: row.machines||[], certs: row.certs||[],
     capacity: row.capacity||'Not set', operators: row.operators||0, yearsOperating: row.years_operating||0,
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
@@ -1090,6 +1094,17 @@ function orderRowToJs(row){
     // (orders_supplier_view) — orders_client_view never has these columns.
     supplierCostMxn: row.supplier_cost_mxn ?? 0, exchangeRate: row.exchange_rate ?? null,
     quoteNumber: row.quote_number || null,
+    // Purchase Order fields — filled in by INNOUS right before authorizing
+    // (see quoteDetailsSection's sibling, purchaseOrderDetailsSection, and
+    // App.savePurchaseOrderDetails). poNumber is assigned once, server-side,
+    // the same instant as quoteNumber (client_select_quote) — never
+    // recomputed. Only ever present for INNOUS and the supplier's own
+    // order; orders_client_view never has these columns.
+    poNumber: row.po_number || null,
+    poBuyerName: row.po_buyer_name || null, poDeliveryLocation: row.po_delivery_location || null,
+    poReceptionHours: row.po_reception_hours || null, poIncoterm: row.po_incoterm || null,
+    poPaymentTerms: row.po_payment_terms || null, poPaymentMethod: row.po_payment_method || null,
+    poNotes: row.po_notes || null,
     paymentStatus: row.payment_status || 'Awaiting Deposit',
     quality: {
       inspectionRequired: true, status: row.quality_status || 'pending',
@@ -1602,7 +1617,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -1610,6 +1625,8 @@ const INNOUS_USER = { name:'Ops Team', photo:null };
    actually stick, and so the default markup really is used across the app. ---------- */
 const DEFAULT_SETTINGS = {
   legalName:'Grupo Industrial Innous de Mexico S. de R.L. de C.V.', address:'Palma Real No. 115, Fracc. Industrial Las Palmas Santa Catarina, N.L. 66368',
+  // RFC/phone print on the Orden de Compra's own letterhead block.
+  rfc:'INN200101AB1', phone:'+52 (81) 8123 4567',
   region:'United States ↔ Mexico', defaultMarkupPct:15,
   // Suppliers (Mexican) quote in MXN; the client (US) always sees USD. This is
   // the starting exchange rate INNOUS sees when comparing quotes — always
@@ -1624,6 +1641,7 @@ function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stri
 function settingsRowToJs(row){
   return {
     legalName: row.legal_name, address: row.address || DEFAULT_SETTINGS.address, region: row.region, defaultMarkupPct: row.default_markup_pct,
+    rfc: row.rfc || DEFAULT_SETTINGS.rfc, phone: row.phone || DEFAULT_SETTINGS.phone,
     defaultExchangeRate: row.default_exchange_rate || DEFAULT_SETTINGS.defaultExchangeRate,
     notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
   };
@@ -1943,14 +1961,66 @@ function generateQuotePdf(p){
    supplier's OWN proposal back to them (unit price, tooling, setup,
    shipping, lead time — all straight from their own submitted quote), never
    the client's price, INNOUS's markup, or anything client-identifying. */
+// Draws one of the boxed, title-barred info panels the real Orden de Compra
+// format uses (the top-right OC summary, PROVEEDOR, ENTREGA Y CONDICIONES
+// COMERCIALES) — a colored title bar plus label/value rows, each row's
+// height computed from however many lines its value actually wraps to, so
+// a long address never overlaps the row after it. Returns the y just below
+// the box, since the two side-by-side panels usually end at different
+// heights depending on their content.
+function poInfoBlock(doc, x, y, w, title, rows, barColor, ink, inkSec){
+  const labelW = 92;
+  let cy = y;
+  if(title){
+    doc.setFillColor(...barColor);
+    doc.rect(x, y, w, 16, 'F');
+    doc.setFont('Calibri','bold'); doc.setFontSize(8); doc.setTextColor(255,255,255);
+    doc.text(title, x+6, y+11);
+    cy = y+16;
+  }
+  const rowTops = [];
+  rows.forEach(([label,value],i)=>{
+    const lines = doc.splitTextToSize(String(value||'—'), w-labelW-10);
+    const rowH = Math.max(14, lines.length*9+5);
+    rowTops.push([cy,rowH,i]);
+    cy += rowH;
+  });
+  rowTops.forEach(([ry,rh,i])=>{ if(i%2===1){ doc.setFillColor(248,250,252); doc.rect(x,ry,w,rh,'F'); } });
+  doc.setDrawColor(210,210,214); doc.setLineWidth(0.5);
+  rows.forEach(([label,value],i)=>{
+    const [ry,rh] = rowTops[i];
+    const lines = doc.splitTextToSize(String(value||'—'), w-labelW-10);
+    doc.setFont('Calibri','bold'); doc.setFontSize(7.5); doc.setTextColor(...ink);
+    doc.text(label, x+6, ry+9);
+    doc.setFont('Calibri','normal'); doc.setTextColor(...inkSec);
+    doc.text(lines, x+labelW, ry+9);
+  });
+  doc.rect(x, y, w, cy-y, 'S');
+  return cy;
+}
+/* ---- Purchase Order (Orden de Compra) — matches Innous's real printed
+   format exactly (see supabase-fix29-purchase-order-format.sql for the
+   folio scheme). Generated once INNOUS authorizes the project and the
+   supplier can see their order at all. Always Spanish, always MXN — this
+   confirms the supplier's OWN proposal back to them (unit price, tooling,
+   setup, shipping, lead time, all straight from their own submitted
+   quote), never the client's price, INNOUS's markup, or anything about
+   the client. Everything under "Purchase Order Details" (buyer, RFC,
+   delivery/payment terms) is what INNOUS filled in before authorizing —
+   see purchaseOrderDetailsSection(). */
 function generatePurchaseOrderPdf(p){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'letter' });
-  const marginL = 50, marginR = 562;
-  const accent = [0,163,224], danger = [185,28,28], ink = [24,24,27], inkSec = [82,82,91];
+  const marginL = 40, marginR = 572, pageW = marginR-marginL;
+  const navy = [0,56,101], accent = [0,163,224], danger = [185,28,28], ink = [24,24,27], inkSec = [82,82,91];
   const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId) || {};
   const q = p.supplierQuotes.find(x=>x.supplierId===p.selectedSupplierId) || {};
-  const total = q.quotedTotal || 0;
+  const o = p.order || {};
+  const legalName = STATE.settings.legalName||DEFAULT_SETTINGS.legalName;
+  const legalAddress = STATE.settings.address||DEFAULT_SETTINGS.address;
+  const poNumber = o.poNumber || 'OC-'+new Date().getFullYear()+'-0000';
+  const quoteNumber = o.quoteNumber || 'IN-'+new Date().getFullYear()+'-0000';
+  const deliveryPlace = o.poDeliveryLocation || (isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'—'));
 
   doc.addFileToVFS('Calibri.ttf', INNOUS_QUOTE_FONT_TTF);
   doc.addFont('Calibri.ttf', 'Calibri', 'normal');
@@ -1958,98 +2028,183 @@ function generatePurchaseOrderPdf(p){
   doc.addFont('Calibri.ttf', 'Calibri', 'italic');
   doc.addFont('Calibri.ttf', 'Calibri', 'bolditalic');
 
-  doc.addImage(INNOUS_LOGO_PNG, 'PNG', marginL, 34, 150, 41.3);
+  // ---- Header: logo + Innous company block (left) / OC summary box (right) ----
+  doc.addImage(INNOUS_LOGO_PNG, 'PNG', marginL, 40, 130, 35.8);
+  let ly = 88;
+  doc.setFont('Calibri','bold'); doc.setFontSize(8); doc.setTextColor(...ink);
+  doc.text(legalName.toUpperCase(), marginL, ly);
+  ly += 11;
+  doc.setFont('Calibri','normal'); doc.setFontSize(7); doc.setTextColor(...inkSec);
+  const innousRfc = STATE.settings.rfc||DEFAULT_SETTINGS.rfc, innousPhone = STATE.settings.phone||DEFAULT_SETTINGS.phone;
+  doc.text(doc.splitTextToSize(`RFC: ${innousRfc} · ${legalAddress}`, 265), marginL, ly);
+  ly += 20;
+  doc.text(`Tel. ${innousPhone} · compras@innous.com.mx · www.innous.com.mx`, marginL, ly);
 
-  let y = 112;
-  doc.setFont('Calibri','normal'); doc.setFontSize(10); doc.setTextColor(...ink);
-  doc.text('Orden de Compra N.', marginL, y);
-  doc.setFont('Calibri','bold'); doc.setTextColor(...danger);
-  doc.text(p.id, marginL+95, y);
-  doc.setFont('Calibri','normal'); doc.setTextColor(...ink);
-  doc.text(new Date().toLocaleDateString('es-MX'), marginR, y, {align:'right'});
-
-  y += 18;
-  doc.setFont('Calibri','bold'); doc.text('Proveedor.', marginL, y);
-  doc.setFont('Calibri','normal'); doc.text(` ${supplier.contactName||'—'} | ${supplier.name||'—'}`, marginL+62, y);
-
-  y += 14;
-  doc.setDrawColor(210,210,214); doc.setLineWidth(0.75);
-  doc.line(marginL, y, marginR, y);
-
-  y += 26;
-  doc.setFont('Calibri','bold'); doc.setFontSize(10.5);
-  doc.text('Innous le confirma la siguiente orden de fabricación', marginL, y);
-
-  y += 30;
-  doc.setFontSize(9);
-  const colItem = marginL+8, colDesc = marginL+40, colQty = 400, colUnit = 462, colTotal = marginR;
-  doc.text('Item', colItem, y);
-  doc.text('Descripción', colDesc, y);
-  doc.text('Cantidad', colQty, y, {align:'center'});
-  doc.text('Precio Unitario', colUnit, y, {align:'center'});
-  doc.text('PRECIO TOTAL', colTotal, y, {align:'right'});
-
-  y += 16;
-  doc.setFont('Calibri','normal'); doc.setFontSize(9.5);
-  const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
-  const descLines = doc.splitTextToSize(descText, 290);
-  doc.text('1', colItem, y);
-  doc.text(descLines, colDesc, y);
-  doc.text(String(p.quantity||0), colQty, y, {align:'center'});
-  doc.text(fmtMXN2(q.unitPrice||0), colUnit, y, {align:'center'});
-  doc.text(fmtMXN(q.unitPrice ? q.unitPrice*p.quantity : 0), colTotal, y, {align:'right'});
-  y += descLines.length*12 + 4;
-
-  // Herramental / Preparación / Envío as their own lines, exactly like the
-  // supplier's own "Tu Cotización Enviada" breakdown — nothing here is
-  // recomputed, it's their own submitted numbers echoed back for
-  // confirmation.
-  const extras = [
-    ['Herramental', q.tooling],
-    ['Preparación / Setup', q.setup],
-    ['Envío', q.shipping],
-  ].filter(([,amt])=>amt);
-  extras.forEach(([label,amt])=>{
-    y += 14;
-    doc.setFont('Calibri','normal'); doc.setTextColor(...inkSec);
-    doc.text(label, colDesc, y);
-    doc.text(fmtMXN(amt), colTotal, y, {align:'right'});
-  });
-  doc.setTextColor(...ink);
-
-  y += 18;
-  doc.setFont('Calibri','bold');
-  doc.text('TOTAL', colUnit, y, {align:'center'});
-  doc.text(fmtMXN(total), colTotal, y, {align:'right'});
-
-  y += 32;
-  doc.setFontSize(9.5);
-  const terms = [
-    ['PRECIOS EN MXN', ''],
-    ['CONDICIONES DE PAGO', ': 50% anticipo a la confirmación del pedido, 50% contra entrega.'],
-    ['TIEMPO DE ENTREGA', `: ${q.leadTimeDays||'—'} DÍAS`],
-    ['LUGAR DE ENTREGA', `: ${isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'—')}`],
+  const ocBoxX = 322, ocBoxW = marginR-ocBoxX;
+  doc.setFillColor(...navy); doc.rect(ocBoxX, 40, ocBoxW, 20, 'F');
+  doc.setFont('Calibri','bold'); doc.setFontSize(11); doc.setTextColor(255,255,255);
+  doc.text('ORDEN DE COMPRA', ocBoxX+ocBoxW/2, 54, {align:'center'});
+  const ocRows = [
+    ['No. de OC', poNumber],
+    ['Fecha de emisión', new Date().toLocaleDateString('es-MX')],
+    ['Requisición / Proyecto', `${p.id} / ${p.projectName}`],
+    ['Comprador', o.poBuyerName || p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name],
+    ['Moneda', 'MXN'],
   ];
-  terms.forEach(([label,rest])=>{
-    doc.setFont('Calibri','normal'); doc.text('•', marginL, y);
-    doc.setFont('Calibri','bold'); doc.text(label, marginL+12, y);
-    doc.setFont('Calibri','normal'); doc.text(rest, marginL+12+doc.getTextWidth(label), y);
-    y += 15;
+  poInfoBlock(doc, ocBoxX, 60, ocBoxW, '', ocRows, navy, ink, inkSec);
+  // No.-de-OC value gets the same red-folio treatment as the other formats
+  doc.setFont('Calibri','bold'); doc.setFontSize(7.5); doc.setTextColor(...danger);
+  doc.text(poNumber, ocBoxX+92, 60+9);
+
+  // ---- PROVEEDOR / ENTREGA Y CONDICIONES COMERCIALES ----
+  const colW = (pageW-16)/2, col2X = marginL+colW+16;
+  const proveedorRows = [
+    ['Razón social', supplier.name],
+    ['RFC', supplier.rfc],
+    ['Domicilio', supplier.address],
+    ['Contacto', supplier.contactName],
+    ['Teléfono', supplier.phone],
+    ['Correo', supplier.email],
+    ['Cotización ref.', `${quoteNumber} — ${fmtDate(q.submittedAt)}`],
+  ];
+  const entregaRows = [
+    ['Entregar en', deliveryPlace],
+    ['Horario recepción', o.poReceptionHours],
+    ['Fecha requerida', fmtDate(p.deliveryDate)],
+    ['Incoterm / Flete', o.poIncoterm],
+    ['Condiciones de pago', o.poPaymentTerms],
+    ['Forma de pago', o.poPaymentMethod],
+    ['Facturar a', legalName],
+  ];
+  const y1 = poInfoBlock(doc, marginL, 145, colW, 'PROVEEDOR', proveedorRows, accent, ink, inkSec);
+  const y2 = poInfoBlock(doc, col2X, 145, colW, 'ENTREGA Y CONDICIONES COMERCIALES', entregaRows, accent, ink, inkSec);
+  let y = Math.max(y1,y2) + 16;
+
+  // ---- Item table ----
+  const cW = {partida:26, cant:44, unidad:40, parte:78, unit:62, importe:70};
+  cW.desc = pageW - (cW.partida+cW.cant+cW.unidad+cW.parte+cW.unit+cW.importe);
+  const cX = {}; let run = marginL;
+  ['partida','cant','unidad','parte','desc','unit','importe'].forEach(k=>{ cX[k]=run; run+=cW[k]; });
+  doc.setFillColor(...navy); doc.rect(marginL, y, pageW, 16, 'F');
+  doc.setFont('Calibri','bold'); doc.setFontSize(7); doc.setTextColor(255,255,255);
+  doc.text('PARTIDA', cX.partida+cW.partida/2, y+11, {align:'center'});
+  doc.text('CANT.', cX.cant+cW.cant/2, y+11, {align:'center'});
+  doc.text('UNIDAD', cX.unidad+cW.unidad/2, y+11, {align:'center'});
+  doc.text('NO. PARTE / PLANO', cX.parte+cW.parte/2, y+11, {align:'center'});
+  doc.text('DESCRIPCIÓN', cX.desc+6, y+11);
+  doc.text('P. UNITARIO', cX.unit+cW.unit/2, y+11, {align:'center'});
+  doc.text('IMPORTE', cX.importe+cW.importe/2, y+11, {align:'center'});
+  y += 16;
+
+  const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
+  const descLines = doc.splitTextToSize(descText, cW.desc-12);
+  const lineItems = [
+    { partida:'1', cant:String(p.quantity||0), unidad:'PZA', parte:'—', desc:descLines, unit:fmtMXN2(q.unitPrice||0), importe:fmtMXN(q.unitPrice?q.unitPrice*p.quantity:0) },
+  ];
+  [['Herramental',q.tooling],['Preparación / Setup',q.setup],['Envío',q.shipping]].forEach(([label,amt])=>{
+    if(amt) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:[label], unit:fmtMXN(amt), importe:fmtMXN(amt) });
+  });
+  for(let i=lineItems.length; i<7; i++) lineItems.push({ partida:String(i+1), cant:'', unidad:'', parte:'', desc:[''], unit:'', importe:'' });
+
+  const bodyTop = y;
+  doc.setFont('Calibri','normal'); doc.setFontSize(7.5);
+  lineItems.forEach(item=>{
+    const rowH = Math.max(18, item.desc.length*9+6);
+    doc.setTextColor(...ink);
+    doc.text(item.partida, cX.partida+cW.partida/2, y+rowH/2+3, {align:'center'});
+    doc.text(item.cant, cX.cant+cW.cant/2, y+rowH/2+3, {align:'center'});
+    doc.text(item.unidad, cX.unidad+cW.unidad/2, y+rowH/2+3, {align:'center'});
+    doc.text(item.parte, cX.parte+cW.parte/2, y+rowH/2+3, {align:'center'});
+    doc.text(item.desc, cX.desc+6, y+9);
+    doc.text(item.unit, cX.unit+cW.unit/2, y+rowH/2+3, {align:'center'});
+    doc.text(item.importe, cX.importe+cW.importe/2, y+rowH/2+3, {align:'center'});
+    doc.setDrawColor(225,228,232); doc.setLineWidth(0.5);
+    doc.line(marginL, y+rowH, marginR, y+rowH);
+    y += rowH;
+  });
+  doc.setDrawColor(210,210,214); doc.setLineWidth(0.5);
+  doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
+  ['cant','unidad','parte','desc','unit','importe'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
+  y += 14;
+
+  // ---- Observaciones (left) + Totals (right) ----
+  const obsW = colW, totW = colW;
+  const obsBottom = y+16+70;
+  doc.setFillColor(...accent); doc.rect(marginL, y, obsW, 16, 'F');
+  doc.setFont('Calibri','bold'); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
+  doc.text('OBSERVACIONES / INSTRUCCIONES ESPECIALES', marginL+6, y+11);
+  doc.setDrawColor(210,210,214); doc.rect(marginL, y+16, obsW, 70, 'S');
+  if(o.poNotes){
+    doc.setFont('Calibri','normal'); doc.setFontSize(8); doc.setTextColor(...inkSec);
+    doc.text(doc.splitTextToSize(o.poNotes, obsW-16), marginL+8, y+30);
+  }
+
+  const subtotal = q.quotedTotal||0, iva = subtotal*0.16, totalConIva = subtotal+iva;
+  const totRows = [['Subtotal',fmtMXN(subtotal)],['Descuento',fmtMXN(0)],['Flete / maniobras',fmtMXN(0)],['IVA 16%',fmtMXN(iva)]];
+  let ty = y;
+  totRows.forEach(([label,val],i)=>{
+    const rh = 16;
+    if(i%2===1){ doc.setFillColor(248,250,252); doc.rect(col2X,ty,totW,rh,'F'); }
+    doc.setFont('Calibri','normal'); doc.setFontSize(8); doc.setTextColor(...ink);
+    doc.text(label, col2X+6, ty+11);
+    doc.text(val, col2X+totW-6, ty+11, {align:'right'});
+    ty += rh;
+  });
+  doc.setFillColor(...navy); doc.rect(col2X, ty, totW, 18, 'F');
+  doc.setFont('Calibri','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+  doc.text('TOTAL', col2X+6, ty+12);
+  doc.text(fmtMXN(totalConIva), col2X+totW-6, ty+12, {align:'right'});
+  ty += 18;
+  doc.setDrawColor(210,210,214); doc.rect(col2X, y, totW, ty-y, 'S');
+  doc.setFont('Calibri','italic'); doc.setFontSize(7); doc.setTextColor(...inkSec);
+  doc.text('Importe con letra: ________________________________ 00/100 M.N.', col2X, ty+11);
+
+  y = Math.max(obsBottom, ty+11) + 16;
+
+  // ---- Condiciones Generales de Compra ----
+  doc.setFont('Calibri','bold'); doc.setFontSize(8); doc.setTextColor(...ink);
+  doc.text('CONDICIONES GENERALES DE COMPRA', marginL, y);
+  y += 12;
+  const terms = [
+    'La aceptación de esta orden implica la conformidad total con las condiciones aquí establecidas. Favor de acusar recibo firmando y devolviendo esta orden dentro de los 3 días hábiles siguientes a su recepción.',
+    'Todo envío, remisión y factura debe indicar el número de esta orden de compra; de lo contrario el material podrá ser rechazado y la factura devuelta.',
+    'La factura deberá cumplir con los requisitos fiscales vigentes (CFDI 4.0) y enviarse en formato PDF y XML a facturacion@innous.com.mx. El plazo de pago inicia a partir de la recepción correcta de la factura y del material o servicio.',
+    'Los precios son firmes y no están sujetos a incremento, salvo acuerdo previo por escrito. No se aceptan cargos no autorizados en esta orden.',
+    'El material debe entregarse en la fecha y el lugar indicados, con certificados de calidad, certificados de material y/o reporte dimensional cuando apliquen. No se aceptan entregas parciales sin autorización previa.',
+    'Innous se reserva el derecho de rechazar o devolver, por cuenta y riesgo del proveedor, el material que no cumpla con las especificaciones, planos o normas aplicables.',
+    'El proveedor garantiza el producto o servicio contra defectos de material y mano de obra por un periodo mínimo de 12 meses a partir de la entrega.',
+    'Los atrasos no notificados con oportunidad podrán generar penalización conforme a lo acordado y/o la cancelación de la orden sin responsabilidad para Innous.',
+    'Toda la información, planos y especificaciones derivados de esta orden son confidenciales y propiedad de Innous o de su cliente. El proveedor no podrá divulgarlos ni contactar directamente al cliente final.',
+    'El proveedor es el único responsable de sus trabajadores en materia laboral, fiscal y de seguridad social, y deberá cumplir con las normas de seguridad del sitio de entrega.',
+  ];
+  const halfW = (pageW-14)/2;
+  doc.setFont('Calibri','normal'); doc.setFontSize(6.3); doc.setTextColor(...inkSec);
+  let ly1 = y, ly2 = y;
+  terms.forEach((t,i)=>{
+    const x = i<6 ? marginL : marginL+halfW+14;
+    const lines = doc.splitTextToSize(`${i+1}. ${t}`, halfW);
+    if(i<6){ doc.text(lines, x, ly1); ly1 += lines.length*7.5+3; }
+    else { doc.text(lines, x, ly2); ly2 += lines.length*7.5+3; }
+  });
+  y = Math.max(ly1,ly2) + 20;
+
+  // ---- Signatures ----
+  const sigW = (pageW-28)/3;
+  const sigs = [['ELABORÓ — COMPRAS','Nombre, firma y fecha'], ['AUTORIZÓ — INNOUS','Nombre, firma y fecha'], ['ACEPTACIÓN DEL PROVEEDOR','Nombre, firma, sello y fecha']];
+  sigs.forEach(([title,sub],i)=>{
+    const x = marginL + i*(sigW+14);
+    doc.setDrawColor(180,184,190); doc.setLineWidth(0.75);
+    doc.line(x, y, x+sigW, y);
+    doc.setFont('Calibri','bold'); doc.setFontSize(7.5); doc.setTextColor(...ink);
+    doc.text(title, x+sigW/2, y+12, {align:'center'});
+    doc.setFont('Calibri','normal'); doc.setFontSize(6.5); doc.setTextColor(...inkSec);
+    doc.text(sub, x+sigW/2, y+22, {align:'center'});
   });
 
-  y += 24;
-  doc.setFont('Calibri','bold'); doc.setFontSize(9.5); doc.setTextColor(...ink);
-  doc.text(p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name, marginL, y);
-  y += 14;
-  doc.setFont('Calibri','normal'); doc.setTextColor(37,99,235);
-  doc.text(p.quoteSalespersonEmail || INNOUS_QUOTE_SIGNATURE.email, marginL, y);
-
-  y += 26;
-  doc.setFont('Calibri','bold'); doc.setTextColor(...ink);
-  doc.text(STATE.settings.legalName||DEFAULT_SETTINGS.legalName, marginL, y);
-
-  y += 24;
-  doc.text(STATE.settings.address||DEFAULT_SETTINGS.address, marginL, y);
+  // ---- Footer ----
+  doc.setFont('Calibri','normal'); doc.setFontSize(6.5); doc.setTextColor(...inkSec);
+  doc.text(`${legalName} · www.innous.com.mx · Documento controlado — Formato F-COM-01, Rev. 00`, marginL, 775);
+  doc.text('Página 1 de 1', marginR, 775, {align:'right'});
 
   return doc;
 }
@@ -3344,7 +3499,7 @@ ROUTES['innous/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
-        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
+        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
         <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Delete RFQ</button>
       </div>
@@ -3385,6 +3540,7 @@ ROUTES['innous/rfq'] = function(id){
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? supplierResponsesSection(p) : ''}
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? quoteComparisonSection(p) : ''}
     ${p.status==='customer_review' ? sentShortlistReadonlySection(p) : ''}
+    ${p.status==='awarded' && !p.innousAuthorizedAt ? purchaseOrderDetailsSection(p) : ''}
   </div>`;
 };
 
@@ -3583,6 +3739,73 @@ function quoteDetailsSection(p, opts){
       <div class="form-group"><label class="field-label">Delivery Time (days)</label><input type="number" min="0" value="${d.deliveryDays}" oninput="App.updateQuoteDetailDraft('${p.id}','deliveryDays',this.value)"></div>
     </div>
     <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveQuoteDetails('${p.id}')"><i data-lucide="save"></i>Save Quote Details</button></div>
+  </div>`;
+}
+
+// True once every field the Purchase Order needs is on file — either
+// already saved on this order, or already on file for the supplier from a
+// past order (rfc/address). Gates App.authorizeProject exactly the way
+// quoteDetailsComplete gates sendQuotesToCustomer.
+function purchaseOrderDetailsComplete(p){
+  const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId) || {};
+  return !!(supplier.rfc && supplier.address && p.order && p.order.poBuyerName && p.order.poDeliveryLocation
+    && p.order.poIncoterm && p.order.poPaymentTerms && p.order.poPaymentMethod);
+}
+/* ---- Purchase Order Details — everything the supplier's formal Orden de
+   Compra needs that isn't already known from earlier in the flow. Shown
+   only once the customer has awarded a supplier and before INNOUS
+   authorizes the project (that's the exact moment "we're about to send
+   this project to the supplier" — see App.authorizeProject). Two kinds of
+   field here, saved to two different places:
+   - Proveedor (RFC, Domicilio) is fixed company data that doesn't change
+     between orders — saved onto the supplier's own record, so the very
+     next order for this same supplier already has it pre-filled and this
+     card won't even ask for it again.
+   - Everything else is specific to THIS purchase order and saved onto the
+     order itself. */
+function purchaseOrderDetailsSection(p){
+  const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId) || {};
+  if(!STATE.ui.poDetailsDrafts[p.id]){
+    STATE.ui.poDetailsDrafts[p.id] = {
+      supplierRfc: supplier.rfc || '',
+      supplierAddress: supplier.address || '',
+      buyerName: p.order?.poBuyerName || p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name,
+      deliveryLocation: p.order?.poDeliveryLocation || (isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'')),
+      receptionHours: p.order?.poReceptionHours || 'Lun–Vie, 9:00 a 18:00 h',
+      incoterm: p.order?.poIncoterm || 'DAP',
+      paymentTerms: p.order?.poPaymentTerms || '30 días netos contra factura',
+      paymentMethod: p.order?.poPaymentMethod || 'Transferencia electrónica',
+      notes: p.order?.poNotes || '',
+    };
+  }
+  const d = STATE.ui.poDetailsDrafts[p.id];
+  const isConfirmed = purchaseOrderDetailsComplete(p);
+  const upd = (field)=>`App.updatePoDetailDraft('${p.id}','${field}',this.value)`;
+  return `
+  <div class="card card-pad" style="margin-top:20px;">
+    <div class="section-title">Purchase Order Details</div>
+    <div class="section-sub">What the supplier's formal Orden de Compra needs — fill these in and save before you can authorize and send this project to them.</div>
+    ${!isConfirmed ? stageBanner('Required — save these before "Authorize & Notify Supplier" unlocks.', 'action') : ''}
+    <div class="info-item-label" style="margin-top:16px;">Proveedor (guardado en su perfil — solo se pide una vez)</div>
+    <div class="form-row" style="margin-top:6px;">
+      <div class="form-group"><label class="field-label">RFC del Proveedor</label><input type="text" value="${escAttr(d.supplierRfc)}" placeholder="XXXX000000XX0" oninput="${upd('supplierRfc')}"></div>
+      <div class="form-group"><label class="field-label">Domicilio del Proveedor</label><input type="text" value="${escAttr(d.supplierAddress)}" placeholder="Calle, número, colonia, C.P., ciudad, estado" oninput="${upd('supplierAddress')}"></div>
+    </div>
+    <div class="info-item-label" style="margin-top:10px;">Esta Orden de Compra</div>
+    <div class="form-row" style="margin-top:6px;">
+      <div class="form-group"><label class="field-label">Comprador (Innous)</label><input type="text" value="${escAttr(d.buyerName)}" oninput="${upd('buyerName')}"></div>
+      <div class="form-group"><label class="field-label">Entregar en</label><input type="text" value="${escAttr(d.deliveryLocation)}" oninput="${upd('deliveryLocation')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Horario de Recepción</label><input type="text" value="${escAttr(d.receptionHours)}" oninput="${upd('receptionHours')}"></div>
+      <div class="form-group"><label class="field-label">Incoterm / Flete</label><input type="text" value="${escAttr(d.incoterm)}" oninput="${upd('incoterm')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Condiciones de Pago</label><input type="text" value="${escAttr(d.paymentTerms)}" oninput="${upd('paymentTerms')}"></div>
+      <div class="form-group"><label class="field-label">Forma de Pago</label><input type="text" value="${escAttr(d.paymentMethod)}" oninput="${upd('paymentMethod')}"></div>
+    </div>
+    <div class="form-group"><label class="field-label">Observaciones / Instrucciones Especiales</label><textarea oninput="${upd('notes')}">${escAttr(d.notes)}</textarea></div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Save Purchase Order Details</button></div>
   </div>`;
 }
 
@@ -3829,11 +4052,12 @@ ROUTES['innous/order'] = function(id){
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p)}
         <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Purchase Order (PDF)</button>
-        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
+        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
         ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
+    ${!p.innousAuthorizedAt ? purchaseOrderDetailsSection(p) : ''}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), (p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn)+' · ':'')+'paid to '+supplierName(p.selectedSupplierId), 'factory')}
@@ -4052,7 +4276,7 @@ ROUTES['innous/messages'] = function(){
 
 /* ---- INNOUS Settings ---- */
 ROUTES['innous/settings'] = function(){
-  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
@@ -4060,12 +4284,16 @@ ROUTES['innous/settings'] = function(){
       <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Save Changes</button></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Company</div>
-      <div class="section-sub">Used on the formal PDF quote a client can download once they select a supplier.</div>
+      <div class="section-sub">Used on the formal PDF quote a client can download once they select a supplier, and on the supplier's Purchase Order letterhead.</div>
       <div class="form-row" style="margin-top:12px;">
         <div class="form-group"><label class="field-label">Legal Name</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
         <div class="form-group"><label class="field-label">Region</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
       </div>
       <div class="form-group"><label class="field-label">Address</label><input type="text" value="${escAttr(d.address)}" oninput="STATE.ui.settingsDraft.address=this.value"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" oninput="STATE.ui.settingsDraft.rfc=this.value"></div>
+        <div class="form-group"><label class="field-label">Teléfono</label><input type="text" value="${escAttr(d.phone)}" oninput="STATE.ui.settingsDraft.phone=this.value"></div>
+      </div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Default Pricing</div>
@@ -4633,9 +4861,9 @@ const App = {
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
-    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, rfc:STATE.ui.settingsDraft.rfc.trim()||DEFAULT_SETTINGS.rfc, phone:STATE.ui.settingsDraft.phone.trim()||DEFAULT_SETTINGS.phone, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
     const { error } = await sb.from('settings').update({
-      legal_name: next.legalName, address: next.address, region: next.region, default_markup_pct: next.defaultMarkupPct,
+      legal_name: next.legalName, address: next.address, rfc: next.rfc, phone: next.phone, region: next.region, default_markup_pct: next.defaultMarkupPct,
       default_exchange_rate: next.defaultExchangeRate,
       notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
       notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
@@ -5439,6 +5667,43 @@ const App = {
     showToast('Quote details saved', 'success');
     route();
   },
+  updatePoDetailDraft(pid,field,val){
+    if(!STATE.ui.poDetailsDrafts[pid]) STATE.ui.poDetailsDrafts[pid] = {};
+    STATE.ui.poDetailsDrafts[pid][field] = val;
+  },
+  async savePurchaseOrderDetails(pid){
+    const p = findProject(pid); if(!p || !p.selectedSupplierId) return;
+    const d = STATE.ui.poDetailsDrafts[pid] || {};
+    const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId);
+    const next = {
+      supplierRfc: (d.supplierRfc||'').trim(), supplierAddress: (d.supplierAddress||'').trim(),
+      poBuyerName: (d.buyerName||'').trim() || INNOUS_QUOTE_SIGNATURE.name,
+      poDeliveryLocation: (d.deliveryLocation||'').trim(),
+      poReceptionHours: (d.receptionHours||'').trim(),
+      poIncoterm: (d.incoterm||'').trim(),
+      poPaymentTerms: (d.paymentTerms||'').trim(),
+      poPaymentMethod: (d.paymentMethod||'').trim(),
+      poNotes: (d.notes||'').trim(),
+    };
+    if(!p.isDemo){
+      // Two separate rows, two separate updates — supplier profile fields
+      // (RFC/address) live on suppliers, everything else on this one order.
+      if(isRealAccountId(p.selectedSupplierId)){
+        const { error: e1 } = await sb.from('suppliers').update({ rfc: next.supplierRfc, address: next.supplierAddress }).eq('user_id', p.selectedSupplierId);
+        if(e1){ showToast(e1.message); return; }
+      }
+      const { error: e2 } = await sb.from('orders').update({
+        po_buyer_name: next.poBuyerName, po_delivery_location: next.poDeliveryLocation, po_reception_hours: next.poReceptionHours,
+        po_incoterm: next.poIncoterm, po_payment_terms: next.poPaymentTerms, po_payment_method: next.poPaymentMethod, po_notes: next.poNotes,
+      }).eq('project_id', pid);
+      if(e2){ showToast(e2.message); return; }
+    }
+    if(supplier){ supplier.rfc = next.supplierRfc; supplier.address = next.supplierAddress; }
+    Object.assign(p.order, { poBuyerName: next.poBuyerName, poDeliveryLocation: next.poDeliveryLocation, poReceptionHours: next.poReceptionHours,
+      poIncoterm: next.poIncoterm, poPaymentTerms: next.poPaymentTerms, poPaymentMethod: next.poPaymentMethod, poNotes: next.poNotes });
+    showToast('Purchase order details saved', 'success');
+    route();
+  },
   async addToShortlist(pid,sid){
     const p = findProject(pid);
     if(p.shortlist.length>=5){ showToast('Shortlist already has 5 options'); return; }
@@ -5566,6 +5831,9 @@ const App = {
      place that timestamp ever gets set. */
   async authorizeProject(pid){
     const p = findProject(pid); if(!p || !p.selectedSupplierId || p.innousAuthorizedAt) return;
+    // Defensive re-check, not just the button's disabled state — same
+    // pattern as sendQuotesToCustomer/quoteDetailsComplete.
+    if(!purchaseOrderDetailsComplete(p)){ showToast('Save the Purchase Order Details before authorizing.'); return; }
     const now = new Date();
     if(!p.isDemo){
       const { error } = await sb.from('projects').update({ innous_authorized_at: now.toISOString() }).eq('id', pid);
