@@ -3380,13 +3380,18 @@ function quoteComparisonSection(p){
     </tbody></table>
     </div>
     ${p.shortlist.length ? shortlistPreview(p) : ''}
+    ${p.shortlist.length ? quoteDetailsSection(p, {required:true}) : ''}
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div class="td-sub">${p.shortlist.length} of 5 selected for customer shortlist</div>
-      <button class="btn btn-primary" ${p.shortlist.length?'':'disabled'} onclick="App.sendQuotesToCustomer('${p.id}')"><i data-lucide="send"></i>Send Quotes to Customer</button>
+      <div>
+        <div class="td-sub">${p.shortlist.length} of 5 selected for customer shortlist</div>
+        ${p.shortlist.length && !quoteDetailsComplete(p) ? `<div class="td-sub" style="color:var(--danger);margin-top:2px;">Save the Formal Quote Details above first</div>` : ''}
+      </div>
+      <button class="btn btn-primary" ${(p.shortlist.length && quoteDetailsComplete(p))?'':'disabled'} onclick="App.sendQuotesToCustomer('${p.id}')"><i data-lucide="send"></i>Send Quotes to Customer</button>
     </div>
   </div>`;
 }
+function quoteDetailsComplete(p){ return !!(p.quoteSalespersonName && p.quoteSalespersonEmail && p.quotePaymentTerms && p.quoteDeliveryDays); }
 function shortlistPreview(p){
   return `
   <div style="margin:16px 0;">
@@ -3416,27 +3421,38 @@ function sentShortlistReadonlySection(p){
    downloadable PDF (generateQuotePdf). Deliberately never auto-filled from
    the supplier's own quote (payment terms, delivery date) — INNOUS always
    fills these in by hand, since it's INNOUS's commercial commitment to the
-   customer, not the supplier's. Delivery Time is pre-filled from the
-   awarded supplier's own lead-time estimate purely as a convenient
-   starting point once one exists — saving here always writes an explicit,
-   independent value. */
-function quoteDetailsSection(p){
+   customer, not the supplier's.
+   Shown (and required) TWICE, on purpose:
+   - Before "Send Quotes to Customer" even exists as an option — the
+     customer must never receive a shortlist INNOUS hasn't first decided
+     the commercial terms for. No specific supplier is awarded yet at this
+     point, so Delivery Time defaults to the longest lead time among the
+     shortlisted options (a safe commitment regardless of who the customer
+     ends up picking) rather than a single supplier's number.
+   - Again after the customer selects (still editable) — Delivery Time can
+     be tightened to the actually-awarded supplier's real lead time then,
+     and salesperson/payment terms can still be corrected if needed. */
+function quoteDetailsSection(p, opts){
+  const required = !!(opts && opts.required);
   if(!STATE.ui.quoteDetailsDrafts[p.id]){
     const awarded = p.shortlist.find(s=>s.supplierId===p.selectedSupplierId);
+    const fallbackDays = awarded ? awarded.leadTimeDays : (p.shortlist.length ? Math.max(...p.shortlist.map(s=>s.leadTimeDays)) : '');
     STATE.ui.quoteDetailsDrafts[p.id] = {
       salespersonName: p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name,
       salespersonEmail: p.quoteSalespersonEmail || INNOUS_QUOTE_SIGNATURE.email,
       paymentTerms: p.quotePaymentTerms || '50% down payment, and 50% before shipping.',
-      deliveryDays: p.quoteDeliveryDays || (awarded ? awarded.leadTimeDays : '') || '',
+      deliveryDays: p.quoteDeliveryDays || fallbackDays || '',
     };
   }
   const d = STATE.ui.quoteDetailsDrafts[p.id];
-  const isConfirmed = !!(p.quoteSalespersonName && p.quotePaymentTerms && p.quoteDeliveryDays);
+  const isConfirmed = quoteDetailsComplete(p);
   return `
   <div class="card card-pad" style="margin-top:20px;">
     <div class="section-title">Formal Quote Details</div>
-    <div class="section-sub">These are what actually print on the customer's downloadable formal quote — never taken from the supplier's own numbers. Fill these in and save before the customer downloads their quote.</div>
-    ${!isConfirmed ? stageBanner('Not confirmed yet — the customer\'s PDF will use generic defaults until you save these.', 'action') : ''}
+    <div class="section-sub">${required
+      ? 'What the customer\'s formal quote will say once they pick a supplier — fill these in and save before you can send this shortlist. The customer never sees any of this until they select.'
+      : 'These are what actually print on the customer\'s downloadable formal quote — never taken from the supplier\'s own numbers. Fill these in and save before the customer downloads their quote.'}</div>
+    ${!isConfirmed ? stageBanner(required ? 'Required — save these before "Send Quotes to Customer" unlocks below.' : 'Not confirmed yet — the customer\'s PDF will use generic defaults until you save these.', 'action') : ''}
     <div class="form-row" style="margin-top:14px;">
       <div class="form-group"><label class="field-label">Salesperson Name</label><input type="text" value="${d.salespersonName}" oninput="App.updateQuoteDetailDraft('${p.id}','salespersonName',this.value)"></div>
       <div class="form-group"><label class="field-label">Salesperson Email</label><input type="email" value="${d.salespersonEmail}" oninput="App.updateQuoteDetailDraft('${p.id}','salespersonEmail',this.value)"></div>
@@ -5249,6 +5265,10 @@ const App = {
   },
   async sendQuotesToCustomer(pid){
     const p = findProject(pid);
+    // Defensive re-check, not just the button's disabled state — matches
+    // quoteDetailsComplete() used to gray the button out in the first place.
+    if(!quoteDetailsComplete(p)){ showToast('Save the Formal Quote Details before sending.'); return; }
+    if(!confirm(`Send ${p.shortlist.length} quote${p.shortlist.length===1?'':'s'} to ${customerName(p.customerId)}? They'll be able to see and select from this shortlist right away.`)) return;
     p.status = 'customer_review';
     logActivity(p,'INNOUS', `${p.shortlist.length} supplier quotes reviewed and shortlisted. Sent to customer for decision.`);
     if(!p.isDemo){
