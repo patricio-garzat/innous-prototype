@@ -345,6 +345,22 @@ textarea{resize:vertical;min-height:90px;}
 .account-pw-toggle.open .account-pw-toggle-chev{transform:rotate(180deg);}
 .account-pw-panel{padding:16px 14px;border:1px solid var(--border-strong);border-top:none;border-bottom-left-radius:12px;border-bottom-right-radius:12px;background:var(--surface);animation:accountPwPanelIn .16s ease;}
 @keyframes accountPwPanelIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+/* Same toggle-row + connected-panel pattern as .account-pw-toggle above,
+   generalized for the Ajustes page (fix48): each settings category is
+   collapsed to a single row by default — click it to expand just that one,
+   collapsing whatever was open before — instead of every category's full
+   form sitting open on the page at once. */
+.settings-toggle{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);cursor:pointer;transition:border-color .15s;margin-bottom:10px;}
+.settings-toggle:hover{border-color:var(--border-strong);}
+.settings-toggle.open{border-color:var(--border-strong);border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0;}
+.settings-toggle-icon{width:38px;height:38px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.settings-toggle-icon svg{width:18px;height:18px;stroke:var(--accent-ink);}
+.settings-toggle-text{flex:1;min-width:0;}
+.settings-toggle-title{font-size:14px;font-weight:700;color:var(--ink);font-family:'Ubuntu',sans-serif;}
+.settings-toggle-sub{font-size:12px;color:var(--ink-tertiary);margin-top:2px;}
+.settings-toggle-chev{width:18px;height:18px;stroke:var(--ink-tertiary);flex:0 0 auto;transition:transform .2s;}
+.settings-toggle.open .settings-toggle-chev{transform:rotate(180deg);}
+.settings-panel{padding:18px 16px;border:1px solid var(--border-strong);border-top:none;border-bottom-left-radius:var(--radius);border-bottom-right-radius:var(--radius);background:var(--surface);margin-bottom:10px;animation:accountPwPanelIn .16s ease;}
 .password-field{margin-bottom:14px;}
 .password-input-wrap{position:relative;}
 .password-input-wrap input{padding-right:40px;}
@@ -1864,7 +1880,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -5379,6 +5395,26 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
 };
 
 /* ---- INNOUS Settings ---- */
+// One collapsible category row for the Ajustes accordion (fix48) — closed
+// by default, and opening one closes whatever else was open (see
+// App.toggleSettingsSection), so the page reads as a short menu of options
+// instead of every category's fields sitting open at once.
+function settingsSection(key, icon, title, sub, bodyHtml, danger){
+  const open = STATE.ui.settingsOpenSection===key;
+  const iconStyle = danger?' style="background:var(--danger-soft);"':'';
+  const iconSvgStyle = danger?' style="stroke:var(--danger);"':'';
+  const panelStyle = danger?' style="border-color:#F9C6C6;"':'';
+  return `
+  <div class="settings-toggle ${open?'open':''}" onclick="App.toggleSettingsSection('${key}')">
+    <div class="settings-toggle-icon"${iconStyle}><i data-lucide="${icon}"${iconSvgStyle}></i></div>
+    <div class="settings-toggle-text">
+      <div class="settings-toggle-title">${title}</div>
+      <div class="settings-toggle-sub">${sub}</div>
+    </div>
+    <i data-lucide="chevron-down" class="settings-toggle-chev"></i>
+  </div>
+  ${open?`<div class="settings-panel"${panelStyle}>${bodyHtml}</div>`:''}`;
+}
 ROUTES['innous/settings'] = function(){
   if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
@@ -5386,8 +5422,7 @@ ROUTES['innous/settings'] = function(){
   <div class="content-inner" style="max-width:680px;">
     <div class="page-header"><div><div class="page-title">Configuración</div><div class="page-subtitle">Configuración de la plataforma</div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Empresa</div>
+    ${settingsSection('empresa','building-2','Empresa','Razón social, domicilio y datos fiscales de Innous', `
       <div class="section-sub">Se usa en la cotización formal en PDF que el cliente puede descargar al elegir un proveedor, y en el membrete de la Orden de Compra del proveedor.</div>
       <div class="form-row" style="margin-top:12px;">
         <div class="form-group"><label class="field-label">Razón Social</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
@@ -5398,26 +5433,23 @@ ROUTES['innous/settings'] = function(){
         <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" oninput="STATE.ui.settingsDraft.rfc=this.value"></div>
         <div class="form-group"><label class="field-label">Teléfono</label><input type="text" value="${escAttr(d.phone)}" oninput="STATE.ui.settingsDraft.phone=this.value"></div>
       </div>
-    </div>
-    ${settingsBillingInfoSection()}
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Precios por Defecto</div>
+    `)}
+    ${settingsSection('clientes-proveedores','users','Clientes y Proveedores','Editar datos de contacto y facturación', settingsBillingInfoSection())}
+    ${settingsSection('precios','percent','Precios por Defecto','Markup y tipo de cambio inicial', `
       <div class="section-sub">Se aplica como punto de partida al comparar nuevas cotizaciones de proveedores.</div>
       <div class="form-group" style="margin-top:12px;"><label class="field-label">Markup por Defecto</label>
         <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<button type="button" class="markup-chip ${m===d.defaultMarkupPct?'active':''}" onclick="App.setDraftMarkup(${m})">${m}%</button>`).join('')}</div>
       </div>
       <div class="form-group"><label class="field-label">Tipo de Cambio por Defecto (MXN por 1 USD)</label><input type="number" step="0.01" min="0.01" value="${d.defaultExchangeRate}" oninput="STATE.ui.settingsDraft.defaultExchangeRate=parseFloat(this.value)||DEFAULT_SETTINGS.defaultExchangeRate"></div>
       <div class="section-sub">Los proveedores cotizan en MXN — este es el tipo de cambio inicial que ve INNOUS al convertir la cotización de un proveedor a USD para el cliente. Siempre se puede ajustar por RFQ, justo donde comparas cotizaciones, ya que el tipo de cambio real cambia día a día.</div>
-    </div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Notificaciones</div>
+    `)}
+    ${settingsSection('notificaciones','bell','Notificaciones','Qué avisos quieres recibir', `
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.newRfq?'checked':''} onchange="STATE.ui.settingsDraft.notif.newRfq=this.checked"><span>Nuevo RFQ enviado</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.quoteReceived?'checked':''} onchange="STATE.ui.settingsDraft.notif.quoteReceived=this.checked"><span>Cotización de proveedor recibida</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.customerSelects?'checked':''} onchange="STATE.ui.settingsDraft.notif.customerSelects=this.checked"><span>El cliente elige una cotización</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.weeklySummary?'checked':''} onchange="STATE.ui.settingsDraft.notif.weeklySummary=this.checked"><span>Resumen semanal de analítica</span></div></div>
-    </div>
-    <div class="card card-pad" style="border-color:#F9C6C6;">
-      <div class="section-title" style="color:var(--danger);">Datos de Ejemplo</div>
+    `)}
+    ${settingsSection('datos-ejemplo','database','Datos de Ejemplo','Cargar o borrar cuentas de prueba', `
       <div class="section-sub">${localStorage.getItem('innous_demo_loaded')==='1'
         ? 'Actualmente hay clientes, proveedores y RFQs de ejemplo cargados, para explorar toda la riqueza de la plataforma.'
         : 'La plataforma está corriendo solo con cuentas reales — no hay datos de ejemplo cargados. Puedes cargar un set de clientes, proveedores y RFQs de ejemplo para explorar la plataforma completa.'}</div>
@@ -5427,7 +5459,7 @@ ROUTES['innous/settings'] = function(){
           : `<button class="btn btn-secondary" onclick="App.loadExampleData()"><i data-lucide="database"></i>Cargar Datos de Ejemplo</button>`}
       </div>
       <div class="field-hint" style="margin-top:10px;">Cualquiera de las dos acciones también borra las cuentas de prueba reales registradas en este navegador (tu acceso de INNOUS se vuelve a crear automáticamente).</div>
-    </div>
+    `, true)}
   </div>`;
 };
 
@@ -7019,6 +7051,7 @@ const App = {
     STATE.ui.customerBillingDrafts[id][field] = val;
   },
   openAccountInfoModal(type, id){ STATE.ui.accountInfoModal = {type, id}; openModal(accountInfoModalHtml(), true); },
+  toggleSettingsSection(key){ STATE.ui.settingsOpenSection = STATE.ui.settingsOpenSection===key ? null : key; route(); },
   async saveCustomerBillingInfo(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const d = STATE.ui.customerBillingDrafts[id] || {};
