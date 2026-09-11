@@ -1097,6 +1097,14 @@ function projectRowToJs(row, existing){
     items: Array.isArray(row.items) ? row.items.map(it=>({
       description: it.description||'', process: it.process||'', quantity: it.quantity||0, material: it.material||'',
       targetPriceUsd: STATE.role==='SUPPLIER' ? null : (it.targetPriceUsd ?? null),
+      // Pre-computed per-item MXN payout (fix39) — set once, at the same
+      // moment target_price_supplier_budget_mxn is locked in (see
+      // App.sendRfqToSuppliers), for items that had their own target price.
+      // Safe for a supplier to see for the same reason the aggregate budget
+      // is: it's the number with markup% already baked in and divided out,
+      // not the raw USD price or the markup itself — so, unlike
+      // targetPriceUsd just above, this one is NEVER role-gated.
+      supplierCostMxn: it.supplierCostMxn ?? null,
     })) : [],
     // Every supplier-matchable process across all items (for legacy
     // single-item rows with no `items[]`, falls back to splitting the
@@ -2167,17 +2175,21 @@ function generateQuotePdf(p){
   doc.text('TOTAL PRICE', cX.total+cW.total/2, y+11, {align:'center'});
   y += 16;
 
-  // Multi-item RFQs (fix37) get one real row per item. The supplier still
-  // quotes ONE lump sum for the whole RFQ (see supplierQuoteForm) — there's
-  // no true per-item price to put in Unit/Total Price beyond a single item,
-  // so those columns show "—" per row rather than a fabricated split; the
-  // one real number still only ever appears once, in the Totals panel below.
+  // Multi-item RFQs (fix37) get one real row per item. For a normal
+  // (non-target-price) RFQ the supplier only ever quoted ONE lump sum for
+  // the whole thing, so those rows show "—" for Unit/Total Price — the one
+  // real number stays in the Totals panel below. For a target-price RFQ,
+  // an item the client put their OWN target price on gets that price shown
+  // back to them here — the client's formal quote should read like the RFQ
+  // they actually submitted, not a number INNOUS computed on top of it.
   const items = (p.items && p.items.length) ? p.items : [{ description:p.description, process:p.process, material:p.material, quantity:p.quantity }];
   const singleItem = items.length===1;
   const lineItems = items.map((it,i)=>{
     const descText = `${(it.process||'').toUpperCase()}${it.material?', '+it.material.toUpperCase():''}. ${(it.description||'').toUpperCase()}`.trim();
-    return { item:String(i+1), desc:doc.splitTextToSize(descText, cW.desc-12), part:'—', qty:String(it.quantity||0), uom:'PCS',
-      unit: singleItem?fmtMoneyPdf2(unitPrice):'—', total: singleItem?fmtMoneyPdf2(total):'—' };
+    let unit = '—', itemTotal = '—';
+    if(singleItem){ unit = fmtMoneyPdf2(unitPrice); itemTotal = fmtMoneyPdf2(total); }
+    else if(it.targetPriceUsd){ itemTotal = fmtMoneyPdf2(it.targetPriceUsd); unit = fmtMoneyPdf2(it.quantity ? it.targetPriceUsd/it.quantity : it.targetPriceUsd); }
+    return { item:String(i+1), desc:doc.splitTextToSize(descText, cW.desc-12), part:'—', qty:String(it.quantity||0), uom:'PCS', unit, total:itemTotal };
   });
   for(let i=lineItems.length; i<6; i++) lineItems.push({ item:String(i+1), desc:[''], part:'', qty:'', uom:'', unit:'', total:'' });
 
@@ -2201,9 +2213,9 @@ function generateQuotePdf(p){
   doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
   ['desc','part','qty','uom','unit','total'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
   y += 12;
-  if(!singleItem){
+  if(!singleItem && items.some(it=>!it.targetPriceUsd)){
     doc.setFont('Calibri','italic'); doc.setFontSize(6.8); doc.setTextColor(...inkSec);
-    doc.text('Pricing is quoted as a single package covering all items listed above — see Total below.', marginL, y);
+    doc.text('Items without an individual price are quoted as part of the package — see Total below.', marginL, y);
     y += 12;
   }
 
@@ -2444,17 +2456,24 @@ function generatePurchaseOrderPdf(p){
   doc.text('IMPORTE', cX.importe+cW.importe/2, y+11, {align:'center'});
   y += 16;
 
-  // Multi-item RFQs (fix37) get one real row per item. The supplier still
-  // quoted ONE lump sum for the whole RFQ, so there's no true per-item price
-  // to put in P. Unitario/Importe beyond a single item — those columns show
-  // "—" per row rather than a fabricated split; the real Subtotal/Total
-  // below is unaffected either way.
+  // Multi-item RFQs (fix37) get one real row per item. For a normal
+  // (non-target-price) RFQ the supplier only ever quoted ONE lump sum for
+  // the whole thing, so there's no true per-item price to show — those rows
+  // get "—". For a target-price RFQ, though, an item that had its own
+  // target price DOES have a real per-item payout: supplierCostMxn (fix39),
+  // pre-computed from that item's target price using the same markup% and
+  // exchange rate INNOUS locked in for the whole RFQ — see
+  // App.sendRfqToSuppliers. Either way the real Subtotal/Total below is
+  // unaffected (and for target-price items, the per-item numbers sum
+  // exactly back to it, since the formula is linear).
   const items = (p.items && p.items.length) ? p.items : [{ description:p.description, process:p.process, material:p.material, quantity:p.quantity }];
   const singleItem = items.length===1;
   const lineItems = items.map((it,i)=>{
     const descText = `${(it.process||'').toUpperCase()}${it.material?', '+it.material.toUpperCase():''}. ${(it.description||'').toUpperCase()}`.trim();
-    return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', parte:'—', desc:doc.splitTextToSize(descText, cW.desc-12),
-      unit: singleItem?fmtMXNPdf2(q.unitPrice||0):'—', importe: singleItem?fmtMXNPdf(q.unitPrice?q.unitPrice*p.quantity:0):'—' };
+    let unit = '—', importe = '—';
+    if(singleItem){ unit = fmtMXNPdf2(q.unitPrice||0); importe = fmtMXNPdf(q.unitPrice?q.unitPrice*p.quantity:0); }
+    else if(it.supplierCostMxn!=null){ importe = fmtMXNPdf(it.supplierCostMxn); unit = fmtMXNPdf2(it.quantity ? it.supplierCostMxn/it.quantity : it.supplierCostMxn); }
+    return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', parte:'—', desc:doc.splitTextToSize(descText, cW.desc-12), unit, importe };
   });
   [['Herramental',q.tooling],['Preparación / Setup',q.setup],['Envío',q.shipping]].forEach(([label,amt])=>{
     if(amt) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:[label], unit:fmtMXNPdf(amt), importe:fmtMXNPdf(amt) });
@@ -2481,9 +2500,9 @@ function generatePurchaseOrderPdf(p){
   doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
   ['cant','unidad','parte','desc','unit','importe'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
   y += 14;
-  if(!singleItem){
+  if(!singleItem && items.some(it=>it.supplierCostMxn==null)){
     doc.setFont('Calibri','italic'); doc.setFontSize(6.8); doc.setTextColor(...inkSec);
-    doc.text('El precio se cotiza como paquete para todas las partidas listadas arriba — ver Total abajo.', marginL, y);
+    doc.text('Las partidas sin precio individual se cotizan como parte del paquete — ver Total abajo.', marginL, y);
     y += 12;
   }
 
@@ -6560,7 +6579,18 @@ const App = {
       const rate = getExchangeRate(p.id);
       const budgetMxn = (p.targetPriceUsd / (1 + markup/100)) * rate;
       p.targetPriceMarkupPct = markup; p.targetPriceExchangeRate = rate; p.targetPriceSupplierBudgetMxn = budgetMxn;
-      projectsUpdate = { target_price_markup_pct: markup, target_price_exchange_rate: rate, target_price_supplier_budget_mxn: budgetMxn };
+      // Same formula, applied per item (fix39) — the Purchase Order needs a
+      // real per-item unit price, not just the RFQ-wide total, and this is
+      // the one place both the target price and the markup/rate it's about
+      // to be locked against are all in scope together. Only items the
+      // client actually put a target price on get one; the rest have no
+      // basis for an individual price (see generatePurchaseOrderPdf). Since
+      // the formula is linear, these always sum exactly back to budgetMxn.
+      const itemsWithCost = (p.items||[]).map(it=>it.targetPriceUsd
+        ? { ...it, supplierCostMxn: (it.targetPriceUsd/(1+markup/100))*rate }
+        : it);
+      p.items = itemsWithCost;
+      projectsUpdate = { target_price_markup_pct: markup, target_price_exchange_rate: rate, target_price_supplier_budget_mxn: budgetMxn, items: itemsWithCost };
     }
     p.invitedSupplierIds = [...p.invitedSupplierIds, ...newIds];
     newIds.forEach(sid=>{ p.supplierQuotes.push(p.isDemo ? makeQuoteStub(p, sid, false) : makeRealQuoteStub(sid)); });
