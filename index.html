@@ -128,6 +128,8 @@ svg{display:block;}
 .notif-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);width:340px;max-height:420px;overflow-y:auto;z-index:100;display:none;}
 .notif-menu.open{display:block;}
 .notif-menu-header{padding:12px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:700;}
+.notif-dismiss-all{font-size:11.5px;font-weight:600;color:var(--accent);}
+.notif-dismiss-all:hover{text-decoration:underline;}
 .notif-item{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);width:100%;text-align:left;}
 .notif-item:last-child{border-bottom:none;}
 .notif-item:hover{background:var(--surface-alt);}
@@ -2219,7 +2221,10 @@ function renderShell(){
   else { countEl.hidden = true; }
   document.getElementById('notif-menu').innerHTML = `
     ${notices.length ? `
-    <div class="notif-menu-header">${es?'Avisos':'Notices'} (${notices.length})</div>
+    <div class="notif-menu-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>${es?'Avisos':'Notices'} (${notices.length})</span>
+      ${notices.length>1?`<button type="button" class="notif-dismiss-all" onclick="App.dismissAllNotifications(event)">${es?'Borrar todas':'Clear all'}</button>`:''}
+    </div>
     ${notices.map(n=>`
       <button class="notif-item" style="align-items:flex-start;text-align:left;" onclick="App.dismissNotification('${n.id}')" title="${es?'Clic para cerrar':'Click to dismiss'}">
         <div class="notif-item-icon" style="background:var(--danger-soft);"><i data-lucide="bell" style="stroke:var(--danger);"></i></div>
@@ -4579,6 +4584,17 @@ const App = {
     renderShell();
     const { error } = await sb.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
     if(error) console.error('dismissNotification failed', error);
+  },
+  async dismissAllNotifications(e){
+    if(e) e.stopPropagation(); // don't let it bubble into the document click-outside handler mid-clear
+    const ids = (STATE.notifications||[]).map(n=>n.id);
+    if(!ids.length) return;
+    // Same optimistic-then-persist pattern as dismissing one — just applied
+    // to every notice currently shown in one shot instead of clicking each.
+    STATE.notifications = [];
+    renderShell();
+    const { error } = await sb.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids);
+    if(error) console.error('dismissAllNotifications failed', error);
   },
 
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
