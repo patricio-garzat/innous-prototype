@@ -1077,6 +1077,26 @@ function projectRowToJs(row, existing){
   return {
     id: row.id, customerId: row.customer_id, projectName: row.project_name, description: row.description,
     process: row.process, quantity: row.quantity, material: row.material,
+    // Line items (fix37) — the granular per-item breakdown the client
+    // entered on the RFQ form. `process`/`quantity`/`material`/`description`
+    // above stay the aggregate of these (unique processes joined, summed
+    // quantity, unique materials joined, a combined description) so every
+    // existing consumer of those flat fields — supplier matching, the RFQ
+    // list, PDFs — keeps working unchanged on both old rows (items=[]) and
+    // new ones. CONFIDENTIALITY: same rule as the RFQ-level target price
+    // below — a supplier sees an item's description/process/qty/material
+    // (that's the actual job) but never its raw target_price_usd.
+    items: Array.isArray(row.items) ? row.items.map(it=>({
+      description: it.description||'', process: it.process||'', quantity: it.quantity||0, material: it.material||'',
+      targetPriceUsd: STATE.role==='SUPPLIER' ? null : (it.targetPriceUsd ?? null),
+    })) : [],
+    // Every supplier-matchable process across all items (for legacy
+    // single-item rows with no `items[]`, falls back to splitting the
+    // aggregate `process` string) — see supplierMatchingSection(), which
+    // needs to match on ANY item's process, not just equality on one string.
+    processList: Array.isArray(row.items) && row.items.length
+      ? [...new Set(row.items.map(it=>it.process).filter(Boolean))]
+      : (row.process ? row.process.split(',').map(s=>s.trim()).filter(Boolean) : []),
     deliveryDate: row.delivery_date ? new Date(row.delivery_date) : null,
     deliveryLocation: row.delivery_location, qualityReq: row.quality_req, specialReq: row.special_req,
     files: row.files || [], createdAt: row.created_at ? new Date(row.created_at) : new Date(),
@@ -3442,6 +3462,39 @@ function rfqMiniTable(list){
   </tbody></table>`;
 }
 
+function newRfqItemDraft(){ return { description:'', process:'CNC Machining', quantity:'', material:'', targetPriceUsd:'' }; }
+// One item's fields inside the New RFQ form (fix37 — a client can add more
+// than one). No `name` attributes here — with an unbounded, reorderable
+// array, FormData keys would either collide or need index-juggling on
+// submit for no benefit; App.submitRfq instead reads straight from
+// STATE.ui.newRfqDraft.items, which oninput/onclick below already keep in
+// sync. `required` still works without a `name`, so native browser
+// validation still blocks submitting a half-filled item.
+function newRfqItemFieldsHtml(it, i, total){
+  return `
+  <div class="card card-pad" style="background:var(--bg-subtle,#FAFAFA);border:1px solid var(--border,#EAEAEA);margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="info-item-label">Item ${i+1}</div>
+      ${total>1?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.removeNewRfqItem(${i})"><i data-lucide="trash-2"></i>Remove</button>`:''}
+    </div>
+    <div class="form-group"><label class="field-label">Description</label><textarea oninput="App.updateNewRfqItem(${i},'description',this.value)" placeholder="Describe the part, application, and any critical requirements..." required>${escAttr(it.description)}</textarea></div>
+    <div class="form-group">
+      <label class="field-label">Manufacturing process</label>
+      <div class="process-grid">
+        ${PROCESSES.map(p=>`<div class="process-option ${it.process===p?'selected':''}" onclick="App.setNewRfqItemProcess(${i},'${p}')">${p}</div>`).join('')}
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Quantity</label><input type="number" value="${escAttr(it.quantity)}" oninput="App.updateNewRfqItem(${i},'quantity',this.value)" min="1" placeholder="e.g. 250" required></div>
+      <div class="form-group"><label class="field-label">Material</label><input type="text" value="${escAttr(it.material)}" oninput="App.updateNewRfqItem(${i},'material',this.value)" placeholder="e.g. Aluminum 6061" required></div>
+    </div>
+    <div class="form-group">
+      <label class="field-label">Target price (USD) — optional</label>
+      <input type="number" step="0.01" min="0" value="${escAttr(it.targetPriceUsd)}" oninput="App.updateNewRfqItem(${i},'targetPriceUsd',this.value)" placeholder="Leave blank if you don't have one">
+      <div class="field-hint">If you have a budget in mind for this item, INNOUS will try to source a supplier that can meet it. The first supplier that accepts is awarded the project immediately.</div>
+    </div>
+  </div>`;
+}
 /* ---- New RFQ ----
    Fields are "controlled": every value is read from STATE.ui.newRfqDraft and
    every edit writes straight back into it via oninput/onchange (no route()
@@ -3450,7 +3503,7 @@ function rfqMiniTable(list){
    adding/removing a simulated file — the fields repopulate from state
    instead of the form resetting to blank. */
 ROUTES['client/new-rfq'] = function(){
-  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryCountry:'US', deliveryZip:'', deliveryLocation:'', specialReq:'', targetPriceUsd:'' }; STATE.ui.newRfqFiles = []; }
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { projectName:'', items:[newRfqItemDraft()], deliveryMethod:'delivery', deliveryDate:'', deliveryCountry:'US', deliveryZip:'', deliveryLocation:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
   const d = STATE.ui.newRfqDraft;
   return `
   <div class="content-inner" style="max-width:820px;">
@@ -3466,17 +3519,10 @@ ROUTES['client/new-rfq'] = function(){
       <hr class="divider">
       <div class="section-title">Project Details</div>
       <div class="form-group"><label class="field-label">Project name</label><input type="text" name="projectName" value="${escAttr(d.projectName)}" oninput="STATE.ui.newRfqDraft.projectName=this.value" placeholder="e.g. Hydraulic Housing" required></div>
-      <div class="form-group"><label class="field-label">Description</label><textarea name="description" oninput="STATE.ui.newRfqDraft.description=this.value" placeholder="Describe the part, application, and any critical requirements..." required>${escAttr(d.description)}</textarea></div>
-      <div class="form-group">
-        <label class="field-label">Manufacturing process</label>
-        <div class="process-grid">
-          ${PROCESSES.map(p=>`<div class="process-option ${d.process===p?'selected':''}" onclick="App.setNewRfqProcess('${p}')">${p}</div>`).join('')}
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label class="field-label">Quantity</label><input type="number" name="quantity" value="${escAttr(d.quantity)}" oninput="STATE.ui.newRfqDraft.quantity=this.value" min="1" placeholder="e.g. 250" required></div>
-        <div class="form-group"><label class="field-label">Material</label><input type="text" name="material" value="${escAttr(d.material)}" oninput="STATE.ui.newRfqDraft.material=this.value" placeholder="e.g. Aluminum 6061" required></div>
-      </div>
+      <div class="section-sub" style="margin:-2px 0 12px;">Add one item per part or assembly this RFQ needs. If it's just one thing, one item is fine.</div>
+      ${d.items.map((it,i)=>newRfqItemFieldsHtml(it,i,d.items.length)).join('')}
+      <button type="button" class="btn btn-secondary btn-sm" style="margin-bottom:18px;" onclick="App.addNewRfqItem()"><i data-lucide="plus"></i>Add Another Item</button>
+      <hr class="divider">
       <div class="form-row">
         <div class="form-group"><label class="field-label">Required delivery date</label><input type="date" name="deliveryDate" value="${escAttr(d.deliveryDate)}" oninput="STATE.ui.newRfqDraft.deliveryDate=this.value" required></div>
         <div class="form-group">
@@ -3504,11 +3550,6 @@ ROUTES['client/new-rfq'] = function(){
         <div class="field-hint" id="zip-lookup-status"></div>
       </div>` : ''}
       <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" oninput="STATE.ui.newRfqDraft.specialReq=this.value" placeholder="Packaging, testing, finish, etc.">${escAttr(d.specialReq)}</textarea></div>
-      <div class="form-group">
-        <label class="field-label">Target price (USD) — optional</label>
-        <input type="number" name="targetPriceUsd" step="0.01" min="0" value="${escAttr(d.targetPriceUsd)}" oninput="STATE.ui.newRfqDraft.targetPriceUsd=this.value" placeholder="Leave blank if you don't have one">
-        <div class="field-hint">If you have a budget in mind, INNOUS will try to source a supplier that can meet it. The first supplier that accepts your target price is awarded the project immediately.</div>
-      </div>
       <hr class="divider">
       <div class="section-title">Upload drawings &amp; project files</div>
       <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG — up to 25 MB each</div>
@@ -3571,16 +3612,13 @@ ROUTES['client/rfq'] = function(id){
       <div class="card card-pad">
         <div class="section-title">Project Information</div>
         <div class="info-grid" style="margin-top:12px;">
-          ${infoItem('Manufacturing Process', p.process)}
-          ${infoItem('Quantity', p.quantity.toLocaleString()+' units')}
-          ${infoItem('Material', p.material)}
           ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
           ${infoItem('Delivery Location', p.deliveryLocation)}
-          ${p.targetPriceUsd?infoItem('Target Price', fmtMoney(p.targetPriceUsd)):''}
+          ${p.targetPriceUsd?infoItem('Total Target Price', fmtMoney(p.targetPriceUsd)):''}
         </div>
         <hr class="divider">
-        <div class="info-item-label">Description</div>
-        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        <div class="info-item-label">${p.items&&p.items.length>1?'Items':'Item'}</div>
+        ${rfqItemsBlock(p)}
         ${p.specialReq&&p.specialReq!=='—'?`<div class="info-item-label" style="margin-top:14px;">Special Requirements</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.specialReq}</div>`:''}
       </div>
       <div>
@@ -3597,6 +3635,38 @@ ROUTES['client/rfq'] = function(id){
   </div>`;
 };
 function infoItem(label,val){ return `<div><div class="info-item-label">${label}</div><div class="info-item-val">${val}</div></div>`; }
+// Shared line-items renderer for the 3 RFQ detail pages (fix37). A pre-fix37
+// row (or a demo project, which never goes through projectRowToJs) has no
+// `items[]` at all — falls back to the single Process/Quantity/Material/
+// Description fields exactly as before fix37, so nothing old ever breaks.
+// `opts` lets each audience use its own labels/language (English for
+// client & INNOUS, Spanish for supplier) without three near-duplicate
+// functions. Target price per item only ever renders if it's non-null —
+// for a SUPPLIER that's already guaranteed by projectRowToJs nulling it
+// out, so no extra role check is needed here.
+function rfqItemsBlock(p, opts={}){
+  const L = { process:'Process', quantity:'Quantity', material:'Material', item:'Item', targetPrice:'Target Price', units:' units', ...opts };
+  const proc = v => opts.translateProcess ? procES(v) : v;
+  if(!p.items || !p.items.length){
+    return `<div class="info-grid" style="margin-top:12px;grid-template-columns:${opts.legacyCols||'1fr 1fr 1fr'};">
+        ${infoItem(L.process, proc(p.process))}
+        ${infoItem(L.quantity, (p.quantity||0).toLocaleString()+(opts.legacyQtyUnit||L.units))}
+        ${infoItem(L.material, p.material)}
+      </div>
+      <div style="font-size:13px;color:var(--ink-secondary);margin-top:10px;">${p.description}</div>`;
+  }
+  return `<div style="margin-top:12px;">${p.items.map((it,i)=>`
+    <div class="card card-pad" style="box-shadow:none;border:1px solid var(--border,#EAEAEA);margin-bottom:10px;">
+      <div class="info-item-label" style="margin-bottom:8px;">${L.item} ${i+1}</div>
+      <div class="info-grid" style="grid-template-columns:1fr 1fr;">
+        ${infoItem(L.process, proc(it.process))}
+        ${infoItem(L.quantity, (it.quantity||0).toLocaleString())}
+        ${infoItem(L.material, it.material)}
+        ${it.targetPriceUsd?infoItem(L.targetPrice, fmtMoney(it.targetPriceUsd)):''}
+      </div>
+      <div style="font-size:13px;color:var(--ink-secondary);margin-top:8px;">${it.description}</div>
+    </div>`).join('')}</div>`;
+}
 
 /* ---- Client Quotes View ---- */
 ROUTES['client/quotes'] = function(id){
@@ -3967,16 +4037,13 @@ ROUTES['innous/rfq'] = function(id){
         <div class="section-title">RFQ Information</div>
         <div class="info-grid" style="margin-top:12px;">
           ${infoItem('Customer', customerName(p.customerId))}
-          ${infoItem('Process', p.process)}
-          ${infoItem('Quantity', p.quantity.toLocaleString())}
-          ${infoItem('Material', p.material)}
           ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
           ${infoItem('Delivery Location', p.deliveryLocation)}
-          ${p.targetPriceUsd?infoItem('Target Price', fmtMoney(p.targetPriceUsd)):''}
+          ${p.targetPriceUsd?infoItem('Total Target Price', fmtMoney(p.targetPriceUsd)):''}
         </div>
         <hr class="divider">
-        <div class="info-item-label">Specifications</div>
-        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        <div class="info-item-label">${p.items&&p.items.length>1?'Items':'Item'}</div>
+        ${rfqItemsBlock(p)}
       </div>
       <div class="card card-pad">
         <div class="section-title">Files</div>
@@ -4076,7 +4143,12 @@ function supplierMatchingSection(p){
   // never shown here again — there's nothing left to "recommend".
   if(!['under_review','sourcing'].includes(p.status)) return '';
   const notYetInvited = s => !p.invitedSupplierIds.includes(s.id);
-  const eligible = SUPPLIERS.filter(s=>s.capabilities.includes(p.process) && notYetInvited(s));
+  // A multi-item RFQ (fix37) can span more than one process — eligible means
+  // capable of at least one of them. processList falls back to splitting
+  // the aggregate `process` string for demo projects / legacy rows that
+  // never went through projectRowToJs.
+  const rfqProcesses = (p.processList && p.processList.length) ? p.processList : (p.process||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const eligible = SUPPLIERS.filter(s=>rfqProcesses.some(proc=>s.capabilities.includes(proc)) && notYetInvited(s));
   const candidates = eligible.length ? eligible : SUPPLIERS.filter(notYetInvited);
   if(!candidates.length) return p.invitedSupplierIds.length ? `<div class="card card-pad" style="margin-bottom:20px;"><div class="section-title">Recommended Suppliers</div><div class="section-sub">Every verified supplier for this process has already been invited.</div></div>` : '';
   const selected = STATE.ui.selectedInviteSuppliers;
@@ -5079,16 +5151,13 @@ ROUTES['supplier/rfq'] = function(id){
       <div class="card card-pad">
         <div class="section-title">Especificaciones del RFQ</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
-          ${infoItem('Proceso', procES(p.process))}
-          ${infoItem('Cantidad', p.quantity.toLocaleString())}
-          ${infoItem('Material', p.material)}
           ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
           ${infoItem('Ubicación de entrega', p.deliveryLocation)}
           ${infoItem('Fecha límite de cotización', fmtDate(addDays(p.createdAt,10)))}
         </div>
         <hr class="divider">
-        <div class="info-item-label">Descripción</div>
-        <div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.description}</div>
+        <div class="info-item-label">${p.items&&p.items.length>1?'Partidas':'Partida'}</div>
+        ${rfqItemsBlock(p, {process:'Proceso', quantity:'Cantidad', material:'Material', item:'Partida', targetPrice:'Precio Meta', units:' pzas', translateProcess:true, legacyCols:'1fr 1fr 1fr', legacyQtyUnit:' pzas'})}
       </div>
       <div class="card card-pad">
         <div class="section-title">Archivos</div>
@@ -5972,7 +6041,19 @@ const App = {
   },
 
   /* ---- New RFQ form ---- */
-  setNewRfqProcess(p){ STATE.ui.newRfqDraft.process = p; route(); },
+  addNewRfqItem(){ STATE.ui.newRfqDraft.items.push(newRfqItemDraft()); route(); },
+  removeNewRfqItem(i){
+    // The Remove button itself only ever renders when total>1 (see
+    // newRfqItemFieldsHtml), but guard here too since nothing stops a
+    // client-side console call.
+    if(STATE.ui.newRfqDraft.items.length<=1) return;
+    STATE.ui.newRfqDraft.items.splice(i,1); route();
+  },
+  setNewRfqItemProcess(i,p){ STATE.ui.newRfqDraft.items[i].process = p; route(); },
+  // No route() here — fires on every keystroke (oninput); re-rendering on
+  // each one would blow away focus/cursor position mid-type, same reasoning
+  // as updateQuoteDetailDraft/updateSupplierQuoteDraft elsewhere.
+  updateNewRfqItem(i,field,val){ STATE.ui.newRfqDraft.items[i][field] = val; },
   setNewRfqDeliveryMethod(method){
     STATE.ui.newRfqDraft.deliveryMethod = method;
     if(method==='pickup') STATE.ui.newRfqDraft.deliveryLocation = '';
@@ -6240,6 +6321,26 @@ const App = {
     const filesToUpload = STATE.ui.newRfqFiles.filter(x=>x.file);
     const activity = [{ts:new Date().toISOString(), actor:currentClient().company, text:'RFQ submitted.'}];
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    // Turn the line items the client entered (fix37) into the single
+    // aggregate process/quantity/material/description every existing
+    // consumer of a project row still expects — supplier matching, the RFQ
+    // list, PDFs. `items` itself carries the real per-item breakdown; see
+    // the note above rfqItemsBlock(). Per the same logic, this RFQ's overall
+    // target price is the SUM of whichever items' target prices the client
+    // set (null if none did) — the rest of the target-price flow (INNOUS
+    // setting markup/rate, suppliers accepting) already operates on that one
+    // total number and needed no changes.
+    const items = STATE.ui.newRfqDraft.items.map(it=>({
+      description: (it.description||'').trim(), process: it.process, material: (it.material||'').trim(),
+      quantity: parseInt(it.quantity)||1, targetPriceUsd: parseFloat(it.targetPriceUsd)||null,
+    }));
+    const processes = [...new Set(items.map(it=>it.process))];
+    const materials = [...new Set(items.map(it=>it.material).filter(Boolean))];
+    const totalQuantity = items.reduce((s,it)=>s+it.quantity,0);
+    const combinedDescription = items.length===1 ? items[0].description
+      : items.map((it,i)=>`Item ${i+1} (${it.quantity.toLocaleString()} × ${it.process}${it.material?', '+it.material:''}): ${it.description}`).join('\n');
+    const itemTargetPrices = items.map(it=>it.targetPriceUsd).filter(v=>v>0);
+    const targetPriceUsd = itemTargetPrices.length ? itemTargetPrices.reduce((a,b)=>a+b,0) : null;
     try{
       // No `id` here on purpose — the column's DEFAULT (a Postgres sequence,
       // see supabase-fix27-rfq-sequential-folio.sql / fix31) assigns the next
@@ -6247,11 +6348,11 @@ const App = {
       // submitting at the same moment can never end up with the same folio
       // the way a browser-computed one theoretically could.
       const { data: inserted, error } = await withTimeout(sb.from('projects').insert({
-        customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
-        process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
+        customer_id: STATE.clientId, project_name: f.get('projectName'), description: combinedDescription,
+        process: processes.join(', '), quantity: totalQuantity, material: materials.join(', '), items,
         delivery_date: f.get('deliveryDate')||null, delivery_location: deliveryLocation,
         quality_req: 'Standard quality documentation.', special_req: f.get('specialReq')||'—',
-        target_price_usd: parseFloat(f.get('targetPriceUsd'))||null,
+        target_price_usd: targetPriceUsd,
         files: [], status:'submitted', activity,
       }).select('id').single(), 12000, 'submitRfq');
       if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
