@@ -461,10 +461,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;}
 .chat-input-row{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border);}
 .chat-input-row input{flex:1;}
-.chat-subject-bar{display:flex;align-items:center;gap:8px;padding:8px 18px;border-bottom:1px solid var(--border);background:var(--surface-alt);font-size:12px;}
-.chat-subject-bar input{flex:1;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--ink-secondary);padding:2px 0;}
-.chat-subject-bar input:focus{outline:none;color:var(--ink);}
-.chat-subject-divider{align-self:center;background:var(--surface-alt);border:1px solid var(--border);border-radius:99px;padding:3px 12px;font-size:11px;font-weight:700;color:var(--ink-tertiary);margin:4px 0;}
+.chat-staged-file{display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:12px;color:var(--ink-secondary);background:var(--surface-alt);border-top:1px solid var(--border);}
+.chat-staged-file button{margin-left:auto;background:none;border:none;cursor:pointer;color:var(--ink-tertiary);display:flex;padding:2px;}
+.chat-staged-file button:hover{color:var(--danger);}
+.chat-staged-file i{width:13px;height:13px;flex:0 0 auto;}
+.chat-staged-file button i{width:13px;height:13px;}
 @media(max-width:768px){
   .chat-panel{flex-direction:column;height:auto;}
   .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
@@ -999,7 +1000,7 @@ function customerRowToJs(row){
     // that. See generateQuotePdf() / App.saveCustomerBillingInfo.
     position: row.position||'', address: row.address||'',
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
-    photo: row.photo_url || null, generalChat: [],
+    photo: row.photo_url || null, chats: {},
   };
 }
 function supplierRowToJs(row){
@@ -1013,7 +1014,7 @@ function supplierRowToJs(row){
     capacity: row.capacity||'Not set', operators: row.operators||0, yearsOperating: row.years_operating||0,
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
     rating: row.rating||0, onTime: row.on_time_pct||0, quality: row.quality_pct||0, projects: row.projects_won||0,
-    photo: row.photo_url || null, generalChat: [],
+    photo: row.photo_url || null, chats: {},
   };
 }
 /* INNOUS is the one role that must see every real customer/supplier, not
@@ -1212,7 +1213,10 @@ async function refreshRealProjects(){
     p.order = orderRowToJs(row);
   });
 }
-function messageRowToJs(row){ return { id: row.id, from: row.from_role, text: row.text, subject: row.subject||null, ts: new Date(row.ts) }; }
+function messageRowToJs(row){
+  return { id: row.id, from: row.from_role, text: row.text, ts: new Date(row.ts),
+    attachmentPath: row.attachment_path||null, attachmentName: row.attachment_name||null };
+}
 // Merges fetched rows into an existing chat thread array by id, so a
 // repeated poll (see pollLiveUpdates) never duplicates a message already
 // sitting there from an earlier fetch or from this same tab's own optimistic
@@ -1227,27 +1231,34 @@ function mergeMessages(thread, rows){
   });
   if(changed) thread.sort((a,b)=>a.ts-b.ts);
 }
-/* ---- Real messages — ONE direct, ongoing conversation per person, not one
-   per RFQ: every message between Innous and a given customer or supplier
-   lives in messages_general (owner_type/owner_id = that customer's or
-   supplier's own id), whatever RFQ it happens to be about — see the
-   optional per-message `subject` tag for that. RLS already scopes the
-   SELECT to exactly what this role may see (a client only its own
-   conversation; a supplier only its own; INNOUS every conversation with
+/* ---- Real messages — several NAMED chats per person, not one continuous
+   stream: every row in messages_general belongs to (owner_type, owner_id,
+   thread_name) — that customer's or supplier's own id, plus whichever named
+   chat ("RFQ-2026-0004", "General", ...) it's part of. RLS already scopes
+   the SELECT to exactly what this role may see (a client only its own
+   conversations; a supplier only its own; INNOUS every conversation with
    every customer and supplier) — this just merges whatever comes back into
-   the generalChat array on that customer/supplier record. */
+   the right chatThread() array on that customer/supplier record. */
+function mergeThreadedMessages(entity, rows){
+  const byThread = {};
+  rows.forEach(row=>{ const name = row.thread_name||'General'; (byThread[name]=byThread[name]||[]).push(row); });
+  Object.keys(byThread).forEach(name=> mergeMessages(chatThread(entity, name), byThread[name]));
+}
 async function refreshRealMessages(){
   if(STATE.role==='CLIENT'){
     const { data:g } = await sb.from('messages_general').select('*').eq('owner_type','client').eq('owner_id', STATE.clientId);
-    if(g) mergeMessages(chatOf(currentClient()), g);
+    if(g) mergeThreadedMessages(currentClient(), g);
   } else if(STATE.role==='SUPPLIER'){
     const { data:g } = await sb.from('messages_general').select('*').eq('owner_type','supplier').eq('owner_id', STATE.supplierId);
-    if(g) mergeMessages(chatOf(currentSupplier()), g);
+    if(g) mergeThreadedMessages(currentSupplier(), g);
   } else if(STATE.role==='INNOUS'){
     const { data:g } = await sb.from('messages_general').select('*');
-    (g||[]).forEach(row=>{
-      const owner = row.owner_type==='client' ? CUSTOMERS.find(c=>c.id===row.owner_id) : SUPPLIERS.find(s=>s.id===row.owner_id);
-      if(owner) mergeMessages(chatOf(owner), [row]);
+    const byOwner = {};
+    (g||[]).forEach(row=>{ const k=row.owner_type+':'+row.owner_id; (byOwner[k]=byOwner[k]||[]).push(row); });
+    Object.keys(byOwner).forEach(k=>{
+      const [ownerType, ownerId] = k.split(':');
+      const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
+      if(owner) mergeThreadedMessages(owner, byOwner[k]);
     });
   }
 }
@@ -1572,20 +1583,20 @@ function seedHeroQuotesAndShortlist(proj){
     {ts:addDays(proj.createdAt,0),actor:'INNOUS', text:'RFQ reviewed and approved for sourcing.'},
     {ts:proj.createdAt,actor:'ABC Manufacturing', text:'RFQ submitted.'},
   ];
-  // One direct, ongoing conversation per person (see refreshRealMessages) —
-  // not one per RFQ — so these land on the customer's/supplier's own
-  // generalChat, tagged with this RFQ as the subject being discussed.
+  // Each person can have several named chats with INNOUS (see chatThread) —
+  // this RFQ gets its own, named after its own id, same as a real one
+  // created from the RFQ page's "Message Customer/Supplier" button would.
   const demoCustomer = CUSTOMERS.find(c=>c.id===proj.customerId);
-  if(demoCustomer) chatOf(demoCustomer).push(
-    {from:'client',text:'Hi team, wanted to check on timing for the hydraulic housing quotes.',subject:proj.id,ts:addDays(proj.createdAt,6)},
-    {from:'innous',text:'Hi Diane — quotes are in from all 6 suppliers, our team is finalizing the top options now. You should have your shortlist within 2 business days.',subject:proj.id,ts:addDays(proj.createdAt,6)},
-    {from:'innous',text:'Your shortlist of 5 manufacturing options is ready for review.',subject:proj.id,ts:addDays(proj.createdAt,9)},
+  if(demoCustomer) chatThread(demoCustomer, proj.id).push(
+    {from:'client',text:'Hi team, wanted to check on timing for the hydraulic housing quotes.',ts:addDays(proj.createdAt,6)},
+    {from:'innous',text:'Hi Diane — quotes are in from all 6 suppliers, our team is finalizing the top options now. You should have your shortlist within 2 business days.',ts:addDays(proj.createdAt,6)},
+    {from:'innous',text:'Your shortlist of 5 manufacturing options is ready for review.',ts:addDays(proj.createdAt,9)},
   );
   proj.invitedSupplierIds.forEach(sid=>{
     const demoSupplier = SUPPLIERS.find(s=>s.id===sid); if(!demoSupplier) return;
-    chatOf(demoSupplier).push(
-      {from:'innous',text:'Thanks for the quick turnaround on this quote. A couple questions on tooling amortization — can you confirm it is a one-time cost?',subject:proj.id,ts:addDays(proj.createdAt,5)},
-      {from:'supplier',text:'Yes, tooling is a one-time cost, amortized fully in this quote and not carried into repeat orders.',subject:proj.id,ts:addDays(proj.createdAt,5)},
+    chatThread(demoSupplier, proj.id).push(
+      {from:'innous',text:'Thanks for the quick turnaround on this quote. A couple questions on tooling amortization — can you confirm it is a one-time cost?',ts:addDays(proj.createdAt,5)},
+      {from:'supplier',text:'Yes, tooling is a one-time cost, amortized fully in this quote and not carried into repeat orders.',ts:addDays(proj.createdAt,5)},
     );
   });
 }
@@ -1699,7 +1710,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, chatSubjectDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -1802,9 +1813,25 @@ function clearRealData(){
 // no example data loaded by default (see App.loadExampleData), so the old demo
 // persona ids (c1/s1) don't exist until either example data is loaded or a real
 // account is signed up.
-function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', phone:'', city:'', industry:'', position:'', address:'', registeredAt:null, generalChat:[], photo:null}; }
-function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, generalChat:[], rating:0, onTime:0, quality:0, projects:0, photo:null}; }
-function chatOf(entity){ if(!entity.generalChat) entity.generalChat=[]; return entity.generalChat; }
+function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', phone:'', city:'', industry:'', position:'', address:'', registeredAt:null, chats:{}, photo:null}; }
+function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, chats:{}, rating:0, onTime:0, quality:0, projects:0, photo:null}; }
+// A customer/supplier can have several NAMED chats with INNOUS at once
+// (e.g. "RFQ-2026-0003", "RFQ-2026-0004", "General") — each its own thread,
+// not just one continuous stream. chatThread gets (and lazily creates) the
+// message array for one specific named thread; entityThreads lists every
+// thread that entity currently has, most-recently-active first, for the
+// chat list sidebar.
+function chatThread(entity, threadName){
+  if(!entity.chats) entity.chats = {};
+  const name = threadName || 'General';
+  if(!entity.chats[name]) entity.chats[name] = [];
+  return entity.chats[name];
+}
+function entityThreads(entity){
+  const chats = entity.chats || {};
+  return Object.keys(chats).map(name=>({ name, msgs: chats[name], ts: chats[name].length ? chats[name][chats[name].length-1].ts : new Date(0) }))
+    .sort((a,b)=>b.ts-a.ts);
+}
 function findProject(id){ return PROJECTS.find(p=>p.id===id); }
 function supplierName(id){ const s=SUPPLIERS.find(x=>x.id===id); return s?s.name:'Deleted Supplier'; }
 function customerName(id){ const c=CUSTOMERS.find(x=>x.id===id); return c?c.company:'Deleted Customer'; }
@@ -3614,45 +3641,77 @@ ROUTES['client/order'] = function(id){
 /* ---- Shared chat rendering — one direct conversation per person, see
    refreshRealMessages. `mineFrom` is which from_role reads as "sent by me"
    for this viewer (bubble on the right); `youLabel` is what a message from
-   the OTHER side is captioned with when it isn't from INNOUS. Every message
-   whose subject differs from the one before it gets a small pill divider,
-   so scrolling through a long conversation still shows which RFQ/order was
-   being discussed at any point. Text and subject are escaped — a chat
-   message is exactly the kind of user-typed string a viewer (in a
-   different account) later renders, so it's never trusted as HTML. ---- */
+   the OTHER side is captioned with when it isn't from INNOUS. Text is
+   escaped — a chat message is exactly the kind of user-typed string a
+   viewer (in a different account) later renders, so it's never trusted as
+   HTML. A message with an attachment shows it as a small file chip,
+   clickable to open (via a signed URL — see App.openChatFile) once it's a
+   real uploaded file; a demo/local-only one just shows the filename. ---- */
 function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
-  let lastSubject;
   const rows = msgs.map(m=>{
-    let divider = '';
-    if(m.subject !== lastSubject){ divider = `<div class="chat-subject-divider">${escAttr(m.subject || 'General')}</div>`; lastSubject = m.subject; }
     const mine = m.from===mineFrom;
     const label = mine ? 'You' : (m.from==='innous' ? 'INNOUS' : youLabel);
-    return `${divider}<div class="chat-bubble ${mine?'out':'in'}">${escAttr(m.text)}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
+    let attachmentHtml = '';
+    if(m.attachmentName){
+      const ext = (m.attachmentName.split('.').pop()||'').toLowerCase();
+      const meta = FILE_TYPES[ext] || {ext: ext.toUpperCase()||'FILE', color:'#71717A'};
+      const clickAttrs = m.attachmentPath ? `style="cursor:pointer;" onclick="App.openChatFile('${escAttr(m.attachmentPath)}')" title="Click to open"` : 'style="opacity:.75;"';
+      attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
+    }
+    return `<div class="chat-bubble ${mine?'out':'in'}">${m.text?escAttr(m.text):''}${attachmentHtml?`<div style="${m.text?'margin-top:6px;':''}">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
 }
-function chatSubjectBarHtml(key, placeholder){
-  const val = STATE.ui.chatSubjectDrafts[key] || '';
-  return `<div class="chat-subject-bar"><i data-lucide="tag" style="width:13px;height:13px;flex:0 0 auto;color:var(--ink-tertiary);"></i><input type="text" value="${escAttr(val)}" placeholder="${placeholder}" oninput="App.updateChatSubject('${key}',this.value)"></div>`;
+// Shared compose bar — text input, attach button + hidden file input, send
+// button — plus a small preview chip once a file's been picked but not
+// sent yet (App.stageChatFile / App.removeStagedChatFile).
+function chatComposeRowHtml(key, inputId, fileInputId, placeholder){
+  const staged = STATE.ui.chatFileDrafts[key];
+  const stagedHtml = staged ? `<div class="chat-staged-file"><i data-lucide="paperclip" style="width:13px;height:13px;"></i><span>${escAttr(staged.name)}</span><button type="button" onclick="App.removeStagedChatFile('${key}')" title="Remove"><i data-lucide="x"></i></button></div>` : '';
+  return `${stagedHtml}
+    <div class="chat-input-row">
+      <input type="file" id="${fileInputId}" style="display:none;" onchange="App.stageChatFile('${key}', this)">
+      <button type="button" class="btn btn-secondary" onclick="App.pickChatFile('${key}')" title="Attach a file"><i data-lucide="paperclip"></i></button>
+      <input type="text" id="${inputId}" placeholder="${placeholder}" onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')">
+      <button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button>
+    </div>`;
 }
-/* ---- Client Messages ---- */
-ROUTES['client/messages'] = function(){
+/* ---- Client Messages — the client can have several named chats going
+   with INNOUS at once ("RFQ-2026-0004", "General", ...), same as INNOUS's
+   own Messages page below, just always with the one same team. ---- */
+ROUTES['client/messages'] = function(threadNameRaw){
   const c = currentClient();
-  const key = 'client:'+STATE.clientId;
-  const msgs = chatOf(c);
-  // Defaults the subject box to whatever was last discussed, so continuing
-  // a conversation about the same RFQ doesn't require re-typing it — first
-  // visit this session only; App.updateChatSubject takes over from there.
-  if(STATE.ui.chatSubjectDrafts[key]===undefined) STATE.ui.chatSubjectDrafts[key] = (msgs[msgs.length-1]||{}).subject || '';
+  const myPrefix = 'client:'+STATE.clientId+':';
+  if(threadNameRaw) STATE.ui.activeChatKey = myPrefix+decodeURIComponent(threadNameRaw);
+  // A stale key left over from a different role/account (e.g. right after
+  // switching roles) must never be read as one of THIS client's own
+  // threads — only ever act on it once it actually starts with this
+  // client's own prefix.
+  if(STATE.ui.activeChatKey && !STATE.ui.activeChatKey.startsWith(myPrefix)) STATE.ui.activeChatKey = null;
+  if(STATE.ui.activeChatKey){ const name = STATE.ui.activeChatKey.slice(myPrefix.length); chatThread(c, name); }
+  const threads = entityThreads(c);
+  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = 'client:'+STATE.clientId+':'+threads[0].name;
+  const activeName = STATE.ui.activeChatKey ? STATE.ui.activeChatKey.split(':').slice(2).join(':') : (threads[0]||{}).name;
+  const key = 'client:'+STATE.clientId+':'+activeName;
+  const msgs = activeName ? chatThread(c, activeName) : [];
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div></div>
-    <div class="chat-panel" style="max-width:640px;">
-      <div class="chat-thread" style="flex:1;">
-        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team</div><div class="td-sub">Everything you've discussed with us, in one place</div></div>
-        ${chatSubjectBarHtml(key, 'Which RFQ or order is this about? (optional)')}
+    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div>
+      <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
+    </div>
+    <div class="chat-panel">
+      <div class="chat-list">
+        ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/client/messages/${encodeURIComponent(t.name)}')">
+          <div class="avatar" style="background:var(--accent);">IN</div>
+          <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+        </div>`).join('') || emptyState('message-square','No conversations yet','')}
+      </div>
+      <div class="chat-thread">
+        ${activeName ? `
+        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
         <div class="chat-messages" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}</div>
-        <div class="chat-input-row"><input type="text" id="client-chat-input" placeholder="Message INNOUS..." onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')"><button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button></div>
+        ${chatComposeRowHtml(key, 'client-chat-input', 'client-chat-file-input', 'Message INNOUS...')}
+        ` : emptyState('message-square','No conversations yet','Start one with "New Chat" above.')}
       </div>
     </div>
   </div>`;
@@ -4594,41 +4653,57 @@ ROUTES['innous/analytics'] = function(){
 };
 
 /* ---- INNOUS Messages ---- */
-// (type, id) come from a deep link — either clicking a message notification
-// (see the notif-menu rendering in renderShell) or App.startChat navigating
-// here from a Customer/Supplier/RFQ/Order page — and select that
-// conversation before anything else about this render happens.
-ROUTES['innous/messages'] = function(type, id){
-  if(type && id) STATE.ui.activeChatKey = type+':'+id;
-  const lastTs = arr => (arr && arr.length) ? arr[arr.length-1].ts : new Date(0);
-  const threads = [];
-  CUSTOMERS.forEach(c=>{ const key='client:'+c.id; if((c.generalChat&&c.generalChat.length) || STATE.ui.activeChatKey===key) threads.push({type:'client', id:c.id, name:c.company, key, ts:lastTs(c.generalChat)}); });
-  SUPPLIERS.forEach(s=>{ const key='supplier:'+s.id; if((s.generalChat&&s.generalChat.length) || STATE.ui.activeChatKey===key) threads.push({type:'supplier', id:s.id, name:s.name, key, ts:lastTs(s.generalChat)}); });
-  threads.sort((a,b)=>b.ts-a.ts); // most recently active conversation first
-  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = threads[0].key;
-  const active = threads.find(t=>t.key===STATE.ui.activeChatKey) || threads[0];
+// (type, id, threadName) come from a deep link — either clicking a message
+// notification (see the notif-menu rendering in renderShell) or
+// App.startChat navigating here from a Customer/Supplier/RFQ/Order page —
+// and select that exact chat before anything else about this render
+// happens. Each customer/supplier can have several named chats going at
+// once (see chatThread/entityThreads) — the list below is every one of
+// them, across every person, most-recently-active first.
+ROUTES['innous/messages'] = function(type, id, threadNameRaw){
+  if(type && id) STATE.ui.activeChatKey = type+':'+id+':'+decodeURIComponent(threadNameRaw||'General');
+  if(STATE.ui.activeChatKey){
+    const [t, oid, ...rest] = STATE.ui.activeChatKey.split(':');
+    const owner = t==='client' ? CUSTOMERS.find(c=>c.id===oid) : SUPPLIERS.find(s=>s.id===oid);
+    if(owner) chatThread(owner, rest.join(':')); // makes a brand-new (still empty) chat show up below too
+  }
+  const rows = [];
+  CUSTOMERS.forEach(c=> entityThreads(c).forEach(t=> rows.push({type:'client', id:c.id, personName:c.company, photo:c.photo, email:c.email, phone:c.phone, threadName:t.name, key:'client:'+c.id+':'+t.name, ts:t.ts})));
+  SUPPLIERS.forEach(s=> entityThreads(s).forEach(t=> rows.push({type:'supplier', id:s.id, personName:s.name, photo:s.photo, email:s.email, phone:s.phone, threadName:t.name, key:'supplier:'+s.id+':'+t.name, ts:t.ts})));
+  rows.sort((a,b)=>b.ts-a.ts);
+  if(!STATE.ui.activeChatKey && rows.length) STATE.ui.activeChatKey = rows[0].key;
+  const active = rows.find(r=>r.key===STATE.ui.activeChatKey) || rows[0];
   const owner = active ? (active.type==='client' ? CUSTOMERS.find(c=>c.id===active.id) : SUPPLIERS.find(s=>s.id===active.id)) : null;
-  const msgs = owner ? chatOf(owner) : [];
-  if(active && STATE.ui.chatSubjectDrafts[active.key]===undefined) STATE.ui.chatSubjectDrafts[active.key] = (msgs[msgs.length-1]||{}).subject || '';
+  const msgs = active ? chatThread(owner, active.threadName) : [];
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct conversations with customers and suppliers.</div></div></div>
+    <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct conversations with customers and suppliers.</div></div>
+      <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
+    </div>
     <div class="chat-panel">
       <div class="chat-list">
-        ${threads.map(t=>`<div class="chat-list-item ${active&&active.key===t.key?'active':''}" onclick="App.openInnousChatThread('${t.key}')">
-          <div class="avatar" style="background:${t.type==='client'?'var(--accent)':'var(--ink)'};">${initials(t.name)}</div>
-          <div><div style="font-weight:600;font-size:13px;">${t.name}</div><div class="td-sub">${t.type==='client'?'Customer':'Supplier'}</div></div>
+        ${rows.map(r=>`<div class="chat-list-item ${active&&active.key===r.key?'active':''}" onclick="App.openInnousChatThread('${r.key}')">
+          ${avatarHtml(r.photo, initials(r.personName), r.type==='client'?'var(--accent)':'var(--ink)', 34)}
+          <div><div style="font-weight:600;font-size:13px;">${escAttr(r.personName)}</div><div class="td-sub">${r.type==='client'?'Customer':'Supplier'} · ${escAttr(r.threadName)}</div></div>
         </div>`).join('') || emptyState('message-square','No conversations yet','')}
       </div>
       <div class="chat-thread">
         ${active? `
-        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <div><div style="font-weight:700;">${active.name}</div><div class="td-sub">${active.type==='client'?'Customer':'Supplier'}</div></div>
-          <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}')" title="Delete conversation"><i data-lucide="trash-2"></i></button>
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            ${avatarHtml(owner.photo, initials(active.personName), active.type==='client'?'var(--accent)':'var(--ink)', 40)}
+            <div style="min-width:0;">
+              <div style="font-weight:700;">${escAttr(active.personName)} <span class="td-sub" style="font-weight:400;">· ${escAttr(active.threadName)}</span></div>
+              <div class="td-sub">${active.type==='client'?'Customer':'Supplier'}${active.email?' · '+escAttr(active.email):''}${active.phone?' · '+escAttr(active.phone):''}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex:0 0 auto;">
+            <button class="btn btn-secondary btn-sm" onclick="navigate('#/innous/${active.type==='client'?'customer':'supplier'}/${active.id}')" title="View profile"><i data-lucide="user"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Delete chat"><i data-lucide="trash-2"></i></button>
+          </div>
         </div>
-        ${chatSubjectBarHtml(active.key, 'Which RFQ or order is this about? (optional)')}
-        <div class="chat-messages">${chatMessagesHtml(msgs, 'innous', active.name, 'No messages yet — say hello.')}</div>
-        <div class="chat-input-row"><input type="text" placeholder="Message ${escAttr(active.name)}..." onkeydown="if(event.key==='Enter')App.sendChatMessage('${active.key}')" id="innous-chat-input"><button class="btn btn-primary" onclick="App.sendChatMessage('${active.key}')"><i data-lucide="send"></i></button></div>
+        <div class="chat-messages">${chatMessagesHtml(msgs, 'innous', active.personName, 'No messages yet — say hello.')}</div>
+        ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Message ${active.personName}...`)}
         ` : emptyState('message-square','No conversations yet','')}
       </div>
     </div>
@@ -5017,20 +5092,38 @@ ROUTES['supplier/documents'] = function(){
 };
 
 /* ---- Supplier Messages ---- */
-ROUTES['supplier/messages'] = function(){
+ROUTES['supplier/messages'] = function(threadNameRaw){
   const s = currentSupplier();
-  const key = 'supplier:'+STATE.supplierId;
-  const msgs = chatOf(s);
-  if(STATE.ui.chatSubjectDrafts[key]===undefined) STATE.ui.chatSubjectDrafts[key] = (msgs[msgs.length-1]||{}).subject || '';
+  const myPrefix = 'supplier:'+STATE.supplierId+':';
+  if(threadNameRaw) STATE.ui.activeChatKey = myPrefix+decodeURIComponent(threadNameRaw);
+  // A stale key left over from a different role/account must never be read
+  // as one of THIS supplier's own threads — see the same guard in
+  // ROUTES['client/messages'].
+  if(STATE.ui.activeChatKey && !STATE.ui.activeChatKey.startsWith(myPrefix)) STATE.ui.activeChatKey = null;
+  if(STATE.ui.activeChatKey){ const name = STATE.ui.activeChatKey.slice(myPrefix.length); chatThread(s, name); }
+  const threads = entityThreads(s);
+  if(!STATE.ui.activeChatKey && threads.length) STATE.ui.activeChatKey = 'supplier:'+STATE.supplierId+':'+threads[0].name;
+  const activeName = STATE.ui.activeChatKey ? STATE.ui.activeChatKey.split(':').slice(2).join(':') : (threads[0]||{}).name;
+  const key = 'supplier:'+STATE.supplierId+':'+activeName;
+  const msgs = activeName ? chatThread(s, activeName) : [];
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div></div>
-    <div class="chat-panel" style="max-width:640px;">
-      <div class="chat-thread" style="flex:1;">
-        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS</div><div class="td-sub">Todo lo que has hablado con nosotros, en un solo lugar</div></div>
-        ${chatSubjectBarHtml(key, '¿De qué RFQ o pedido se trata? (opcional)')}
+    <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div>
+      <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>Nuevo Chat</button>
+    </div>
+    <div class="chat-panel">
+      <div class="chat-list">
+        ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/supplier/messages/${encodeURIComponent(t.name)}')">
+          <div class="avatar" style="background:var(--ink);">IN</div>
+          <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+        </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
+      </div>
+      <div class="chat-thread">
+        ${activeName ? `
+        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
         <div class="chat-messages">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}</div>
-        <div class="chat-input-row"><input type="text" placeholder="Mensaje a INNOUS..." onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')" id="supplier-chat-input"><button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button></div>
+        ${chatComposeRowHtml(key, 'supplier-chat-input', 'supplier-chat-file-input', 'Mensaje a INNOUS...')}
+        ` : emptyState('message-square','Aún no hay conversaciones','Inicia una con "Nuevo Chat" arriba.')}
       </div>
     </div>
   </div>`;
@@ -6524,39 +6617,108 @@ const App = {
   },
 
   /* ---- Messaging ----
-     One direct, ongoing conversation per person — key is always
-     '<client|supplier>:<their id>'. Real accounts write straight to
-     messages_general (see supabase-fix33-direct-chats.sql) and ping the
-     other side via innous_send_notification / notify_innous (with a `link`
-     back to this exact conversation, so clicking the notice opens it —
-     see the notif-menu rendering in renderShell), then re-fetch so the
-     thread shows the row with its real id (see mergeMessages) instead of
-     trusting a local optimistic copy. Guest/demo exploration (no real
-     account yet) keeps a purely-local scripted reply — there's no real
-     person on the far end of a demo conversation to actually notify. */
+     Each person can have several NAMED chats going at once (see
+     chatThread/entityThreads) — key is always
+     '<client|supplier>:<their id>:<chat name>' (rest.join(':') below
+     reconstructs the name even if it happens to contain a colon; ids never
+     do). Real accounts write straight to messages_general (see
+     supabase-fix34-named-chats-and-files.sql) and ping the other side via
+     innous_send_notification / notify_innous (with a `link` back to this
+     exact chat, so clicking the notice opens it — see the notif-menu
+     rendering in renderShell), then re-fetch so the thread shows the row
+     with its real id (see mergeMessages) instead of trusting a local
+     optimistic copy. Guest/demo exploration (no real account yet) keeps a
+     purely-local scripted reply — there's no real person on the far end of
+     a demo conversation to actually notify. */
   openInnousChatThread(key){ STATE.ui.activeChatKey = key; route(); },
-  // Opens (or starts) a conversation from anywhere in the INNOUS portal — a
-  // Customer/Supplier's own detail page ("Send Message", no particular
-  // subject), or an RFQ/Order page ("Message Customer/Supplier", subject
-  // pre-filled with that RFQ's id). A brand-new conversation has no
-  // messages yet on either side — see the activeChatKey-matching branch in
-  // ROUTES['innous/messages']'s thread list for how it still shows up.
-  startChat(type, id, subject){
-    const key = type+':'+id;
+  // Opens (or starts) a chat from anywhere in the INNOUS portal — the "+ New
+  // Chat" button on the Messages page, "Send Message" on a Customer/
+  // Supplier's own detail page (name left blank -> "General"), or an
+  // RFQ/Order page ("Message Customer/Supplier", name pre-filled with that
+  // RFQ's id). A brand-new chat has no messages yet on either side — see
+  // the activeChatKey-matching branch in ROUTES['innous/messages']'s thread
+  // list for how it still shows up before the first message is sent.
+  startChat(type, id, name){
+    const threadName = (name||'').trim() || 'General';
+    const key = type+':'+id+':'+threadName;
     STATE.ui.activeChatKey = key;
-    if(subject) STATE.ui.chatSubjectDrafts[key] = subject;
     closeModal();
-    navigate('#/innous/messages/'+type+'/'+id);
+    // INNOUS can open a chat with anyone by id; a client/supplier only ever
+    // has one conversation partner (INNOUS), so their own Messages page
+    // just takes the chat name.
+    const path = STATE.role==='INNOUS' ? '#/innous/messages/'+type+'/'+id+'/'+encodeURIComponent(threadName)
+      : STATE.role==='CLIENT' ? '#/client/messages/'+encodeURIComponent(threadName)
+      : '#/supplier/messages/'+encodeURIComponent(threadName);
+    navigate(path);
   },
-  updateChatSubject(key, val){ STATE.ui.chatSubjectDrafts[key] = val; },
+  // "+ New Chat" — for INNOUS, picks who (customer or supplier) and names
+  // it; for a client/supplier, it's always with INNOUS, just naming it.
+  openNewChatModal(){
+    if(STATE.role==='INNOUS'){
+      openModal(`
+        <div class="modal-header"><h3>New Chat</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+        <div class="modal-body">
+          <div class="form-group"><label class="field-label">With</label>
+            <select id="new-chat-type" onchange="App.renderNewChatTargetOptions()"><option value="client">Customer</option><option value="supplier">Supplier</option></select>
+          </div>
+          <div class="form-group"><label class="field-label">Who</label><select id="new-chat-target">${CUSTOMERS.map(c=>`<option value="${c.id}">${escAttr(c.company)} — ${escAttr(c.contact)}</option>`).join('') || '<option value="">No customers yet</option>'}</select></div>
+          <div class="form-group"><label class="field-label">Chat name</label><input type="text" id="new-chat-name" placeholder="e.g. RFQ-2026-0004"></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitNewChat()"><i data-lucide="message-square-plus"></i>Start Chat</button></div>
+      `);
+    } else {
+      const es = STATE.role==='SUPPLIER';
+      openModal(`
+        <div class="modal-header"><h3>${es?'Nuevo Chat':'New Chat'}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+        <div class="modal-body">
+          <div class="field-hint" style="margin-top:-4px;margin-bottom:10px;">${es?'Se abre con tu equipo de sourcing en INNOUS.':'Opens with your INNOUS project team.'}</div>
+          <div class="form-group"><label class="field-label">${es?'Nombre del chat':'Chat name'}</label><input type="text" id="new-chat-name" placeholder="${es?'ej. RFQ-2026-0004':'e.g. RFQ-2026-0004'}"></div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitNewChat('${es?'supplier':'client'}','${es?STATE.supplierId:STATE.clientId}')"><i data-lucide="message-square-plus"></i>${es?'Iniciar Chat':'Start Chat'}</button></div>
+      `);
+    }
+  },
+  renderNewChatTargetOptions(){
+    const type = document.getElementById('new-chat-type').value;
+    const opts = type==='client'
+      ? CUSTOMERS.map(c=>`<option value="${c.id}">${escAttr(c.company)} — ${escAttr(c.contact)}</option>`)
+      : SUPPLIERS.map(s=>`<option value="${s.id}">${escAttr(s.name)} — ${escAttr(s.contactName)}</option>`);
+    document.getElementById('new-chat-target').innerHTML = opts.join('') || `<option value="">${type==='client'?'No customers yet':'No suppliers yet'}</option>`;
+  },
+  submitNewChat(fixedType, fixedId){
+    let type = fixedType, id = fixedId;
+    if(!type){ type = document.getElementById('new-chat-type').value; id = document.getElementById('new-chat-target').value; }
+    if(!id){ showToast('Choose someone to chat with first.'); return; }
+    const name = document.getElementById('new-chat-name').value;
+    App.startChat(type, id, name);
+  },
+  pickChatFile(key){
+    const id = STATE.role==='CLIENT' ? 'client-chat-file-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-file-input' : 'innous-chat-file-input';
+    document.getElementById(id)?.click();
+  },
+  stageChatFile(key, inputEl){
+    const file = inputEl.files[0]; inputEl.value = '';
+    if(!file) return;
+    if(file.size > 25*1024*1024){ showToast('File is larger than 25 MB.'); return; }
+    STATE.ui.chatFileDrafts[key] = file;
+    route();
+  },
+  removeStagedChatFile(key){ delete STATE.ui.chatFileDrafts[key]; route(); },
+  async openChatFile(path){
+    if(!path) return;
+    const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
+    if(error || !data){ showToast('Could not open the file.'); return; }
+    window.open(data.signedUrl, '_blank');
+  },
   async sendChatMessage(key){
     const inputId = STATE.role==='CLIENT' ? 'client-chat-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-input' : 'innous-chat-input';
-    const input = document.getElementById(inputId); const text = input.value.trim(); if(!text) return;
-    input.value = '';
-    const [ownerType, ownerId] = key.split(':');
+    const input = document.getElementById(inputId); const text = input.value.trim();
+    const file = STATE.ui.chatFileDrafts[key];
+    if(!text && !file) return;
+    const [ownerType, ownerId, ...rest] = key.split(':'); const threadName = rest.join(':') || 'General';
     const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
     if(!owner){ showToast('This account no longer exists.'); route(); return; }
-    const subject = (STATE.ui.chatSubjectDrafts[key]||'').trim() || null;
+    input.value = ''; delete STATE.ui.chatFileDrafts[key];
     const fromRole = STATE.role==='CLIENT' ? 'client' : STATE.role==='SUPPLIER' ? 'supplier' : 'innous';
     // INNOUS is always a real account; whether THIS send hits the real
     // backend depends on whether the other side (the customer/supplier
@@ -6564,47 +6726,54 @@ const App = {
     // supplier sending their own message, it depends on their own account.
     const isReal = fromRole==='innous' ? isRealAccountId(ownerId) : STATE.authMode==='account';
     if(isReal){
-      const { error } = await sb.from('messages_general').insert({ owner_type:ownerType, owner_id:ownerId, from_role:fromRole, text, subject });
+      let attachmentPath = null, attachmentName = null;
+      if(file){
+        const path = `${ownerType}/${ownerId}/${Date.now()}-${file.name}`;
+        const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
+        if(upErr){ showToast(upErr.message); return; }
+        attachmentPath = path; attachmentName = file.name;
+      }
+      const { error } = await sb.from('messages_general').insert({ owner_type:ownerType, owner_id:ownerId, from_role:fromRole, text, thread_name:threadName, attachment_path:attachmentPath, attachment_name:attachmentName });
       if(error){ showToast(error.message); return; }
+      const bodyPreview = text || (attachmentName ? `📎 ${attachmentName}` : '');
       if(fromRole==='innous'){
         const { error:e2 } = await sb.rpc('innous_send_notification', {
-          p_user_ids:[ownerId], p_title: ownerType==='client'?'New message from INNOUS':'Nuevo mensaje de Innous',
-          p_body: text.slice(0,140), p_project_id: null, p_link: ownerType==='client'?'#/client/messages':'#/supplier/messages',
+          p_user_ids:[ownerId], p_title: (ownerType==='client'?'New message from INNOUS':'Nuevo mensaje de Innous')+` — ${threadName}`,
+          p_body: bodyPreview.slice(0,140), p_project_id: null, p_link: ownerType==='client'?'#/client/messages':'#/supplier/messages',
         });
         if(e2) console.error('innous_send_notification failed', e2);
       } else {
         const name = ownerType==='client' ? owner.company : owner.name;
         const { error:e2 } = await sb.rpc('notify_innous', {
-          p_title: `New message from ${name}`, p_body: text.slice(0,140), p_project_id: null, p_link: '#/innous/messages/'+ownerType+'/'+ownerId,
+          p_title: `New message from ${name} — ${threadName}`, p_body: bodyPreview.slice(0,140), p_project_id: null,
+          p_link: '#/innous/messages/'+ownerType+'/'+ownerId+'/'+encodeURIComponent(threadName),
         });
         if(e2) console.error('notify_innous failed', e2);
       }
       await refreshRealMessages();
       route();
     } else {
-      chatOf(owner).push({from:fromRole, text, subject, ts:new Date()});
+      chatThread(owner, threadName).push({from:fromRole, text, attachmentPath:null, attachmentName: file?file.name:null, ts:new Date()});
       route();
       if(fromRole!=='innous'){
         const reply = fromRole==='client' ? 'Thanks for the note — our team is on it and will follow up shortly.' : 'Entendido, gracias por la actualización.';
-        setTimeout(()=>{ chatOf(owner).push({from:'innous', text:reply, subject, ts:new Date()}); if(location.hash.includes('/messages')) route(); }, 900);
+        setTimeout(()=>{ chatThread(owner, threadName).push({from:'innous', text:reply, ts:new Date()}); if(location.hash.includes('/messages')) route(); }, 900);
       }
     }
   },
-  async deleteChat(type, id){
+  async deleteChat(type, id, threadName){
     const owner = type==='client' ? CUSTOMERS.find(c=>c.id===id) : SUPPLIERS.find(s=>s.id===id);
     if(!owner) return;
-    const name = type==='client' ? owner.company : owner.name;
-    if(!confirm(`Delete the entire conversation with ${name}? This can't be undone.`)) return;
+    if(!confirm(`Delete the "${threadName}" chat? This can't be undone.`)) return;
     if(isRealAccountId(id)){
-      const { error } = await sb.from('messages_general').delete().eq('owner_type', type).eq('owner_id', id);
+      const { error } = await sb.from('messages_general').delete().eq('owner_type', type).eq('owner_id', id).eq('thread_name', threadName);
       if(error){ showToast(error.message); return; }
     }
-    owner.generalChat = [];
-    const key = type+':'+id;
+    if(owner.chats) delete owner.chats[threadName];
+    const key = type+':'+id+':'+threadName;
     if(STATE.ui.activeChatKey===key) STATE.ui.activeChatKey = null;
-    delete STATE.ui.chatSubjectDrafts[key];
-    showToast('Conversation deleted', 'success');
-    navigate('#/innous/messages');
+    showToast('Chat deleted', 'success');
+    navigate(STATE.role==='INNOUS' ? '#/innous/messages' : STATE.role==='CLIENT' ? '#/client/messages' : '#/supplier/messages');
   },
 };
 
