@@ -2069,6 +2069,14 @@ function orderStageMessage(p, audience){
     if(audience==='innous') return "Authorize this project below to notify the supplier — they can't see this order or start production until you do.";
     if(audience==='supplier') return "Tu cotización fue enviada. INNOUS la está comparando con otros proveedores — te notificaremos si eres seleccionado.";
   }
+  // Shipped needs to be unmistakable — the client already got a notification
+  // for this the moment it happened (see App.advanceOrderStatus), and the
+  // banner they land on right after clicking it repeats every concrete
+  // detail (carrier, tracking #, ETA) instead of a vague "it's on its way".
+  if(p.order.status==='shipped' && audience==='client'){
+    const l = p.order.logistics;
+    return `Your order has shipped via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`;
+  }
   const msgs = {
     order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Order confirmed — coordinate production kickoff with the supplier.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
     in_production:{client:"Your order is now in production.", innous:"Production is underway at the supplier.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
@@ -2997,8 +3005,18 @@ ROUTES['client/order'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/client/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>${orderStatusBadge(p.order.status)}</div>
-    ${stageBanner(orderStageMessage(p,'client'), p.order.status==='delivered'?'success':'info')}
+    ${stageBanner(orderStageMessage(p,'client'), p.order.status==='delivered'?'success':(p.order.status==='shipped'?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
+    ${['shipped','delivered'].includes(p.order.status) ? `
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="section-title">Shipping</div>
+      <div class="info-grid" style="margin-top:12px;">
+        ${infoItem('Carrier', p.order.logistics.carrier||'—')}
+        ${infoItem('Tracking Number', p.order.logistics.tracking||'—')}
+        ${infoItem('Destination', p.order.logistics.destination)}
+        ${infoItem('Est. Delivery', fmtDate(p.order.logistics.estimatedDelivery))}
+      </div>
+    </div>` : ''}
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Order Summary</div>
@@ -5296,6 +5314,21 @@ const App = {
         if(e2){ showToast(e2.message); return; }
       }
       if(justCompleted) await persistSupplierMetrics(p.selectedSupplierId);
+      // The one moment the client needs an unmistakable heads-up mid-order:
+      // their product is physically moving. Only INNOUS ever makes this
+      // specific transition (see SUPPLIER_ORDER_STAGE_LIMIT — the supplier's
+      // own "next status" never goes past quality_inspection), so this is
+      // never fired from a supplier session.
+      if(next==='shipped' && isRealAccountId(p.customerId)){
+        const l = p.order.logistics;
+        const { error: e3 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: [p.customerId],
+          p_title: `Your order ${p.id} has shipped`,
+          p_body: `${p.projectName} is on its way via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`,
+          p_project_id: p.id,
+        });
+        if(e3) console.error('innous_send_notification (shipped) failed', e3);
+      }
     }
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
     route();
