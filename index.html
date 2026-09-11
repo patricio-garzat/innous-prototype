@@ -466,6 +466,11 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-staged-file button:hover{color:var(--danger);}
 .chat-staged-file i{width:13px;height:13px;flex:0 0 auto;}
 .chat-staged-file button i{width:13px;height:13px;}
+.chat-card-preview{background:var(--surface);color:var(--ink);border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;max-width:220px;}
+.chat-card-title{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-tertiary);margin-bottom:4px;}
+.chat-card-title i{width:12px;height:12px;}
+.chat-card-folio{font-weight:700;font-size:13px;color:var(--danger);margin-bottom:3px;}
+.chat-card-row{font-size:12.5px;line-height:1.4;}
 @media(max-width:768px){
   .chat-panel{flex-direction:column;height:auto;}
   .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
@@ -1215,7 +1220,8 @@ async function refreshRealProjects(){
 }
 function messageRowToJs(row){
   return { id: row.id, from: row.from_role, text: row.text, ts: new Date(row.ts),
-    attachmentPath: row.attachment_path||null, attachmentName: row.attachment_name||null };
+    attachmentPath: row.attachment_path||null, attachmentName: row.attachment_name||null,
+    cardType: row.card_type||null, cardProjectId: row.card_project_id||null };
 }
 // Merges fetched rows into an existing chat thread array by id, so a
 // repeated poll (see pollLiveUpdates) never duplicates a message already
@@ -1260,6 +1266,26 @@ async function refreshRealMessages(){
       const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
       if(owner) mergeThreadedMessages(owner, byOwner[k]);
     });
+  }
+}
+// Pings whoever's on the other end of a chat message — INNOUS sending
+// notifies that customer/supplier (innous_send_notification, fix19/fix33);
+// a customer/supplier sending notifies INNOUS (notify_innous, fix33). Both
+// carry a `link` straight back to this exact named chat, used by
+// App.sendChatMessage and App.sendChatCard alike.
+async function notifyOtherSideOfChat(fromRole, ownerType, ownerId, ownerName, threadName, bodyPreview){
+  if(fromRole==='innous'){
+    const { error } = await sb.rpc('innous_send_notification', {
+      p_user_ids:[ownerId], p_title: (ownerType==='client'?'New message from INNOUS':'Nuevo mensaje de Innous')+` — ${threadName}`,
+      p_body: bodyPreview.slice(0,140), p_project_id: null, p_link: ownerType==='client'?'#/client/messages':'#/supplier/messages',
+    });
+    if(error) console.error('innous_send_notification failed', error);
+  } else {
+    const { error } = await sb.rpc('notify_innous', {
+      p_title: `New message from ${ownerName} — ${threadName}`, p_body: bodyPreview.slice(0,140), p_project_id: null,
+      p_link: '#/innous/messages/'+ownerType+'/'+ownerId+'/'+encodeURIComponent(threadName),
+    });
+    if(error) console.error('notify_innous failed', error);
   }
 }
 /* Called once we know a Supabase auth session is valid (fresh login, signup,
@@ -3262,6 +3288,16 @@ function route(){
     el.innerHTML = emptyState('alert-triangle','Something went wrong','Please navigate back and try again.');
   }
   el.scrollTop = samePage ? prevScroll : 0;
+  // A chat page rebuilds its whole DOM on every send/switch (see
+  // App.sendChatMessage / openInnousChatThread) — a fresh .chat-messages
+  // div always starts scrolled to its top, which read as "broken"/laggy
+  // since the newest message (what you actually want to see) was the one
+  // scrolled out of view. Always land on the bottom instead, same as any
+  // real chat app opening a conversation.
+  if(key==='innous/messages' || key==='client/messages' || key==='supplier/messages'){
+    const cm = el.querySelector('.chat-messages');
+    if(cm) requestAnimationFrame(()=>{ cm.scrollTop = cm.scrollHeight; });
+  }
   lastRoutedHash = hash;
   lucide.createIcons();
   if(STATE.authMode!=='guest') persistRealData();
@@ -3658,19 +3694,68 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
       const clickAttrs = m.attachmentPath ? `style="cursor:pointer;" onclick="App.openChatFile('${escAttr(m.attachmentPath)}')" title="Click to open"` : 'style="opacity:.75;"';
       attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
     }
-    return `<div class="chat-bubble ${mine?'out':'in'}">${m.text?escAttr(m.text):''}${attachmentHtml?`<div style="${m.text?'margin-top:6px;':''}">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
+    const cardHtml = m.cardType ? chatCardHtml(m) : '';
+    return `<div class="chat-bubble ${mine?'out':'in'}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
 }
-// Shared compose bar — text input, attach button + hidden file input, send
-// button — plus a small preview chip once a file's been picked but not
-// sent yet (App.stageChatFile / App.removeStagedChatFile).
+/* ---- Shared card preview — a quick look at an RFQ, Formal Quote, or
+   Purchase Order, shared straight into a chat (App.sendChatCard). Renders
+   using whatever the CURRENT viewer's own role/route already shows for
+   that document — a client viewing an RFQ card lands on their own
+   #/client/rfq page, INNOUS on #/innous/rfq, a supplier on #/supplier/rfq
+   — so it never exposes anything that role couldn't already see on that
+   page. The `if(role===...) return ''` guards are a belt-and-suspenders
+   backstop: App.openShareCardModal only ever offers Quote in a client chat
+   and Purchase Order in a supplier chat in the first place (a Quote card
+   carries the client's price/INNOUS's margin; a PO card carries the
+   supplier's identity — neither may ever reach the other side). ---- */
+function chatCardHtml(m){
+  const p = findProject(m.cardProjectId);
+  if(!p) return `<div class="chat-card-preview"><div class="td-sub">This RFQ is no longer available.</div></div>`;
+  const rfqPath = STATE.role==='CLIENT' ? '#/client/rfq/' : STATE.role==='SUPPLIER' ? '#/supplier/rfq/' : '#/innous/rfq/';
+  if(m.cardType==='rfq'){
+    return `<div class="chat-card-preview">
+      <div class="chat-card-title"><i data-lucide="file-text"></i>RFQ</div>
+      <div class="chat-card-folio">${p.id}</div>
+      <div class="chat-card-row">${escAttr(p.projectName)}</div>
+      <div class="chat-card-row td-sub">${escAttr(p.process)} · ${p.quantity.toLocaleString()} pcs</div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="navigate('${rfqPath}${p.id}')">View RFQ</button>
+    </div>`;
+  }
+  if(m.cardType==='quote'){
+    if(STATE.role==='SUPPLIER') return '';
+    return `<div class="chat-card-preview">
+      <div class="chat-card-title"><i data-lucide="file-text"></i>Formal Quote</div>
+      <div class="chat-card-folio">${p.order?p.order.quoteNumber:'—'}</div>
+      <div class="chat-card-row">${escAttr(p.projectName)}</div>
+      <div class="chat-card-row td-sub">${p.order?fmtMoney(p.order.customerPrice):'—'}</div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download PDF</button>
+    </div>`;
+  }
+  if(m.cardType==='po'){
+    if(STATE.role==='CLIENT') return '';
+    return `<div class="chat-card-preview">
+      <div class="chat-card-title"><i data-lucide="file-text"></i>Purchase Order</div>
+      <div class="chat-card-folio">${p.order?p.order.poNumber:'—'}</div>
+      <div class="chat-card-row">${escAttr(p.projectName)}</div>
+      <div class="chat-card-row td-sub">${p.order&&p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):'—'}</div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download PDF</button>
+    </div>`;
+  }
+  return '';
+}
+// Shared compose bar — "+" to share an RFQ/Quote/PO card, text input,
+// attach button + hidden file input, send button — plus a small preview
+// chip once a file's been picked but not sent yet (App.stageChatFile /
+// App.removeStagedChatFile).
 function chatComposeRowHtml(key, inputId, fileInputId, placeholder){
   const staged = STATE.ui.chatFileDrafts[key];
   const stagedHtml = staged ? `<div class="chat-staged-file"><i data-lucide="paperclip" style="width:13px;height:13px;"></i><span>${escAttr(staged.name)}</span><button type="button" onclick="App.removeStagedChatFile('${key}')" title="Remove"><i data-lucide="x"></i></button></div>` : '';
   return `${stagedHtml}
     <div class="chat-input-row">
       <input type="file" id="${fileInputId}" style="display:none;" onchange="App.stageChatFile('${key}', this)">
+      <button type="button" class="btn btn-secondary" onclick="App.openShareCardModal('${key}')" title="Share an RFQ, Quote, or Purchase Order"><i data-lucide="plus"></i></button>
       <button type="button" class="btn btn-secondary" onclick="App.pickChatFile('${key}')" title="Attach a file"><i data-lucide="paperclip"></i></button>
       <input type="text" id="${inputId}" placeholder="${placeholder}" onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')">
       <button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button>
@@ -6630,7 +6715,15 @@ const App = {
      optimistic copy. Guest/demo exploration (no real account yet) keeps a
      purely-local scripted reply — there's no real person on the far end of
      a demo conversation to actually notify. */
-  openInnousChatThread(key){ STATE.ui.activeChatKey = key; route(); },
+  // Goes through navigate() (a real URL change), not just a state mutation
+  // + route() — otherwise switching chats never touches location.hash, so
+  // it falls out of sync with the back/forward arrows and the browser's
+  // own history, which is exactly what read as "glitchy" when clicking
+  // between two or more chats.
+  openInnousChatThread(key){
+    const [type, id, ...rest] = key.split(':');
+    navigate('#/innous/messages/'+type+'/'+id+'/'+encodeURIComponent(rest.join(':')||'General'));
+  },
   // Opens (or starts) a chat from anywhere in the INNOUS portal — the "+ New
   // Chat" button on the Messages page, "Send Message" on a Customer/
   // Supplier's own detail page (name left blank -> "General"), or an
@@ -6736,20 +6829,8 @@ const App = {
       const { error } = await sb.from('messages_general').insert({ owner_type:ownerType, owner_id:ownerId, from_role:fromRole, text, thread_name:threadName, attachment_path:attachmentPath, attachment_name:attachmentName });
       if(error){ showToast(error.message); return; }
       const bodyPreview = text || (attachmentName ? `📎 ${attachmentName}` : '');
-      if(fromRole==='innous'){
-        const { error:e2 } = await sb.rpc('innous_send_notification', {
-          p_user_ids:[ownerId], p_title: (ownerType==='client'?'New message from INNOUS':'Nuevo mensaje de Innous')+` — ${threadName}`,
-          p_body: bodyPreview.slice(0,140), p_project_id: null, p_link: ownerType==='client'?'#/client/messages':'#/supplier/messages',
-        });
-        if(e2) console.error('innous_send_notification failed', e2);
-      } else {
-        const name = ownerType==='client' ? owner.company : owner.name;
-        const { error:e2 } = await sb.rpc('notify_innous', {
-          p_title: `New message from ${name} — ${threadName}`, p_body: bodyPreview.slice(0,140), p_project_id: null,
-          p_link: '#/innous/messages/'+ownerType+'/'+ownerId+'/'+encodeURIComponent(threadName),
-        });
-        if(e2) console.error('notify_innous failed', e2);
-      }
+      const ownerName = ownerType==='client' ? owner.company : owner.name;
+      await notifyOtherSideOfChat(fromRole, ownerType, ownerId, ownerName, threadName, bodyPreview);
       await refreshRealMessages();
       route();
     } else {
@@ -6759,6 +6840,63 @@ const App = {
         const reply = fromRole==='client' ? 'Thanks for the note — our team is on it and will follow up shortly.' : 'Entendido, gracias por la actualización.';
         setTimeout(()=>{ chatThread(owner, threadName).push({from:'innous', text:reply, ts:new Date()}); if(location.hash.includes('/messages')) route(); }, 900);
       }
+    }
+  },
+  // "+" in the compose bar — share a quick-look card for an RFQ, Formal
+  // Quote, or Purchase Order. Which types are even offered depends on WHO
+  // this chat is with, never on who's sending: a client chat only ever
+  // offers RFQ/Quote (never a Purchase Order — that would name the
+  // supplier); a supplier chat only ever offers RFQ/Purchase Order (never
+  // a Quote — that would show the client's price and INNOUS's margin).
+  openShareCardModal(key){
+    const [ownerType] = key.split(':');
+    openModal(`
+      <div class="modal-header"><h3>Share</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="form-group"><label class="field-label">What</label>
+          <select id="share-card-type" onchange="App.renderShareCardOptions('${key}')">
+            <option value="rfq">RFQ</option>
+            ${ownerType==='client' ? `<option value="quote">Formal Quote</option>` : `<option value="po">Purchase Order</option>`}
+          </select>
+        </div>
+        <div class="form-group"><label class="field-label">Which one</label><select id="share-card-project"></select></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" onclick="App.submitShareCard('${key}')"><i data-lucide="share-2"></i>Share</button></div>
+    `);
+    App.renderShareCardOptions(key);
+  },
+  renderShareCardOptions(key){
+    const [ownerType, ownerId] = key.split(':');
+    const cardType = document.getElementById('share-card-type').value;
+    const list = ownerType==='client'
+      ? PROJECTS.filter(p=>p.customerId===ownerId && (cardType!=='quote' || p.order))
+      : PROJECTS.filter(p=>p.invitedSupplierIds.includes(ownerId) && (cardType!=='po' || (p.order && p.selectedSupplierId===ownerId && p.innousAuthorizedAt)));
+    document.getElementById('share-card-project').innerHTML = list.map(p=>`<option value="${p.id}">${p.id} — ${escAttr(p.projectName)}</option>`).join('') || `<option value="">None available yet</option>`;
+  },
+  submitShareCard(key){
+    const cardType = document.getElementById('share-card-type').value;
+    const projectId = document.getElementById('share-card-project').value;
+    if(!projectId){ showToast('Nothing to share yet.'); return; }
+    App.sendChatCard(key, cardType, projectId);
+  },
+  async sendChatCard(key, cardType, projectId){
+    const [ownerType, ownerId, ...rest] = key.split(':'); const threadName = rest.join(':') || 'General';
+    const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
+    if(!owner) return;
+    closeModal();
+    const fromRole = STATE.role==='CLIENT' ? 'client' : STATE.role==='SUPPLIER' ? 'supplier' : 'innous';
+    const isReal = fromRole==='innous' ? isRealAccountId(ownerId) : STATE.authMode==='account';
+    const label = cardType==='rfq' ? 'RFQ' : cardType==='quote' ? 'Formal Quote' : 'Purchase Order';
+    if(isReal){
+      const { error } = await sb.from('messages_general').insert({ owner_type:ownerType, owner_id:ownerId, from_role:fromRole, text:'', thread_name:threadName, card_type:cardType, card_project_id:projectId });
+      if(error){ showToast(error.message); return; }
+      const ownerName = ownerType==='client' ? owner.company : owner.name;
+      await notifyOtherSideOfChat(fromRole, ownerType, ownerId, ownerName, threadName, `📋 Shared ${label} ${projectId}`);
+      await refreshRealMessages();
+      route();
+    } else {
+      chatThread(owner, threadName).push({from:fromRole, text:'', cardType, cardProjectId:projectId, ts:new Date()});
+      route();
     }
   },
   async deleteChat(type, id, threadName){
