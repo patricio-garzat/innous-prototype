@@ -891,6 +891,11 @@ function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'nume
 function fmtDateShort(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 function fmtMoney(n){return '$'+Math.round(n).toLocaleString('en-US');}
 function fmtMoney2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Suppliers (Mexican) always quote in pesos — this labels that explicitly so
+// a peso figure is never mistaken for the USD amounts shown everywhere else
+// in the same screens (see quoteComparisonSection / supplierQuoteForm).
+function fmtMXN(n){return 'MX$'+Math.round(n).toLocaleString('en-US');}
+function fmtMXN2(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
 function daysFromNow(n){return addDays(new Date('2026-09-08'),n);}
 
@@ -1024,6 +1029,10 @@ function quoteRowToJs(row){
 function shortlistRowToJs(row){
   return {
     supplierId: row.supplier_id, supplierCost: row.supplier_cost ?? 0, markupPct: row.markup_pct ?? 0,
+    // MXN reference — same confidentiality boundary as supplierCost/markupPct:
+    // shortlist_client_view doesn't have these columns either, so they come
+    // back undefined -> 0/null for a client session no matter what.
+    supplierCostMxn: row.supplier_cost_mxn ?? 0, exchangeRate: row.exchange_rate ?? null,
     customerPrice: row.customer_price, leadTimeDays: row.lead_time_days, rating: row.rating||0,
     badge: row.badge||null, addedAt: row.added_at ? new Date(row.added_at) : new Date(),
   };
@@ -1040,6 +1049,9 @@ function orderRowToJs(row){
   return {
     status: row.status, supplierId: row.supplier_id||null,
     supplierCost: row.supplier_cost ?? 0, customerPrice: row.customer_price ?? 0, markupPct: row.markup_pct ?? 0,
+    // Only ever present for INNOUS's own view and the supplier's own order
+    // (orders_supplier_view) — orders_client_view never has these columns.
+    supplierCostMxn: row.supplier_cost_mxn ?? 0, exchangeRate: row.exchange_rate ?? null,
     quoteNumber: row.quote_number || null,
     paymentStatus: row.payment_status || 'Awaiting Deposit',
     quality: {
@@ -1486,6 +1498,7 @@ function setOrderState(proj, orderStatus, alreadyAuthorized=true){
     status: orderStatus,
     supplierId: proj.selectedSupplierId,
     supplierCost: q ? q.supplierCost : 0,
+    supplierCostMxn: q ? (q.supplierCostMxn||0) : 0, exchangeRate: q ? (q.exchangeRate||null) : null,
     customerPrice: q ? q.customerPrice : 0,
     markupPct: q ? q.markupPct : 15,
     quoteNumber: 'IN-'+String(_demoQuoteSeq++).padStart(4,'0'),
@@ -1548,7 +1561,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -1557,6 +1570,12 @@ const INNOUS_USER = { name:'Ops Team', photo:null };
 const DEFAULT_SETTINGS = {
   legalName:'Grupo Industrial Innous de Mexico S. de R.L. de C.V.', address:'Palma Real No. 115, Fracc. Industrial Las Palmas Santa Catarina, N.L. 66368',
   region:'United States ↔ Mexico', defaultMarkupPct:15,
+  // Suppliers (Mexican) quote in MXN; the client (US) always sees USD. This is
+  // the starting exchange rate INNOUS sees when comparing quotes — always
+  // adjustable per RFQ right there (see quoteComparisonSection), since the
+  // real rate moves daily and INNOUS should be checking it, not trusting a
+  // stale default.
+  defaultExchangeRate:17.5,
   notif:{newRfq:true, quoteReceived:true, customerSelects:true, weeklySummary:false},
 };
 function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem('innous_settings')||'{}'); return {...DEFAULT_SETTINGS, ...saved, notif:{...DEFAULT_SETTINGS.notif, ...(saved.notif||{})}}; }catch(e){ return {...DEFAULT_SETTINGS, notif:{...DEFAULT_SETTINGS.notif}}; } }
@@ -1564,6 +1583,7 @@ function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stri
 function settingsRowToJs(row){
   return {
     legalName: row.legal_name, address: row.address || DEFAULT_SETTINGS.address, region: row.region, defaultMarkupPct: row.default_markup_pct,
+    defaultExchangeRate: row.default_exchange_rate || DEFAULT_SETTINGS.defaultExchangeRate,
     notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
   };
 }
@@ -2866,7 +2886,7 @@ ROUTES['client/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'CLIENT')}
         ${p.status==='customer_review'?`<button class="btn btn-primary" onclick="navigate('#/client/quotes/${p.id}')"><i data-lucide="file-diff"></i>View Quotes</button>`:''}
-        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button><button class="btn btn-primary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+        ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button><button class="btn btn-secondary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
@@ -2990,7 +3010,7 @@ ROUTES['client/order'] = function(id){
           ${infoItem('Destination', p.order.logistics.destination)}
           ${infoItem('Payment Status', p.order.paymentStatus)}
         </div>
-        <button class="btn btn-secondary btn-block" style="margin-top:16px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button>
+        <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button>
       </div>
       <div class="card card-pad">
         <div class="section-title">Need something?</div>
@@ -3235,29 +3255,39 @@ function supplierResponsesSection(p){
 
 function markupKey(pid,sid){ return pid+'::'+sid; }
 function getMarkup(pid,sid){ const k=markupKey(pid,sid); if(STATE.ui.markupDrafts[k]===undefined) STATE.ui.markupDrafts[k]=STATE.settings.defaultMarkupPct; return STATE.ui.markupDrafts[k]; }
+// One shared rate per RFQ, not per supplier — it's a market exchange rate,
+// not something that varies by who you're comparing (see
+// App.setExchangeRate / Settings' Default Exchange Rate for the starting
+// value). Always overridable right here since the real rate moves daily.
+function getExchangeRate(pid){ if(STATE.ui.exchangeRateDrafts[pid]===undefined) STATE.ui.exchangeRateDrafts[pid]=STATE.settings.defaultExchangeRate; return STATE.ui.exchangeRateDrafts[pid]; }
 
 function quoteComparisonSection(p){
   const submitted = p.supplierQuotes.filter(q=>q.status==='submitted');
   if(!submitted.length) return '';
   const shortlisted = new Set(p.shortlist.map(s=>s.supplierId));
+  const rate = getExchangeRate(p.id);
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
-    <div class="section-title">Compare Supplier Quotes</div>
-    <div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal.</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;">
+      <div><div class="section-title">Compare Supplier Quotes</div><div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal. Suppliers quote in MXN — set today's rate to convert to USD.</div></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" step="0.01" min="0.01" value="${rate}" style="width:100px;" onchange="App.setExchangeRate('${p.id}', this.value)"></div>
+    </div>
     <div class="table-wrap">
     <table class="data-table comparison-table"><thead><tr>
-      <th>Supplier</th><th>Unit Price</th><th title="Tooling / Setup / Shipping">Extras</th><th>Total Cost</th><th>Lead</th><th>Markup</th><th>Cust. Price</th><th></th>
+      <th>Supplier</th><th>Unit Price</th><th title="Tooling / Setup / Shipping">Extras</th><th>Total Cost (MXN)</th><th>Total Cost (USD)</th><th>Lead</th><th>Markup</th><th>Cust. Price (USD)</th><th></th>
     </tr></thead><tbody>
       ${submitted.map(q=>{
         const supplier = SUPPLIERS.find(s=>s.id===q.supplierId);
         const markup = getMarkup(p.id,q.supplierId);
-        const customerPrice = q.quotedTotal*(1+markup/100);
+        const costUsd = q.quotedTotal/rate;
+        const customerPrice = costUsd*(1+markup/100);
         const already = shortlisted.has(q.supplierId);
         return `<tr>
           <td class="td-strong">${supplier?supplier.name:'Deleted Supplier'}<div class="td-sub">${supplier?`${supplier.city} · ${supplier.rating}★`:'—'}</div></td>
-          <td>${fmtMoney2(q.unitPrice)}</td>
-          <td class="td-sub" style="line-height:1.5;">T ${fmtMoney(q.tooling)}<br>S ${fmtMoney(q.setup)}<br>Sh ${q.shipping?fmtMoney(q.shipping):'Incl.'}</td>
-          <td class="td-strong">${fmtMoney(q.quotedTotal)}</td>
+          <td>${fmtMXN2(q.unitPrice)}</td>
+          <td class="td-sub" style="line-height:1.5;">T ${fmtMXN(q.tooling)}<br>S ${fmtMXN(q.setup)}<br>Sh ${q.shipping?fmtMXN(q.shipping):'Incl.'}</td>
+          <td class="td-strong">${fmtMXN(q.quotedTotal)}</td>
+          <td class="td-strong">${fmtMoney(costUsd)}</td>
           <td>${q.leadTimeDays}d</td>
           <td><input type="number" value="${markup}" min="0" max="100" style="width:42px;padding:5px 4px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)">%</td>
           <td class="td-strong">${fmtMoney(customerPrice)}</td>
@@ -3294,8 +3324,8 @@ function sentShortlistReadonlySection(p){
   <div class="card card-pad">
     <div class="section-title">Shortlist Sent to Customer</div>
     <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns are never shown to the customer — this pricing detail is visible only within INNOUS.</div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
-      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost (MXN)</th><th>Rate</th><th>Supplier Cost (USD)</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
+      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${s.supplierCostMxn?fmtMXN(s.supplierCostMxn):'—'}</td><td class="td-sub">${s.exchangeRate||'—'}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
     </tbody></table></div>
   </div>`;
 }
@@ -3525,7 +3555,7 @@ ROUTES['innous/order'] = function(id){
     ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
-      ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
+      ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), (p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn)+' · ':'')+'paid to '+supplierName(p.selectedSupplierId), 'factory')}
       ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId), 'dollar-sign')}
       ${kpiCard('Gross Margin', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margin ('+p.order.markupPct+'% markup)', 'trending-up')}
     </div>
@@ -3740,7 +3770,7 @@ ROUTES['innous/messages'] = function(){
 
 /* ---- INNOUS Settings ---- */
 ROUTES['innous/settings'] = function(){
-  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, notif:{...STATE.settings.notif} };
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
@@ -3761,6 +3791,8 @@ ROUTES['innous/settings'] = function(){
       <div class="form-group" style="margin-top:12px;"><label class="field-label">Default Markup</label>
         <div class="markup-chip-row">${[10,12,15,18,20].map(m=>`<button type="button" class="markup-chip ${m===d.defaultMarkupPct?'active':''}" onclick="App.setDraftMarkup(${m})">${m}%</button>`).join('')}</div>
       </div>
+      <div class="form-group"><label class="field-label">Default Exchange Rate (MXN per 1 USD)</label><input type="number" step="0.01" min="0.01" value="${d.defaultExchangeRate}" oninput="STATE.ui.settingsDraft.defaultExchangeRate=parseFloat(this.value)||DEFAULT_SETTINGS.defaultExchangeRate"></div>
+      <div class="section-sub">Suppliers quote in MXN — this is the starting rate INNOUS sees when converting a supplier's quote to USD for the customer. It's always editable per RFQ too, right where you compare quotes, since the real rate moves daily.</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Notifications</div>
@@ -3907,10 +3939,10 @@ function supplierSubmittedQuoteCard(q){
   <div class="card card-pad">
     <div class="section-title">Tu Cotización Enviada</div>
     <div class="info-grid" style="margin-top:12px;">
-      ${infoItem('Precio Unitario', fmtMoney2(q.unitPrice))}
-      ${infoItem('Herramental', fmtMoney(q.tooling))}
-      ${infoItem('Preparación', fmtMoney(q.setup))}
-      ${infoItem('Envío', q.shipping?fmtMoney(q.shipping):'Incluido')}
+      ${infoItem('Precio Unitario', fmtMXN2(q.unitPrice))}
+      ${infoItem('Herramental', fmtMXN(q.tooling))}
+      ${infoItem('Preparación', fmtMXN(q.setup))}
+      ${infoItem('Envío', q.shipping?fmtMXN(q.shipping):'Incluido')}
       ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
     </div>
     <hr class="divider">
@@ -3922,13 +3954,14 @@ function supplierQuoteForm(p){
   <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
     <div class="section-title">Enviar Tu Cotización</div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Precio unitario (USD)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 185.00"></div>
-      <div class="form-group"><label class="field-label">Herramental (USD)</label><input type="number" name="tooling" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Precio unitario (MXN)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 3,200.00"></div>
+      <div class="form-group"><label class="field-label">Herramental (MXN)</label><input type="number" name="tooling" placeholder="0"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Preparación / Setup (USD)</label><input type="number" name="setup" placeholder="0"></div>
-      <div class="form-group"><label class="field-label">Envío (USD)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)"></div>
+      <div class="form-group"><label class="field-label">Preparación / Setup (MXN)</label><input type="number" name="setup" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Envío (MXN)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)"></div>
     </div>
+    <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Cotiza en pesos mexicanos (MXN) — Innous convierte a dólares al armar la cotización formal para el cliente.</div>
     <div class="form-row">
       <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28"></div>
       <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity"><option>15 días</option><option selected>30 días</option><option>45 días</option><option>60 días</option></select></div>
@@ -4269,9 +4302,10 @@ const App = {
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
-    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, notif:{...STATE.ui.settingsDraft.notif} };
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
     const { error } = await sb.from('settings').update({
       legal_name: next.legalName, address: next.address, region: next.region, default_markup_pct: next.defaultMarkupPct,
+      default_exchange_rate: next.defaultExchangeRate,
       notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
       notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
     }).eq('id',1);
@@ -5002,6 +5036,7 @@ const App = {
 
   /* ---- Quote comparison / markup / shortlist ---- */
   setMarkup(pid,sid,val){ STATE.ui.markupDrafts[markupKey(pid,sid)] = parseFloat(val)||0; route(); },
+  setExchangeRate(pid,val){ const n=parseFloat(val); STATE.ui.exchangeRateDrafts[pid] = (n>0)?n:STATE.settings.defaultExchangeRate; route(); },
   // No route() here on purpose — these fire on every keystroke (oninput), and
   // re-rendering the whole page on each one would blow away focus/cursor
   // position mid-type. The draft only gets written to disk on Save below.
@@ -5034,14 +5069,22 @@ const App = {
     if(p.shortlist.length>=5){ showToast('Shortlist already has 5 options'); return; }
     const q = p.supplierQuotes.find(x=>x.supplierId===sid);
     const markup = getMarkup(pid,sid);
-    const customerPrice = q.quotedTotal*(1+markup/100);
-    p.shortlist.push({supplierId:sid, supplierCost:q.quotedTotal, markupPct:markup, customerPrice, leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
+    const exchangeRate = getExchangeRate(pid);
+    // q.quotedTotal is what the supplier actually typed, in MXN — everything
+    // downstream of this point (margin math, the client's shortlist, the
+    // formal quote PDF) works in USD, so the conversion happens exactly
+    // once, right here, using whatever rate INNOUS had set at this moment.
+    // The original MXN total and the rate used are kept alongside it purely
+    // as INNOUS's own record of what's actually owed to the supplier.
+    const supplierCost = q.quotedTotal/exchangeRate;
+    const customerPrice = supplierCost*(1+markup/100);
+    p.shortlist.push({supplierId:sid, supplierCost, supplierCostMxn:q.quotedTotal, exchangeRate, markupPct:markup, customerPrice, leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
     const badges = computeBadges(p.shortlist);
     p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
     if(p.status==='sourcing') p.status='quotes_received';
     if(!p.isDemo){
       const { error: e1 } = await sb.from('shortlist').upsert({
-        project_id: pid, supplier_id: sid, supplier_cost: q.quotedTotal, markup_pct: markup,
+        project_id: pid, supplier_id: sid, supplier_cost: supplierCost, supplier_cost_mxn: q.quotedTotal, exchange_rate: exchangeRate, markup_pct: markup,
         customer_price: customerPrice, lead_time_days: q.leadTimeDays, rating: q.rating||0,
       });
       if(e1){ showToast(e1.message); return; }
