@@ -4301,7 +4301,7 @@ ROUTES['innous/orders'] = function(){
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Supplier Cost</th><th>Customer Price</th><th>Margin</th><th>Production</th><th>Payment</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
-        <td>${fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost)}</td>
+        <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost)}</td>
         <td>${orderStatusBadge(p)}</td><td class="td-sub">${p.order.paymentStatus}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
@@ -4329,7 +4329,7 @@ ROUTES['innous/order'] = function(id){
     ${!p.innousAuthorizedAt ? purchaseOrderDetailsSection(p) : ''}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
-      ${kpiCard('Supplier Cost', fmtMoney(p.order.supplierCost), (p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn)+' · ':'')+'paid to '+supplierName(p.selectedSupplierId), 'factory')}
+      ${kpiCard('Supplier Cost', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
       ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId), 'dollar-sign')}
       ${kpiCard('Gross Margin', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margin ('+p.order.markupPct+'% markup)', 'trending-up')}
     </div>
@@ -4346,7 +4346,7 @@ ROUTES['innous/order'] = function(id){
     <div class="card card-pad">
       <div class="section-title">Payment Status</div>
       <div class="section-sub">Billing is between INNOUS and each party — set this as deposits and payouts actually happen. It's independent of the production timeline.</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice.toLocaleString()>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${fmtMoney(p.order.supplierCost)}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</span></div>
       <div class="markup-chip-row">
         ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
       </div>
@@ -4445,11 +4445,19 @@ ROUTES['innous/analytics'] = function(){
   const totalShortlisted = PROJECTS.filter(p=>p.shortlist.length>0).length;
   const winRate = totalShortlisted? Math.round(awarded/totalShortlisted*100) : 0;
   const avgMarkup = withOrder.length? (withOrder.reduce((s,p)=>s+p.order.markupPct,0)/withOrder.length).toFixed(1) : 0;
-  const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+p.order.customerPrice,0)/withOrder.length : 0;
-  const revenue = withOrder.reduce((s,p)=>s+p.order.customerPrice,0);
-  const margin = withOrder.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost),0);
+  // Analytics is Innous's own internal view of the business, so everything
+  // here is in MXN — even though customerPrice is stored in USD per order.
+  // Each order converts at its OWN exchange rate (the one actually used at
+  // the time, from client_select_quote), never a single "today's rate"
+  // applied retroactively to every historical order.
+  const rateFor = p => p.order.exchangeRate || STATE.settings.defaultExchangeRate || DEFAULT_SETTINGS.defaultExchangeRate;
+  const customerPriceMxn = p => p.order.customerPrice*rateFor(p);
+  const supplierCostMxnOf = p => p.order.supplierCostMxn || p.order.supplierCost*rateFor(p);
+  const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+customerPriceMxn(p),0)/withOrder.length : 0;
+  const revenue = withOrder.reduce((s,p)=>s+customerPriceMxn(p),0);
+  const margin = withOrder.reduce((s,p)=>s+(customerPriceMxn(p)-supplierCostMxnOf(p)),0);
 
-  const custCounts = {}; withOrder.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+p.order.customerPrice; });
+  const custCounts = {}; withOrder.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+customerPriceMxn(p); });
   const topCustomers = Object.entries(custCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxCust = topCustomers.length? topCustomers[0][1] : 1;
 
@@ -4468,16 +4476,16 @@ ROUTES['innous/analytics'] = function(){
       ${kpiCard('RFQs This Month', thisMonth, 'new requests submitted','file-text')}
       ${kpiCard('Win Rate', winRate+'%', 'shortlist → awarded order','target')}
       ${kpiCard('Avg. Markup', avgMarkup+'%', 'across all awarded orders','percent')}
-      ${kpiCard('Avg. Project Value', fmtMoney(avgValue), 'per awarded order','dollar-sign')}
+      ${kpiCard('Avg. Project Value', fmtMXN(avgValue), 'per awarded order','dollar-sign')}
     </div>
     <div class="grid grid-2" style="margin-bottom:16px;">
-      ${kpiCard('Revenue', fmtMoney(revenue), 'across active + completed orders','trending-up')}
-      ${kpiCard('Gross Margin', fmtMoney(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% blended margin','wallet')}
+      ${kpiCard('Revenue', fmtMXN(revenue), 'across active + completed orders','trending-up')}
+      ${kpiCard('Gross Margin', fmtMXN(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% blended margin','wallet')}
     </div>
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Top Customers by Revenue</div>
-        <div style="margin-top:14px;">${topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtMoney(val)}</div></div>`).join('')}</div>
+        <div style="margin-top:14px;">${topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtMXN(val)}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Top Suppliers by Orders Won</div>
@@ -4778,7 +4786,7 @@ ROUTES['supplier/quotes'] = function(){
     <div class="page-header"><div><div class="page-title">Mis Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones enviadas</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/quote/${p.id}')">
-        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+        <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMXN2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${supplierQuoteStatusBadge(p)}</td>
       </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
@@ -4842,7 +4850,7 @@ function supplierOrderCard(p){
     </div>
     <div style="display:flex;gap:22px;margin-top:12px;">
       ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
-      ${infoItem('Precio Acordado', fmtMoney(p.order.supplierCost))}
+      ${infoItem('Precio Acordado', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost))}
       ${infoItem('Entrega', fmtDate(p.deliveryDate))}
     </div>
     <div style="margin-top:16px;"><div class="bar-track"><div class="bar-fill" style="width:${((stageIdx+1)/ORDER_STATUS_FLOW.length*100)}%;"></div></div></div>
