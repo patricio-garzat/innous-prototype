@@ -4123,17 +4123,35 @@ function targetPriceSourcingSection(p){
   const locked = p.invitedSupplierIds.length > 0;
   const markup = locked ? p.targetPriceMarkupPct : getMarkup(p.id, '__target__');
   const rate = locked ? p.targetPriceExchangeRate : getExchangeRate(p.id);
-  const budgetMxn = locked ? p.targetPriceSupplierBudgetMxn : (p.targetPriceUsd / (1 + markup/100)) * rate;
+  // Two separate conversions, shown where they actually happen: markup is
+  // applied first and stays in USD (that's what the client's target price
+  // is in), THEN the exchange rate turns that into the MXN number the
+  // supplier sees. Keeping them visually apart (instead of one combined
+  // USD→MXN jump) is what was asked for — INNOUS can sanity-check each step
+  // on its own currency before moving to the next.
+  const supplierCostUsd = p.targetPriceUsd / (1 + markup/100);
+  const budgetMxn = locked ? p.targetPriceSupplierBudgetMxn : supplierCostUsd * rate;
+  const marginUsd = p.targetPriceUsd - supplierCostUsd;
+  const marginPct = p.targetPriceUsd>0 ? (marginUsd/p.targetPriceUsd*100) : 0;
+  const marginMxn = marginUsd * rate;
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div class="section-title">Target Price Sourcing</div>
     <div class="section-sub">The customer set a target price of ${fmtMoney(p.targetPriceUsd)}. ${locked ? 'The markup and exchange rate below are locked — every supplier invited sees this same budget.' : 'Set your markup and the exchange rate to use before inviting suppliers — once you send the first invite, these numbers lock in.'}</div>
     <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
       <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${markup}" style="width:100px;" ${locked?'disabled':`onchange="App.setMarkup('${p.id}','__target__', this.value)"`}></div>
+      <div><div class="field-label">Supplier Cost (USD)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMoney(supplierCostUsd)}</div></div>
+    </div>
+    <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:16px;">
       <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
       <div><div class="field-label">Supplier Budget (MXN)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMXN(budgetMxn)}</div></div>
     </div>
-    <div class="field-hint" style="margin-top:10px;">Suppliers only ever see this MXN budget — never the target price in USD or your markup %.</div>
+    <hr class="divider">
+    <div style="display:flex;gap:32px;flex-wrap:wrap;">
+      <div><div class="field-label">INNOUS Margin (USD)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:2px;">${marginPct.toFixed(1)}% of target price</div></div>
+      <div><div class="field-label">INNOUS Margin (MXN)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
+    </div>
+    <div class="field-hint" style="margin-top:10px;">Suppliers only ever see the Supplier Budget in MXN — never the target price, your markup %, or this margin.</div>
   </div>`;
 }
 function supplierMatchingSection(p){
