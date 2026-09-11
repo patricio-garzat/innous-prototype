@@ -5761,10 +5761,10 @@ const App = {
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     try{
       // No `id` here on purpose — the column's DEFAULT (a Postgres sequence,
-      // see supabase-fix27-rfq-sequential-folio.sql) assigns the next clean
-      // "RFQ0000"-style folio atomically, so two clients submitting at the
-      // same moment can never end up with the same folio the way a
-      // browser-computed one theoretically could.
+      // see supabase-fix27-rfq-sequential-folio.sql / fix31) assigns the next
+      // clean "RFQ-2026-0000"-style folio atomically, so two clients
+      // submitting at the same moment can never end up with the same folio
+      // the way a browser-computed one theoretically could.
       const { data: inserted, error } = await withTimeout(sb.from('projects').insert({
         customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
         process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
