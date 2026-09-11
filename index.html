@@ -4669,7 +4669,7 @@ ROUTES['innous/order'] = function(id){
     <div class="card card-pad">
       <div class="section-title">Payment Status</div>
       <div class="section-sub">Billing is between INNOUS and each party — set this as deposits and payouts actually happen. It's independent of the production timeline.</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Supplier payout: ${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Customer: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Supplier payout (IVA incl.): ${p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost))}</span></div>
       <div class="markup-chip-row">
         ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
       </div>
