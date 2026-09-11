@@ -3926,7 +3926,7 @@ function supplierRfqCard(p){
       ${infoItem('Archivos', p.files.filter(f=>f.redactedPath).length+' adjuntos')}
     </div>
     <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>
-    <button class="btn ${submitted?'btn-secondary':'btn-primary'} btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">${submitted?'Ver Cotización Enviada':'Ver RFQ'}</button>
+    ${!submitted ? `<button class="btn btn-primary btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">Ver RFQ</button>` : `<div class="field-hint">Ya enviaste tu cotización — consulta su estatus en Mis Cotizaciones.</div>`}
   </div>`;
 }
 
@@ -4015,11 +4015,30 @@ ROUTES['supplier/quotes'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Mis Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones enviadas</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Precio Unitario</th><th>Tiempo de Entrega</th><th>Enviada</th><th>Estatus</th></tr></thead><tbody>
-      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/rfq/${p.id}')">
+      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/supplier/quote/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${fmtMoney2(q.unitPrice)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${supplierQuoteStatusBadge(p)}</td>
       </tr>`).join('') || `<tr><td colspan="6">${emptyState('file-text','Aún no has enviado cotizaciones','')}</td></tr>`}
     </tbody></table></div></div>
+  </div>`;
+};
+
+/* ---- Supplier: single submitted quote, standalone (no RFQ browsing
+   content) — just the quote itself and whether it's under review, won, or
+   rejected. Reached only from "Mis Cotizaciones"; the RFQ detail page is
+   for RFQs still open to quote, not for checking on one already sent. ---- */
+ROUTES['supplier/quote'] = function(id){
+  const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','Cotización no disponible','Esta solicitud no fue enviada a tu empresa.');
+  const q = supplierQuoteFor(p);
+  if(!q || q.status!=='submitted') return emptyState('file-text','Aún no has enviado una cotización para este RFQ','');
+  const won = supplierWon(p);
+  return `
+  <div class="content-inner" style="max-width:700px;">
+    <div class="breadcrumb"><a href="#/supplier/quotes">Mis Cotizaciones</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${supplierQuoteStatusBadge(p)}</div>
+    ${stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'||won?'success':'info')}
+    ${supplierSubmittedQuoteCard(q)}
+    ${won && p.order ? `<button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="navigate('#/supplier/order/${p.id}')"><i data-lucide="package"></i>Ver Pedido</button>` : ''}
   </div>`;
 };
 
@@ -4977,22 +4996,26 @@ const App = {
   async submitRfq(e){
     e.preventDefault();
     const f = new FormData(e.target);
-    const idNum = 500 + PROJECTS.length + rnd(1,20);
-    const id = 'IN-2026-'+String(idNum).padStart(5,'0');
     const deliveryMethod = STATE.ui.newRfqDraft.deliveryMethod;
     const deliveryLocation = deliveryMethod==='pickup' ? 'Pickup' : (f.get('deliveryLocation')||'');
     const filesToUpload = STATE.ui.newRfqFiles.filter(x=>x.file);
     const activity = [{ts:new Date().toISOString(), actor:currentClient().company, text:'RFQ submitted.'}];
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     try{
-      const { error } = await withTimeout(sb.from('projects').insert({
-        id, customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
+      // No `id` here on purpose — the column's DEFAULT (a Postgres sequence,
+      // see supabase-fix27-rfq-sequential-folio.sql) assigns the next clean
+      // "RFQ0000"-style folio atomically, so two clients submitting at the
+      // same moment can never end up with the same folio the way a
+      // browser-computed one theoretically could.
+      const { data: inserted, error } = await withTimeout(sb.from('projects').insert({
+        customer_id: STATE.clientId, project_name: f.get('projectName'), description: f.get('description'),
         process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
         delivery_date: f.get('deliveryDate')||null, delivery_location: deliveryLocation,
         quality_req: 'Standard quality documentation.', special_req: f.get('specialReq')||'—',
         files: [], status:'submitted', activity,
-      }), 12000, 'submitRfq');
+      }).select('id').single(), 12000, 'submitRfq');
       if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
+      const id = inserted.id;
 
       // Upload the real files now that the project row exists (Storage RLS
       // checks for a matching project owned by this client) — a failed
@@ -5292,7 +5315,7 @@ const App = {
       if(error){ showToast(error.message); return false; }
     }
     showToast('Cotización enviada con éxito', 'success');
-    navigate('#/supplier/rfq/'+pid);
+    navigate('#/supplier/quote/'+pid);
     return false;
   },
 
