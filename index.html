@@ -4924,7 +4924,8 @@ function supplierBillingSection(s){
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <input type="file" id="csf-input-${s.id}" accept=".pdf,application/pdf" style="display:none;" onchange="App.onSupplierCsfSelected('${s.id}',this)">
         <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('csf-input-${s.id}').click()"><i data-lucide="upload"></i>Subir Constancia (PDF)</button>
-        ${s.csfFilePath ? `<button type="button" class="btn btn-ghost btn-sm" onclick="App.viewSupplierCsf('${s.id}')"><i data-lucide="file-text"></i>Ver constancia guardada</button>` : ''}
+        ${s.csfFilePath ? `<button type="button" class="btn btn-ghost btn-sm" onclick="App.viewSupplierCsf('${s.id}')"><i data-lucide="file-text"></i>Ver constancia guardada</button>
+        <button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="App.deleteSupplierCsf('${s.id}')"><i data-lucide="trash-2"></i>Eliminar constancia</button>` : ''}
       </div>
       <div class="field-hint">Se leen automáticamente Razón Social, RFC y Domicilio — revísalos abajo antes de guardar.</div>
     </div>
@@ -7100,6 +7101,22 @@ const App = {
     const { data, error } = await sb.storage.from('account-docs').createSignedUrl(s.csfFilePath, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
     window.open(data.signedUrl, '_blank');
+  },
+  // Only removes the stored PDF itself — Razón Social/RFC/Domicilio stay as
+  // they are (they're independent, editable fields; deleting the source
+  // document doesn't mean those numbers stopped being correct).
+  async deleteSupplierCsf(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s || !s.csfFilePath) return;
+    if(!confirm('¿Eliminar la Constancia de Situación Fiscal guardada de este proveedor? Esto no borra la Razón Social, RFC o Domicilio ya guardados, solo el archivo.')) return;
+    if(isRealAccountId(id)){
+      const { error: rmErr } = await sb.storage.from('account-docs').remove([s.csfFilePath]);
+      if(rmErr){ showToast(rmErr.message); return; }
+      const { error } = await sb.from('suppliers').update({ csf_file_path: null }).eq('user_id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    s.csfFilePath = null;
+    showToast('Constancia eliminada', 'success');
+    route();
   },
   async addToShortlist(pid,sid){
     const p = findProject(pid);
