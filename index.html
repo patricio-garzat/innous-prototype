@@ -447,7 +447,17 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .quote-price{font-size:26px;font-weight:800;letter-spacing:-0.5px;}
 .quote-meta-row{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--ink-secondary);padding:8px 0;border-top:1px solid var(--border);}
 
-.chat-panel{display:flex;height:calc(100vh - 220px);min-height:420px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);}
+/* The Messages page itself should never scroll — only the chat list (if
+   there are too many chats to fit) and the messages inside the open chat
+   (both already overflow-y:auto below) may. .messages-shell makes the
+   page's own content-inner exactly fill .content's box (a definite height,
+   since .content is itself a flex item — see .app-body/.content), so
+   .chat-panel filling the rest via flex:1 always fits with nothing left
+   over to overflow, instead of the old fixed "100vh minus a guessed
+   number of pixels" that broke the moment the header above it changed
+   height (e.g. the "New Chat" button). */
+.messages-shell{height:100%;display:flex;flex-direction:column;}
+.chat-panel{display:flex;flex:1;min-height:320px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);}
 .chat-list{width:300px;flex:0 0 auto;border-right:1px solid var(--border);overflow-y:auto;}
 .chat-list-item{display:flex;gap:10px;padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
 .chat-list-item:hover{background:var(--surface-alt);}
@@ -476,7 +486,8 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-card-field-label{font-size:9.5px;color:var(--ink-tertiary);text-transform:uppercase;letter-spacing:.02em;font-weight:700;margin-bottom:1px;}
 .chat-card-field-val{font-size:12px;font-weight:600;color:var(--ink-secondary);}
 @media(max-width:768px){
-  .chat-panel{flex-direction:column;height:auto;}
+  .messages-shell{height:auto;display:block;}
+  .chat-panel{flex-direction:column;flex:none;height:auto;}
   .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
   .chat-thread{min-height:360px;}
 }
@@ -3300,7 +3311,7 @@ function route(){
   // real chat app opening a conversation.
   if(key==='innous/messages' || key==='client/messages' || key==='supplier/messages'){
     const cm = el.querySelector('.chat-messages');
-    if(cm) requestAnimationFrame(()=>{ cm.scrollTop = cm.scrollHeight; });
+    if(cm) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
   }
   lastRoutedHash = hash;
   lucide.createIcons();
@@ -3802,7 +3813,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
   const key = 'client:'+STATE.clientId+':'+activeName;
   const msgs = activeName ? chatThread(c, activeName) : [];
   return `
-  <div class="content-inner">
+  <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
     </div>
@@ -4783,7 +4794,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
   const owner = active ? (active.type==='client' ? CUSTOMERS.find(c=>c.id===active.id) : SUPPLIERS.find(s=>s.id===active.id)) : null;
   const msgs = active ? chatThread(owner, active.threadName) : [];
   return `
-  <div class="content-inner">
+  <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct conversations with customers and suppliers.</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
     </div>
@@ -5214,7 +5225,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
   const key = 'supplier:'+STATE.supplierId+':'+activeName;
   const msgs = activeName ? chatThread(s, activeName) : [];
   return `
-  <div class="content-inner">
+  <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>Nuevo Chat</button>
     </div>
