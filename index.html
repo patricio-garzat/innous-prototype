@@ -1602,7 +1602,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4186,25 +4186,39 @@ function supplierSubmittedQuoteCard(p, q){
     ${q.notes ? `<hr class="divider"><div class="info-item-label">Notas</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${q.notes}</div>` : ''}
   </div>`;
 }
+// Every field is backed by STATE.ui.supplierQuoteDrafts, not just the raw
+// DOM value — a plain uncontrolled form here was losing everything the
+// supplier had typed the moment anything re-rendered #app-content out from
+// under them mid-form (most commonly: the ~12s background live-updates
+// poll, see pollLiveUpdates, firing at the exact instant no field happened
+// to be focused, e.g. between tabbing from one field to the next). With
+// the draft, a re-render just rebuilds the same inputs with the same
+// values already in them — nothing typed is lost, worst case the cursor
+// jumps to the end of whatever field was mid-edit.
 function supplierQuoteForm(p){
+  if(!STATE.ui.supplierQuoteDrafts[p.id]){
+    STATE.ui.supplierQuoteDrafts[p.id] = { unitPrice:'', tooling:'', setup:'', shipping:'', leadTimeDays:'', validity:'30 días', notes:'' };
+  }
+  const d = STATE.ui.supplierQuoteDrafts[p.id];
+  const upd = (field)=>`App.updateSupplierQuoteDraft('${p.id}','${field}',this.value)`;
   return `
   <form class="card card-pad" onsubmit="return App.submitSupplierQuote(event,'${p.id}')">
     <div class="section-title">Enviar Tu Cotización</div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Precio unitario (MXN)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 3,200.00"></div>
-      <div class="form-group"><label class="field-label">Herramental (MXN)</label><input type="number" name="tooling" placeholder="0"></div>
+      <div class="form-group"><label class="field-label">Precio unitario (MXN)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 3,200.00" value="${d.unitPrice}" oninput="${upd('unitPrice')}"></div>
+      <div class="form-group"><label class="field-label">Herramental (MXN)</label><input type="number" name="tooling" placeholder="0" value="${d.tooling}" oninput="${upd('tooling')}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Preparación / Setup (MXN)</label><input type="number" name="setup" placeholder="0"></div>
-      <div class="form-group"><label class="field-label">Envío (MXN)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)"></div>
+      <div class="form-group"><label class="field-label">Preparación / Setup (MXN)</label><input type="number" name="setup" placeholder="0" value="${d.setup}" oninput="${upd('setup')}"></div>
+      <div class="form-group"><label class="field-label">Envío (MXN)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)" value="${d.shipping}" oninput="${upd('shipping')}"></div>
     </div>
     <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Cotiza en pesos mexicanos (MXN) — Innous convierte a dólares al armar la cotización formal para el cliente.</div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28"></div>
-      <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity"><option>15 días</option><option selected>30 días</option><option>45 días</option><option>60 días</option></select></div>
+      <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28" value="${d.leadTimeDays}" oninput="${upd('leadTimeDays')}"></div>
+      <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity" onchange="${upd('validity')}">${['15 días','30 días','45 días','60 días'].map(v=>`<option ${d.validity===v?'selected':''}>${v}</option>`).join('')}</select></div>
     </div>
     <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Las condiciones de pago y el tiempo de entrega que verá el cliente en su cotización formal los define Innous directamente — el tiempo de entrega que pongas aquí es solo tu estimado interno para comparación.</div>
-    <div class="form-group"><label class="field-label">Notas</label><textarea name="notes" placeholder="Cualquier supuesto, exclusión o aclaración..."></textarea></div>
+    <div class="form-group"><label class="field-label">Notas</label><textarea name="notes" placeholder="Cualquier supuesto, exclusión o aclaración..." oninput="${upd('notes')}">${d.notes}</textarea></div>
     <div class="form-group"><label class="field-label">Documentos</label><button type="button" class="btn btn-secondary btn-sm" onclick="showToast('cost-breakdown.pdf adjuntado')"><i data-lucide="paperclip"></i>Adjuntar cost-breakdown.pdf</button></div>
     <hr class="divider">
     <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Enviar Cotización</button></div>
@@ -5342,6 +5356,11 @@ const App = {
     if(!STATE.ui.quoteDetailsDrafts[pid]) STATE.ui.quoteDetailsDrafts[pid] = {};
     STATE.ui.quoteDetailsDrafts[pid][field] = val;
   },
+  // Same no-route()-here reasoning as updateQuoteDetailDraft above.
+  updateSupplierQuoteDraft(pid,field,val){
+    if(!STATE.ui.supplierQuoteDrafts[pid]) STATE.ui.supplierQuoteDrafts[pid] = {};
+    STATE.ui.supplierQuoteDrafts[pid][field] = val;
+  },
   async saveQuoteDetails(pid){
     const p = findProject(pid); if(!p) return;
     const d = STATE.ui.quoteDetailsDrafts[pid] || {};
@@ -5557,6 +5576,7 @@ const App = {
       }).eq('project_id', pid).eq('supplier_id', STATE.supplierId);
       if(error){ showToast(error.message); return false; }
     }
+    delete STATE.ui.supplierQuoteDrafts[pid];
     showToast('Cotización enviada con éxito', 'success');
     navigate('#/supplier/quote/'+pid);
     return false;
