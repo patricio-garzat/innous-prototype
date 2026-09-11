@@ -1936,6 +1936,123 @@ function generateQuotePdf(p){
 
   return doc;
 }
+/* ---- Purchase Order (Orden de Compra) — the supplier's counterpart to the
+   client's formal quote PDF above, generated once INNOUS authorizes the
+   project (App.authorizeProject) and the supplier can see their order at
+   all. Always in Spanish, always in MXN — this is INNOUS confirming the
+   supplier's OWN proposal back to them (unit price, tooling, setup,
+   shipping, lead time — all straight from their own submitted quote), never
+   the client's price, INNOUS's markup, or anything client-identifying. */
+function generatePurchaseOrderPdf(p){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'letter' });
+  const marginL = 50, marginR = 562;
+  const accent = [0,163,224], danger = [185,28,28], ink = [24,24,27], inkSec = [82,82,91];
+  const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId) || {};
+  const q = p.supplierQuotes.find(x=>x.supplierId===p.selectedSupplierId) || {};
+  const total = q.quotedTotal || 0;
+
+  doc.addFileToVFS('Calibri.ttf', INNOUS_QUOTE_FONT_TTF);
+  doc.addFont('Calibri.ttf', 'Calibri', 'normal');
+  doc.addFont('Calibri.ttf', 'Calibri', 'bold');
+  doc.addFont('Calibri.ttf', 'Calibri', 'italic');
+  doc.addFont('Calibri.ttf', 'Calibri', 'bolditalic');
+
+  doc.addImage(INNOUS_LOGO_PNG, 'PNG', marginL, 34, 150, 41.3);
+
+  let y = 112;
+  doc.setFont('Calibri','normal'); doc.setFontSize(10); doc.setTextColor(...ink);
+  doc.text('Orden de Compra N.', marginL, y);
+  doc.setFont('Calibri','bold'); doc.setTextColor(...danger);
+  doc.text(p.id, marginL+95, y);
+  doc.setFont('Calibri','normal'); doc.setTextColor(...ink);
+  doc.text(new Date().toLocaleDateString('es-MX'), marginR, y, {align:'right'});
+
+  y += 18;
+  doc.setFont('Calibri','bold'); doc.text('Proveedor.', marginL, y);
+  doc.setFont('Calibri','normal'); doc.text(` ${supplier.contactName||'—'} | ${supplier.name||'—'}`, marginL+62, y);
+
+  y += 14;
+  doc.setDrawColor(210,210,214); doc.setLineWidth(0.75);
+  doc.line(marginL, y, marginR, y);
+
+  y += 26;
+  doc.setFont('Calibri','bold'); doc.setFontSize(10.5);
+  doc.text('Innous le confirma la siguiente orden de fabricación', marginL, y);
+
+  y += 30;
+  doc.setFontSize(9);
+  const colItem = marginL+8, colDesc = marginL+40, colQty = 400, colUnit = 462, colTotal = marginR;
+  doc.text('Item', colItem, y);
+  doc.text('Descripción', colDesc, y);
+  doc.text('Cantidad', colQty, y, {align:'center'});
+  doc.text('Precio Unitario', colUnit, y, {align:'center'});
+  doc.text('PRECIO TOTAL', colTotal, y, {align:'right'});
+
+  y += 16;
+  doc.setFont('Calibri','normal'); doc.setFontSize(9.5);
+  const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
+  const descLines = doc.splitTextToSize(descText, 290);
+  doc.text('1', colItem, y);
+  doc.text(descLines, colDesc, y);
+  doc.text(String(p.quantity||0), colQty, y, {align:'center'});
+  doc.text(fmtMXN2(q.unitPrice||0), colUnit, y, {align:'center'});
+  doc.text(fmtMXN(q.unitPrice ? q.unitPrice*p.quantity : 0), colTotal, y, {align:'right'});
+  y += descLines.length*12 + 4;
+
+  // Herramental / Preparación / Envío as their own lines, exactly like the
+  // supplier's own "Tu Cotización Enviada" breakdown — nothing here is
+  // recomputed, it's their own submitted numbers echoed back for
+  // confirmation.
+  const extras = [
+    ['Herramental', q.tooling],
+    ['Preparación / Setup', q.setup],
+    ['Envío', q.shipping],
+  ].filter(([,amt])=>amt);
+  extras.forEach(([label,amt])=>{
+    y += 14;
+    doc.setFont('Calibri','normal'); doc.setTextColor(...inkSec);
+    doc.text(label, colDesc, y);
+    doc.text(fmtMXN(amt), colTotal, y, {align:'right'});
+  });
+  doc.setTextColor(...ink);
+
+  y += 18;
+  doc.setFont('Calibri','bold');
+  doc.text('TOTAL', colUnit, y, {align:'center'});
+  doc.text(fmtMXN(total), colTotal, y, {align:'right'});
+
+  y += 32;
+  doc.setFontSize(9.5);
+  const terms = [
+    ['PRECIOS EN MXN', ''],
+    ['CONDICIONES DE PAGO', ': 50% anticipo a la confirmación del pedido, 50% contra entrega.'],
+    ['TIEMPO DE ENTREGA', `: ${q.leadTimeDays||'—'} DÍAS`],
+    ['LUGAR DE ENTREGA', `: ${isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'—')}`],
+  ];
+  terms.forEach(([label,rest])=>{
+    doc.setFont('Calibri','normal'); doc.text('•', marginL, y);
+    doc.setFont('Calibri','bold'); doc.text(label, marginL+12, y);
+    doc.setFont('Calibri','normal'); doc.text(rest, marginL+12+doc.getTextWidth(label), y);
+    y += 15;
+  });
+
+  y += 24;
+  doc.setFont('Calibri','bold'); doc.setFontSize(9.5); doc.setTextColor(...ink);
+  doc.text(p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name, marginL, y);
+  y += 14;
+  doc.setFont('Calibri','normal'); doc.setTextColor(37,99,235);
+  doc.text(p.quoteSalespersonEmail || INNOUS_QUOTE_SIGNATURE.email, marginL, y);
+
+  y += 26;
+  doc.setFont('Calibri','bold'); doc.setTextColor(...ink);
+  doc.text(STATE.settings.legalName||DEFAULT_SETTINGS.legalName, marginL, y);
+
+  y += 24;
+  doc.text(STATE.settings.address||DEFAULT_SETTINGS.address, marginL, y);
+
+  return doc;
+}
 function formatFileSize(bytes){
   if(bytes < 1024*1024) return Math.max(1, Math.round(bytes/1024)) + ' KB';
   return (bytes/(1024*1024)).toFixed(1) + ' MB';
@@ -3653,6 +3770,7 @@ ROUTES['innous/order'] = function(id){
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p)}
+        <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Purchase Order (PDF)</button>
         ${!p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
         ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
@@ -4194,10 +4312,11 @@ ROUTES['supplier/order'] = function(id){
         <div class="section-title">Detalles del Pedido</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
           ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
-          ${infoItem('Precio Acordado', fmtMoney(p.order.supplierCost))}
+          ${infoItem('Precio Acordado', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost))}
           ${infoItem('Material', p.material)}
           ${infoItem('Fecha de Entrega', fmtDate(p.deliveryDate))}
         </div>
+        <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Descargar Orden de Compra (PDF)</button>
         <hr class="divider">
         <div class="section-title">Hitos de Producción</div>
         <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${orderStatusLabelFor(p, m.key, true)}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
@@ -4929,6 +5048,16 @@ const App = {
       showToast("Couldn't generate the PDF. Please try again.");
     }
   },
+  downloadPurchaseOrderPdf(id){
+    const p = findProject(id); if(!p) return;
+    if(!p.order || !p.selectedSupplierId){ showToast('No hay un pedido confirmado para este RFQ todavía.'); return; }
+    try{
+      generatePurchaseOrderPdf(p).save(`Orden-de-Compra-${p.id}.pdf`);
+    }catch(err){
+      console.error('downloadPurchaseOrderPdf failed', err);
+      showToast('No se pudo generar el PDF. Intenta de nuevo.');
+    }
+  },
   /* ---- Redaction editor (INNOUS only) ---- */
   async openRedactModal(pid, idx){
     const p = findProject(pid); if(!p) return;
@@ -5368,7 +5497,7 @@ const App = {
         const { error: e2 } = await sb.rpc('innous_send_notification', {
           p_user_ids: [p.selectedSupplierId],
           p_title: `Tu cotización para ${p.id} fue seleccionada`,
-          p_body: `INNOUS autorizó el proyecto "${p.projectName}" — ya puedes empezar a trabajar en él.`,
+          p_body: `INNOUS autorizó el proyecto "${p.projectName}" — ya puedes empezar a trabajar en él. Descarga tu Orden de Compra desde el pedido.`,
           p_project_id: p.id,
         });
         if(e2) console.error('innous_send_notification (authorize) failed', e2);
