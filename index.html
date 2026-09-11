@@ -67,7 +67,13 @@ body{
 }
 .mono{font-family:'JetBrains Mono',monospace;}
 .brand-font{font-family:'Ubuntu',-apple-system,sans-serif;}
-.page-title,.kpi-value,.quote-price,h1,h2{font-family:'Ubuntu',-apple-system,sans-serif;letter-spacing:-0.2px;}
+/* Ubuntu is the identity typeface of the marketing site — the body copy
+   stays Inter for readability, but the visual hierarchy's title tiers
+   (page titles, card/modal headers, and the section titles inside
+   cards) all pick up Ubuntu so the portal reads as the same product.
+   `h3` alone is safe here: every <h3> in the portal is a card-header or
+   modal-header title, nothing else uses the bare tag. */
+.page-title,.kpi-value,.quote-price,h1,h2,h3,.section-title{font-family:'Ubuntu',-apple-system,sans-serif;letter-spacing:-0.2px;}
 a{color:inherit;text-decoration:none;}
 button{font-family:inherit;font-size:inherit;cursor:pointer;background:none;border:none;color:inherit;}
 input,select,textarea{font-family:inherit;font-size:14px;color:var(--ink);}
