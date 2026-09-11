@@ -1504,7 +1504,11 @@ function setOrderState(proj, orderStatus, alreadyAuthorized=true){
     quoteNumber: 'IN-'+String(_demoQuoteSeq++).padStart(4,'0'),
     paymentStatus: orderStatus==='delivered' ? 'Paid' : (ORDER_STATUS_FLOW.indexOf(orderStatus)>=2 ? 'Deposit Received':'Awaiting Deposit'),
     quality:{ inspectionRequired:true, status: ORDER_STATUS_FLOW.indexOf(orderStatus)>=ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT) ? (rng()>0.12?'approved':'ncr_open') : 'pending', documents:['first-article-report.pdf','dimensional-report.pdf'], certificates:['material-cert.pdf'], photos:3, ncr:[] },
-    logistics:{ origin: SUPPLIERS.find(s=>s.id===proj.selectedSupplierId)?.city+', Mexico', destination: proj.deliveryLocation, carrier: pick(['Estafeta Freight','FedEx Freight','Daxxo Logistics','R+L Carriers']), tracking: 'TRK-'+rnd(100000,999999), pickupDate: addDays(proj.deliveryDate,-14), estimatedDelivery: proj.deliveryDate, documents:['bill-of-lading.pdf','commercial-invoice.pdf'] },
+    // Carrier/tracking only get filled in for demo orders that have
+    // actually reached Shipped or later — same as reality now: INNOUS
+    // enters them by hand right when the package actually ships (see
+    // App.openShipOrderModal), never invented ahead of time.
+    logistics:{ origin: SUPPLIERS.find(s=>s.id===proj.selectedSupplierId)?.city+', Mexico', destination: proj.deliveryLocation, carrier: ORDER_STATUS_FLOW.indexOf(orderStatus)>=ORDER_STATUS_FLOW.indexOf('shipped') ? pick(['Estafeta Freight','FedEx Freight','Daxxo Logistics','R+L Carriers']) : '', tracking: ORDER_STATUS_FLOW.indexOf(orderStatus)>=ORDER_STATUS_FLOW.indexOf('shipped') ? 'TRK-'+rnd(100000,999999) : '', pickupDate: addDays(proj.deliveryDate,-14), estimatedDelivery: proj.deliveryDate, documents:['bill-of-lading.pdf','commercial-invoice.pdf'] },
   };
   if(proj.order.quality.status==='ncr_open'){ proj.order.quality.ncr=[{id:'NCR-'+rnd(100,999),issue:'Minor surface finish deviation on batch 2',status:'Under Review'}]; }
   const stageIdx = ORDER_STATUS_FLOW.indexOf(orderStatus);
@@ -3620,8 +3624,8 @@ function logisticsBlock(p){
   <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
     ${infoItem('Origin', l.origin)}
     ${infoItem('Destination', l.destination)}
-    ${infoItem('Carrier', l.carrier)}
-    ${infoItem('Tracking #', l.tracking)}
+    ${infoItem('Carrier', l.carrier||'Not shipped yet')}
+    ${infoItem('Tracking #', l.tracking||'—')}
     ${infoItem('Pickup Date', fmtDate(l.pickupDate))}
     ${infoItem('Est. Delivery', fmtDate(l.estimatedDelivery))}
   </div>
@@ -5289,11 +5293,55 @@ const App = {
     showToast('RFQ status updated');
     route();
   },
+  // Every transition is a single click, except the one into "Shipped" —
+  // that one is gated on a modal asking for the real carrier and tracking
+  // number, since those are exactly what the client's notification and
+  // Shipping card will show them (see supabase-fix25/26). Nothing gets
+  // invented; INNOUS types in what's actually printed on the label.
   async advanceOrderStatus(pid){
     const p = findProject(pid);
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     const next = ORDER_STATUS_FLOW[idx+1];
     if(!next) return;
+    if(next==='shipped'){ App.openShipOrderModal(pid); return; }
+    await App._doAdvanceOrderStatus(pid, next);
+  },
+  openShipOrderModal(pid){
+    const p = findProject(pid); if(!p) return;
+    const l = p.order.logistics;
+    const etaVal = l.estimatedDelivery ? new Date(l.estimatedDelivery).toISOString().slice(0,10) : '';
+    openModal(`
+      <div class="modal-header"><h3>Mark as Shipped</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="field-hint" style="margin-bottom:12px;">Enter the real shipment details below — this is exactly what the customer sees and uses to track their order, and they're notified the moment you confirm.</div>
+        <div class="form-row">
+          <div class="form-group"><label class="field-label">Carrier</label><input type="text" id="ship-carrier" placeholder="e.g. FedEx Freight" value="${escAttr(l.carrier||'')}"></div>
+          <div class="form-group"><label class="field-label">Tracking Number</label><input type="text" id="ship-tracking" placeholder="e.g. 1Z999AA10123456784" value="${escAttr(l.tracking||'')}"></div>
+        </div>
+        <div class="form-group"><label class="field-label">Estimated Delivery</label><input type="date" id="ship-eta" value="${etaVal}"></div>
+        <div class="pricing-panel"><div class="pricing-row"><span>Destination</span><span class="td-strong">${escAttr(l.destination)}</span></div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="truck"></i>Mark as Shipped &amp; Notify Customer</button>
+      </div>
+    `);
+  },
+  async confirmShipOrder(pid){
+    const carrier = document.getElementById('ship-carrier').value.trim();
+    const tracking = document.getElementById('ship-tracking').value.trim();
+    const eta = document.getElementById('ship-eta').value;
+    if(!carrier || !tracking){ showToast('Carrier and tracking number are required.'); return; }
+    const p = findProject(pid); if(!p) return;
+    p.order.logistics.carrier = carrier;
+    p.order.logistics.tracking = tracking;
+    if(eta) p.order.logistics.estimatedDelivery = new Date(eta+'T00:00:00');
+    closeModal();
+    await App._doAdvanceOrderStatus(pid, 'shipped', { carrier, tracking, estimatedDelivery: p.order.logistics.estimatedDelivery });
+  },
+  async _doAdvanceOrderStatus(pid, next, shipLogistics){
+    const p = findProject(pid);
+    const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     p.order.status = next;
     if(p.order.milestones[idx+1]){ p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08'); }
     // Payment status is deliberately NOT touched here — production progress is the
@@ -5304,7 +5352,12 @@ const App = {
     else if(justStarted) p.status='in_production';
     logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
     if(!p.isDemo){
-      const { error: e1 } = await sb.from('orders').update({status: next}).eq('project_id', pid);
+      const updateData = {status: next};
+      if(shipLogistics){
+        updateData.carrier = shipLogistics.carrier; updateData.tracking = shipLogistics.tracking;
+        if(shipLogistics.estimatedDelivery) updateData.estimated_delivery = shipLogistics.estimatedDelivery.toISOString().slice(0,10);
+      }
+      const { error: e1 } = await sb.from('orders').update(updateData).eq('project_id', pid);
       if(e1){ showToast(e1.message); return; }
       if(justCompleted || justStarted){
         // Whichever role is advancing the order writes this — INNOUS always
