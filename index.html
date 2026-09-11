@@ -807,6 +807,21 @@ const ORDER_STATUS_ES = {
   delivered:'Entregado',
 };
 function orderStatusLabel(status, es){ return es ? (ORDER_STATUS_ES[status]||status) : (ORDER_STATUS_META[status]?.label||status); }
+// A client choosing Pickup instead of Delivery (see App.submitRfq /
+// STATE.ui.newRfqDraft.deliveryMethod) never gets a shipment — there's no
+// carrier, no tracking number, nothing to "ship". The last two stages
+// still exist as statuses (same keys, same DB schema — see
+// isPickupOrder/App.openShipOrderModal below) but read as "Ready for
+// Pickup" / "Picked Up" instead of "Shipped" / "Delivered" wherever a
+// project is on hand to check.
+function isPickupOrder(p){ return p && p.deliveryLocation==='Pickup'; }
+function orderStatusLabelFor(p, status, es){
+  if(isPickupOrder(p)){
+    if(status==='shipped') return es ? 'Listo para Recolección' : 'Ready for Pickup';
+    if(status==='delivered') return es ? 'Recolectado' : 'Picked Up';
+  }
+  return orderStatusLabel(status, es);
+}
 /* The supplier's production work ends the moment the order reaches
    SUPPLIER_ORDER_STAGE_LIMIT (Quality Inspection) — returns the next status
    for them to mark, or null once it's out of their hands. */
@@ -1766,9 +1781,10 @@ const ORDER_STATUS_CLS = {
   shipped:'badge-blue',
   delivered:'badge-purple',
 };
-function orderStatusBadge(status, es){
+function orderStatusBadge(p, es){
+  const status = p.order.status;
   const cls = ORDER_STATUS_CLS[status] || 'badge-gray';
-  return `<span class="badge ${cls}">${orderStatusLabel(status, es)}</span>`;
+  return `<span class="badge ${cls}">${orderStatusLabelFor(p, status, es)}</span>`;
 }
 function stars(rating){
   let out = '<span class="stars">';
@@ -2099,6 +2115,7 @@ function orderStageMessage(p, audience){
   // detail (carrier, tracking #, ETA) instead of a vague "it's on its way".
   if(p.order.status==='shipped' && audience==='client'){
     const l = p.order.logistics;
+    if(isPickupOrder(p)) return `Your order is ready for pickup at ${l.origin||'our facility'}. Ready as of: ${fmtDate(l.estimatedDelivery)}.`;
     return `Your order has shipped via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`;
   }
   const msgs = {
@@ -2279,7 +2296,7 @@ function pendingItems(){
       items.push({navId:'orders', icon:'dollar-sign', text:`Collect final payment — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
     PROJECTS.filter(p=>p.order && innousNextOrderStatus(p)).forEach(p=>{
-      const label = orderStatusLabel(innousNextOrderStatus(p));
+      const label = orderStatusLabelFor(p, innousNextOrderStatus(p));
       items.push({navId:'orders', icon:'truck', text:`Mark as ${label} — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
   } else { // SUPPLIER
@@ -3026,7 +3043,7 @@ function orderCard(p){
   <div class="card card-pad row-link" onclick="navigate('#/client/order/${p.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="page-subtitle mono" style="margin:0;">Order ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
-      ${orderStatusBadge(p.order.status)}
+      ${orderStatusBadge(p)}
     </div>
     <div style="display:flex;gap:22px;margin-top:12px;">
       ${infoItem('Quantity', p.quantity.toLocaleString()+' pcs')}
@@ -3041,14 +3058,21 @@ function orderCard(p){
 ROUTES['client/order'] = function(id){
   const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabelFor(p, s));
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/client/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>${orderStatusBadge(p.order.status)}</div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div>${orderStatusBadge(p)}</div>
     ${stageBanner(orderStageMessage(p,'client'), p.order.status==='delivered'?'success':(p.order.status==='shipped'?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
-    ${['shipped','delivered'].includes(p.order.status) ? `
+    ${['shipped','delivered'].includes(p.order.status) ? (isPickupOrder(p) ? `
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="section-title">Pickup</div>
+      <div class="info-grid" style="margin-top:12px;">
+        ${infoItem('Pickup Location', p.order.logistics.origin||'—')}
+        ${infoItem('Ready Date', fmtDate(p.order.logistics.estimatedDelivery))}
+      </div>
+    </div>` : `
     <div class="card card-pad" style="margin-bottom:20px;">
       <div class="section-title">Shipping</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -3057,7 +3081,7 @@ ROUTES['client/order'] = function(id){
         ${infoItem('Destination', p.order.logistics.destination)}
         ${infoItem('Est. Delivery', fmtDate(p.order.logistics.estimatedDelivery))}
       </div>
-    </div>` : ''}
+    </div>`) : ''}
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Order Summary</div>
@@ -3590,7 +3614,7 @@ ROUTES['innous/orders'] = function(){
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
         <td>${fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost)}</td>
-        <td>${orderStatusBadge(p.order.status)}</td><td class="td-sub">${p.order.paymentStatus}</td>
+        <td>${orderStatusBadge(p)}</td><td class="td-sub">${p.order.paymentStatus}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -3600,17 +3624,17 @@ ROUTES['innous/orders'] = function(){
 ROUTES['innous/order'] = function(id){
   const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  const labels = ORDER_STATUS_FLOW.map(s=>ORDER_STATUS_META[s].label);
+  const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabelFor(p, s));
   const margin = p.order.customerPrice-p.order.supplierCost;
   const nextStatus = innousNextOrderStatus(p);
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
-      <div class="page-actions">${orderStatusBadge(p.order.status)}
+      <div class="page-actions">${orderStatusBadge(p)}
         ${!p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
-        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabel(nextStatus)}</button>`:''}</div>
+        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
@@ -3658,14 +3682,15 @@ function qualityBlock(p){
 }
 function logisticsBlock(p){
   const l = p.order.logistics;
+  const pickup = isPickupOrder(p);
   return `
   <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
     ${infoItem('Origin', l.origin)}
-    ${infoItem('Destination', l.destination)}
-    ${infoItem('Carrier', l.carrier||'Not shipped yet')}
-    ${infoItem('Tracking #', l.tracking||'—')}
-    ${infoItem('Pickup Date', fmtDate(l.pickupDate))}
-    ${infoItem('Est. Delivery', fmtDate(l.estimatedDelivery))}
+    ${infoItem('Destination', pickup?'Customer Pickup':l.destination)}
+    ${pickup ? '' : infoItem('Carrier', l.carrier||'Not shipped yet')}
+    ${pickup ? '' : infoItem('Tracking #', l.tracking||'—')}
+    ${pickup ? '' : infoItem('Pickup Date (from supplier)', fmtDate(l.pickupDate))}
+    ${infoItem(pickup?'Ready Date':'Est. Delivery', fmtDate(l.estimatedDelivery))}
   </div>
   <div class="info-item-label" style="margin-top:12px;">Shipping Documents</div>
   <div class="file-list" style="margin-top:8px;">${l.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#2952CC;background:#2952CC18;">DOC</div><span class="fc-name">${d}</span></div>`).join('')}</div>
@@ -3717,7 +3742,7 @@ ROUTES['innous/logistics'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Logistics</div><div class="page-subtitle">Shipping and delivery across all orders</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Origin</th><th>Destination</th><th>Carrier</th><th>Tracking</th><th>Est. Delivery</th><th>Status</th></tr></thead><tbody>
-      ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.order.logistics.origin}</td><td>${p.order.logistics.destination}</td><td>${p.order.logistics.carrier}</td><td class="mono">${p.order.logistics.tracking}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td><td>${orderStatusBadge(p.order.status)}</td></tr>`).join('')}
+      ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.order.logistics.origin}</td><td>${p.order.logistics.destination}</td><td>${p.order.logistics.carrier}</td><td class="mono">${p.order.logistics.tracking}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td><td>${orderStatusBadge(p)}</td></tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
 };
@@ -4115,7 +4140,7 @@ function supplierOrderCard(p){
   <div class="card card-pad row-link" onclick="navigate('#/supplier/order/${p.id}')">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="page-subtitle mono" style="margin:0;">Pedido ${p.id}</div><div style="font-weight:700;font-size:15px;margin-top:2px;">${p.projectName}</div></div>
-      ${orderStatusBadge(p.order.status, true)}
+      ${orderStatusBadge(p, true)}
     </div>
     <div style="display:flex;gap:22px;margin-top:12px;">
       ${infoItem('Cantidad', p.quantity.toLocaleString()+' pzas')}
@@ -4130,16 +4155,16 @@ function supplierOrderCard(p){
 ROUTES['supplier/order'] = function(id){
   const p = findProject(id); if(!p || !supplierWon(p) || !p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabel(s, true));
+  const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabelFor(p, s, true));
   const nextStatus = supplierNextOrderStatus(p);
   const bannerKind = p.order.status==='delivered' ? 'success' : (nextStatus ? 'action' : 'info');
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/supplier/orders">Pedidos Activos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div>
-      <div class="page-actions">${orderStatusBadge(p.order.status, true)}
+      <div class="page-actions">${orderStatusBadge(p, true)}
         ${supplierCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Regresar Estatus</button>`:''}
-        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabel(nextStatus, true)}</button>`:''}</div>
+        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'supplier'), bannerKind)}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
@@ -4154,7 +4179,7 @@ ROUTES['supplier/order'] = function(id){
         </div>
         <hr class="divider">
         <div class="section-title">Hitos de Producción</div>
-        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${orderStatusLabel(m.key, true)}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
+        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${orderStatusLabelFor(p, m.key, true)}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Documentos del Proveedor</div>
@@ -4178,8 +4203,8 @@ ROUTES['supplier/production'] = function(){
       ${orders.map(p=>{
         const nextStatus = supplierNextOrderStatus(p);
         const doneText = p.order.status==='delivered' ? 'Completo' : 'En logística (INNOUS)';
-        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p.order.status, true)}</td>
-        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabel(nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
+        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p, true)}</td>
+        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
       }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
@@ -5395,7 +5420,7 @@ const App = {
     if(!next) return;
     if(next==='shipped'){ App.openShipOrderModal(pid); return; } // that modal IS the confirmation — no need for a second one on top
     const isSupplier = STATE.role==='SUPPLIER';
-    const label = orderStatusLabel(next, isSupplier);
+    const label = orderStatusLabelFor(p, next, isSupplier);
     const sure = isSupplier
       ? confirm(`¿Confirmas que quieres marcar este pedido como "${label}"? Si te equivocas, podrás regresarlo después.`)
       : confirm(`Mark this order as "${label}"? If this was a mistake, you can revert it afterward.`);
@@ -5413,7 +5438,7 @@ const App = {
     if(idx<=0) return;
     const prev = ORDER_STATUS_FLOW[idx-1];
     const isSupplier = STATE.role==='SUPPLIER';
-    const label = orderStatusLabel(prev, isSupplier);
+    const label = orderStatusLabelFor(p, prev, isSupplier);
     const sure = isSupplier
       ? confirm(`¿Regresar este pedido a "${label}"? Esto deshace la última actualización de estatus.`)
       : confirm(`Revert this order back to "${label}"? This undoes the last status update.`);
@@ -5423,7 +5448,7 @@ const App = {
     p.order.status = prev;
     if(p.order.milestones[idx]){ p.order.milestones[idx].done = false; p.order.milestones[idx].date = null; }
     if(wasCompleted){ p.status = 'in_production'; recalcSupplierMetrics(p.selectedSupplierId); }
-    logActivity(p, isSupplier?supplierName(STATE.supplierId):'INNOUS', `Reverted status back to "${ORDER_STATUS_META[prev].label}".`);
+    logActivity(p, isSupplier?supplierName(STATE.supplierId):'INNOUS', `Reverted status back to "${orderStatusLabelFor(p, prev)}".`);
     if(!p.isDemo){
       const { error: e1 } = await sb.from('orders').update({status: prev}).eq('project_id', pid);
       if(e1){ showToast(e1.message); return; }
@@ -5436,10 +5461,13 @@ const App = {
       // mistake being undone here — tell them so they don't go looking for
       // a package that, as far as they now know, hasn't actually left yet.
       if(wasShipped && isRealAccountId(p.customerId)){
+        const pickup = isPickupOrder(p);
         const { error: e3 } = await sb.rpc('innous_send_notification', {
           p_user_ids: [p.customerId],
           p_title: `Update on order ${p.id}`,
-          p_body: `The shipping notice for "${p.projectName}" was sent by mistake — your order hasn't actually shipped yet and is back in ${orderStatusLabel(prev)}. We'll notify you again once it really ships.`,
+          p_body: pickup
+            ? `The pickup-ready notice for "${p.projectName}" was sent by mistake — it isn't actually ready yet and is back in ${orderStatusLabelFor(p, prev)}. We'll notify you again once it really is.`
+            : `The shipping notice for "${p.projectName}" was sent by mistake — your order hasn't actually shipped yet and is back in ${orderStatusLabelFor(p, prev)}. We'll notify you again once it really ships.`,
           p_project_id: p.id,
         });
         if(e3) console.error('innous_send_notification (revert-shipped) failed', e3);
@@ -5448,10 +5476,30 @@ const App = {
     showToast(`Pedido ${p.id} regresado a ${label}`, 'success');
     route();
   },
+  // Branches entirely on delivery method: a Pickup order never has a
+  // carrier or a tracking number — nothing is actually shipped, the
+  // customer just comes to collect it — so that modal only asks for a
+  // ready date. A Delivery order keeps asking for the real carrier/tracking
+  // exactly as before.
   openShipOrderModal(pid){
     const p = findProject(pid); if(!p) return;
     const l = p.order.logistics;
     const etaVal = l.estimatedDelivery ? new Date(l.estimatedDelivery).toISOString().slice(0,10) : '';
+    if(isPickupOrder(p)){
+      openModal(`
+        <div class="modal-header"><h3>Mark as Ready for Pickup</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+        <div class="modal-body">
+          <div class="field-hint" style="margin-bottom:12px;">This customer chose Pickup — there's no shipment to track. Confirm the ready date and they're notified to come collect it.</div>
+          <div class="form-group"><label class="field-label">Ready Date</label><input type="date" id="ship-eta" value="${etaVal}"></div>
+          <div class="pricing-panel"><div class="pricing-row"><span>Pickup Location</span><span class="td-strong">${escAttr(l.origin||'—')}</span></div></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="App.confirmShipOrder('${pid}')"><i data-lucide="package-check"></i>Mark as Ready &amp; Notify Customer</button>
+        </div>
+      `);
+      return;
+    }
     openModal(`
       <div class="modal-header"><h3>Mark as Shipped</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
@@ -5470,11 +5518,17 @@ const App = {
     `);
   },
   async confirmShipOrder(pid){
+    const p = findProject(pid); if(!p) return;
+    const eta = document.getElementById('ship-eta').value;
+    if(isPickupOrder(p)){
+      if(eta) p.order.logistics.estimatedDelivery = new Date(eta+'T00:00:00');
+      closeModal();
+      await App._doAdvanceOrderStatus(pid, 'shipped', { estimatedDelivery: p.order.logistics.estimatedDelivery });
+      return;
+    }
     const carrier = document.getElementById('ship-carrier').value.trim();
     const tracking = document.getElementById('ship-tracking').value.trim();
-    const eta = document.getElementById('ship-eta').value;
     if(!carrier || !tracking){ showToast('Carrier and tracking number are required.'); return; }
-    const p = findProject(pid); if(!p) return;
     p.order.logistics.carrier = carrier;
     p.order.logistics.tracking = tracking;
     if(eta) p.order.logistics.estimatedDelivery = new Date(eta+'T00:00:00');
@@ -5492,7 +5546,7 @@ const App = {
     const justStarted = p.status==='awarded';
     if(justCompleted){ p.status='completed'; recalcSupplierMetrics(p.selectedSupplierId); }
     else if(justStarted) p.status='in_production';
-    logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${ORDER_STATUS_META[next].label}".`);
+    logActivity(p, supplierName(p.selectedSupplierId), `Production status updated to "${orderStatusLabelFor(p, next)}".`);
     if(!p.isDemo){
       const updateData = {status: next};
       if(shipLogistics){
@@ -5516,16 +5570,19 @@ const App = {
       // never fired from a supplier session.
       if(next==='shipped' && isRealAccountId(p.customerId)){
         const l = p.order.logistics;
+        const pickup = isPickupOrder(p);
         const { error: e3 } = await sb.rpc('innous_send_notification', {
           p_user_ids: [p.customerId],
-          p_title: `Your order ${p.id} has shipped`,
-          p_body: `${p.projectName} is on its way via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`,
+          p_title: pickup ? `Your order ${p.id} is ready for pickup` : `Your order ${p.id} has shipped`,
+          p_body: pickup
+            ? `${p.projectName} is ready for pickup at ${l.origin||'our facility'}. Ready as of: ${fmtDate(l.estimatedDelivery)}.`
+            : `${p.projectName} is on its way via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`,
           p_project_id: p.id,
         });
         if(e3) console.error('innous_send_notification (shipped) failed', e3);
       }
     }
-    showToast(`Pedido ${p.id} actualizado a ${orderStatusLabel(next, true)}`, 'success');
+    showToast(`Pedido ${p.id} actualizado a ${orderStatusLabelFor(p, next, true)}`, 'success');
     route();
   },
   async setPaymentStatus(pid, status){
