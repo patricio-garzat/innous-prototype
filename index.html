@@ -1208,6 +1208,67 @@ async function refreshRealProjects(){
     p.order = orderRowToJs(row);
   });
 }
+function messageRowToJs(row){ return { id: row.id, from: row.from_role, text: row.text, ts: new Date(row.ts) }; }
+// Merges fetched rows into an existing chat thread array by id, so a
+// repeated poll (see pollLiveUpdates) never duplicates a message already
+// sitting there from an earlier fetch or from this same tab's own optimistic
+// send. Keeps the thread in chronological order regardless of what order the
+// rows came back in (messages_general in particular interleaves rows from
+// both sides, inserted at whatever moment each was sent).
+function mergeMessages(thread, rows){
+  let changed = false;
+  rows.forEach(row=>{
+    if(thread.some(m=>m.id===row.id)) return;
+    thread.push(messageRowToJs(row));
+    changed = true;
+  });
+  if(changed) thread.sort((a,b)=>a.ts-b.ts);
+}
+/* ---- Real messages (Cliente↔Innous, Proveedor↔Innous, and the general
+   chats Innous starts from a customer's/supplier's own detail page) ----
+   Same confidentiality-safe shape as everything else here: RLS already
+   scopes each SELECT to exactly what this role is allowed to see (a client
+   only ever gets rows off their own projects/general chat; a supplier only
+   its own; INNOUS gets everything, across every project and every general
+   chat) — this just merges whatever comes back into the chatClient/
+   chatSupplier/generalChat arrays the UI already renders. */
+async function refreshRealMessages(){
+  if(STATE.role==='CLIENT'){
+    const [{data:pc},{data:g}] = await Promise.all([
+      sb.from('messages_project_client').select('*'),
+      sb.from('messages_general').select('*').eq('owner_type','client').eq('owner_id', STATE.clientId),
+    ]);
+    (pc||[]).forEach(row=>{ const p=findProject(row.project_id); if(p) mergeMessages(p.chatClient, [row]); });
+    if(g) mergeMessages(chatOf(currentClient()), g);
+  } else if(STATE.role==='SUPPLIER'){
+    const [{data:ps},{data:g}] = await Promise.all([
+      sb.from('messages_project_supplier').select('*'),
+      sb.from('messages_general').select('*').eq('owner_type','supplier').eq('owner_id', STATE.supplierId),
+    ]);
+    (ps||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      if(!p.chatSupplier[row.supplier_id]) p.chatSupplier[row.supplier_id] = [];
+      mergeMessages(p.chatSupplier[row.supplier_id], [row]);
+    });
+    if(g) mergeMessages(chatOf(currentSupplier()), g);
+  } else if(STATE.role==='INNOUS'){
+    const [{data:pc},{data:ps},{data:g}] = await Promise.all([
+      sb.from('messages_project_client').select('*'),
+      sb.from('messages_project_supplier').select('*'),
+      sb.from('messages_general').select('*'),
+    ]);
+    (pc||[]).forEach(row=>{ const p=findProject(row.project_id); if(p) mergeMessages(p.chatClient, [row]); });
+    (ps||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      if(!p.chatSupplier[row.supplier_id]) p.chatSupplier[row.supplier_id] = [];
+      mergeMessages(p.chatSupplier[row.supplier_id], [row]);
+    });
+    (g||[]).forEach(row=>{
+      const owner = row.owner_type==='client' ? CUSTOMERS.find(c=>c.id===row.owner_id) : SUPPLIERS.find(s=>s.id===row.owner_id);
+      if(owner) mergeMessages(chatOf(owner), [row]);
+    });
+  }
+}
 /* Called once we know a Supabase auth session is valid (fresh login, signup,
    or a restored session on page load) — reads the matching profile and
    customer/supplier row, merges it into CUSTOMERS/SUPPLIERS, sets STATE, and
@@ -1242,6 +1303,7 @@ async function pollLiveUpdates(){
   try{
     if(STATE.role==='INNOUS') await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
+    await refreshRealMessages();
     if(STATE.role==='INNOUS') await refreshRealSettings();
     await refreshNotifications();
   }catch(err){
@@ -1276,6 +1338,7 @@ async function enterAppAsUser(user){
       if(idx>-1) CUSTOMERS[idx]=c; else CUSTOMERS.push(c);
       STATE.clientId = c.id;
       await refreshRealProjects();
+      await refreshRealMessages();
     }
   } else if(profile.role==='SUPPLIER'){
     const { data: srow } = await sb.from('suppliers').select('*').eq('user_id', user.id).maybeSingle();
@@ -1285,6 +1348,7 @@ async function enterAppAsUser(user){
       if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
       STATE.supplierId = s.id;
       await refreshRealProjects();
+      await refreshRealMessages();
     }
   } else { // INNOUS — the one role that needs to see every real account, not just its own
     STATE.innousUserId = user.id;
@@ -1292,6 +1356,7 @@ async function enterAppAsUser(user){
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
+    await refreshRealMessages();
     await refreshRealSettings();
   }
   await refreshNotifications();
@@ -1699,12 +1764,14 @@ async function refreshNotifications(){
   if(!error && data) STATE.notifications = data;
 }
 
-/* ---------- Real-data persistence (RFQs/orders only, for now) ----------
-   Customers and suppliers are real Supabase rows now (see enterAppAsUser
-   above) — no longer localStorage. Projects/RFQs/quotes/orders/messages
-   aren't wired to Supabase yet (next phase), so they still persist to
-   localStorage exactly as before, purely so a refresh doesn't lose an
-   in-progress demo RFQ. This is intentionally NOT shared across devices yet. */
+/* ---------- Real-data persistence (local cache, belt-and-suspenders) ----------
+   Customers, suppliers, projects/RFQs/quotes/orders and messages are all
+   real Supabase rows now (see enterAppAsUser / refreshRealProjects /
+   refreshRealMessages above) — this localStorage copy of PROJECTS is just a
+   same-device fallback so a refresh with a slow/dropped connection doesn't
+   show a blank screen before the next successful fetch. It is NOT the
+   source of truth and is NOT shared across devices — every real read/write
+   goes straight to Supabase first. */
 function reviveDates(obj){
   if(obj===null || obj===undefined) return obj;
   if(Array.isArray(obj)) return obj.map(reviveDates);
@@ -3704,7 +3771,8 @@ ROUTES['innous/rfq'] = function(id){
         <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
           <div class="avatar">${initials(c.contact)}</div>
           <div><div style="font-weight:600;font-size:13px;">${c.contact}</div><div class="td-sub">${c.email}</div></div>
-        </div>` : `<div class="td-sub" style="margin-top:10px;">This customer's account has been deleted.</div>`; })()}
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="App.startProjectChat('client','${p.id}')"><i data-lucide="message-square"></i>Message Customer about this RFQ</button>` : `<div class="td-sub" style="margin-top:10px;">This customer's account has been deleted.</div>`; })()}
       </div>
     </div>
 
@@ -4327,6 +4395,8 @@ ROUTES['innous/order'] = function(id){
     <div class="breadcrumb"><a href="#/innous/orders">Orders</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p)}
+        <button class="btn btn-secondary" onclick="App.startProjectChat('client','${p.id}')"><i data-lucide="message-square"></i>Message Customer</button>
+        <button class="btn btn-secondary" onclick="App.startProjectChat('supplier','${p.id}','${p.selectedSupplierId}')"><i data-lucide="message-square"></i>Message Supplier</button>
         <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Purchase Order (PDF)</button>
         ${!p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
@@ -4521,8 +4591,16 @@ ROUTES['innous/analytics'] = function(){
 ROUTES['innous/messages'] = function(){
   const threads = [];
   PROJECTS.forEach(p=>{
-    if(p.chatClient && p.chatClient.length) threads.push({type:'client', pid:p.id, name:customerName(p.customerId), proj:p.projectName, key:'c:'+p.id});
+    const cKey = 'c:'+p.id;
+    if((p.chatClient && p.chatClient.length) || STATE.ui.activeChatKey===cKey) threads.push({type:'client', pid:p.id, name:customerName(p.customerId), proj:p.projectName, key:cKey});
     Object.keys(p.chatSupplier||{}).forEach(sid=>{ if(p.chatSupplier[sid].length) threads.push({type:'supplier', pid:p.id, sid, name:supplierName(sid), proj:p.projectName, key:'s:'+p.id+':'+sid}); });
+    // The active key can name a supplier not yet in chatSupplier at all — see
+    // App.startProjectChat, which opens a brand-new project thread with a
+    // supplier before either side has said a word in it.
+    if(p.selectedSupplierId){
+      const sKey = 's:'+p.id+':'+p.selectedSupplierId;
+      if(STATE.ui.activeChatKey===sKey && !threads.some(t=>t.key===sKey)) threads.push({type:'supplier', pid:p.id, sid:p.selectedSupplierId, name:supplierName(p.selectedSupplierId), proj:p.projectName, key:sKey});
+    }
   });
   // General (not tied to a specific RFQ) conversations — either already has messages,
   // or is the one just opened via "Send Message" on a Customer/Supplier detail page.
@@ -4535,7 +4613,7 @@ ROUTES['innous/messages'] = function(){
   const msgs = active ? (
     active.key.startsWith('gc:') ? chatOf(CUSTOMERS.find(c=>c.id===active.key.slice(3))) :
     active.key.startsWith('gs:') ? chatOf(SUPPLIERS.find(s=>s.id===active.key.slice(3))) :
-    (active.type==='client' ? p.chatClient : p.chatSupplier[active.sid])
+    (active.type==='client' ? p.chatClient : (p.chatSupplier[active.sid]||[]))
   ) : [];
   return `
   <div class="content-inner">
@@ -6443,14 +6521,35 @@ const App = {
     route();
   },
 
-  /* ---- Messaging ---- */
+  /* ---- Messaging ----
+     Real accounts write straight to the actual messages_* tables (see
+     supabase-fix32-real-messages.sql) and ping the other side via
+     innous_send_notification / notify_innous, then re-fetch so the thread
+     shows the row with its real id (see mergeMessages) instead of trusting
+     a local optimistic copy. Guest/demo exploration (no real account yet)
+     keeps the old purely-local scripted reply — there's no other real
+     person on the far end of a demo conversation to actually notify. */
   openClientChat(pid){ STATE.ui.activeChatKey = pid; route(); },
-  sendClientMessage(pid){
+  async sendClientMessage(pid){
     const input = document.getElementById('client-chat-input'); const text = input.value.trim(); if(!text) return;
+    input.value = '';
     const thread = pid==='general' ? chatOf(currentClient()) : findProject(pid).chatClient;
-    thread.push({from:'client', text, ts:new Date('2026-09-08')});
-    route();
-    setTimeout(()=>{ thread.push({from:'innous', text:'Thanks for the note — our team is on it and will follow up shortly.', ts:new Date('2026-09-08')}); if(location.hash.includes('client/messages')) route(); }, 900);
+    if(STATE.authMode==='account'){
+      const { error } = pid==='general'
+        ? await sb.from('messages_general').insert({ owner_type:'client', owner_id:STATE.clientId, from_role:'client', text })
+        : await sb.from('messages_project_client').insert({ project_id:pid, from_role:'client', text });
+      if(error){ showToast(error.message); return; }
+      const { error: e2 } = await sb.rpc('notify_innous', {
+        p_title: `New message from ${currentClient().company}`, p_body: text.slice(0,140), p_project_id: pid==='general'?null:pid,
+      });
+      if(e2) console.error('notify_innous failed', e2);
+      await refreshRealMessages();
+      route();
+    } else {
+      thread.push({from:'client', text, ts:new Date()});
+      route();
+      setTimeout(()=>{ thread.push({from:'innous', text:'Thanks for the note — our team is on it and will follow up shortly.', ts:new Date()}); if(location.hash.includes('client/messages')) route(); }, 900);
+    }
   },
   /* General (not-tied-to-an-RFQ) conversation, started by INNOUS from a customer's
      or supplier's detail page — key is 'gc:<customerId>' or 'gs:<supplierId>'. */
@@ -6459,27 +6558,86 @@ const App = {
     closeModal();
     navigate('#/innous/messages');
   },
+  /* Project-scoped conversation, started by INNOUS from an RFQ/order page —
+     unlike the general chats above, this one has no messages yet on either
+     side (see the activeChatKey-matching branch added to
+     ROUTES['innous/messages']'s thread list for how it still shows up). */
+  startProjectChat(type, pid, sid){
+    STATE.ui.activeChatKey = type==='client' ? 'c:'+pid : 's:'+pid+':'+sid;
+    navigate('#/innous/messages');
+  },
   openInnousChat(key){ STATE.ui.activeChatKey = key; route(); },
-  sendInnousMessage(key){
+  async sendInnousMessage(key){
     const input = document.getElementById('innous-chat-input'); const text = input.value.trim(); if(!text) return;
+    input.value = '';
     // Guards against a stale key from another tab where that customer/supplier
     // has since been deleted — rather than crashing, just drop the send.
-    if(key.startsWith('gc:')){ const c = CUSTOMERS.find(x=>x.id===key.slice(3)); if(!c){ showToast('This customer no longer exists.'); route(); return; } chatOf(c).push({from:'innous', text, ts:new Date('2026-09-08')}); }
-    else if(key.startsWith('gs:')){ const s = SUPPLIERS.find(x=>x.id===key.slice(3)); if(!s){ showToast('This supplier no longer exists.'); route(); return; } chatOf(s).push({from:'innous', text, ts:new Date('2026-09-08')}); }
-    else {
-      const [type,pid,sid] = key.split(':'); const p = findProject(pid);
-      if(type==='c') p.chatClient.push({from:'innous', text, ts:new Date('2026-09-08')});
-      else p.chatSupplier[sid].push({from:'innous', text, ts:new Date('2026-09-08')});
+    if(key.startsWith('gc:')){
+      const id = key.slice(3); const c = CUSTOMERS.find(x=>x.id===id); if(!c){ showToast('This customer no longer exists.'); route(); return; }
+      if(isRealAccountId(id)){
+        const { error } = await sb.from('messages_general').insert({ owner_type:'client', owner_id:id, from_role:'innous', text });
+        if(error){ showToast(error.message); return; }
+        const { error: e2 } = await sb.rpc('innous_send_notification', { p_user_ids:[id], p_title:'New message from INNOUS', p_body:text.slice(0,140), p_project_id:null });
+        if(e2) console.error('innous_send_notification failed', e2);
+        await refreshRealMessages();
+      } else { chatOf(c).push({from:'innous', text, ts:new Date()}); }
+    } else if(key.startsWith('gs:')){
+      const id = key.slice(3); const s = SUPPLIERS.find(x=>x.id===id); if(!s){ showToast('This supplier no longer exists.'); route(); return; }
+      if(isRealAccountId(id)){
+        const { error } = await sb.from('messages_general').insert({ owner_type:'supplier', owner_id:id, from_role:'innous', text });
+        if(error){ showToast(error.message); return; }
+        const { error: e2 } = await sb.rpc('innous_send_notification', { p_user_ids:[id], p_title:'Nuevo mensaje de Innous', p_body:text.slice(0,140), p_project_id:null });
+        if(e2) console.error('innous_send_notification failed', e2);
+        await refreshRealMessages();
+      } else { chatOf(s).push({from:'innous', text, ts:new Date()}); }
+    } else {
+      const [type,pid,sid] = key.split(':'); const p = findProject(pid); if(!p) return;
+      if(type==='c'){
+        if(!p.isDemo){
+          const { error } = await sb.from('messages_project_client').insert({ project_id:pid, from_role:'innous', text });
+          if(error){ showToast(error.message); return; }
+          if(isRealAccountId(p.customerId)){
+            const { error: e2 } = await sb.rpc('innous_send_notification', { p_user_ids:[p.customerId], p_title:'New message from INNOUS', p_body:text.slice(0,140), p_project_id:pid });
+            if(e2) console.error('innous_send_notification failed', e2);
+          }
+          await refreshRealMessages();
+        } else { p.chatClient.push({from:'innous', text, ts:new Date()}); }
+      } else {
+        if(!p.chatSupplier[sid]) p.chatSupplier[sid] = [];
+        if(!p.isDemo){
+          const { error } = await sb.from('messages_project_supplier').insert({ project_id:pid, supplier_id:sid, from_role:'innous', text });
+          if(error){ showToast(error.message); return; }
+          if(isRealAccountId(sid)){
+            const { error: e2 } = await sb.rpc('innous_send_notification', { p_user_ids:[sid], p_title:'Nuevo mensaje de Innous', p_body:text.slice(0,140), p_project_id:pid });
+            if(e2) console.error('innous_send_notification failed', e2);
+          }
+          await refreshRealMessages();
+        } else { p.chatSupplier[sid].push({from:'innous', text, ts:new Date()}); }
+      }
     }
     route();
   },
   openSupplierChat(pid){ STATE.ui.activeChatKey = pid; route(); },
-  sendSupplierMessage(pid){
+  async sendSupplierMessage(pid){
     const input = document.getElementById('supplier-chat-input'); const text = input.value.trim(); if(!text) return;
+    input.value = '';
     const thread = pid==='general' ? chatOf(currentSupplier()) : findProject(pid).chatSupplier[STATE.supplierId];
-    thread.push({from:'supplier', text, ts:new Date('2026-09-08')});
-    route();
-    setTimeout(()=>{ thread.push({from:'innous', text:'Entendido, gracias por la actualización.', ts:new Date('2026-09-08')}); if(location.hash.includes('supplier/messages')) route(); }, 900);
+    if(STATE.authMode==='account'){
+      const { error } = pid==='general'
+        ? await sb.from('messages_general').insert({ owner_type:'supplier', owner_id:STATE.supplierId, from_role:'supplier', text })
+        : await sb.from('messages_project_supplier').insert({ project_id:pid, supplier_id:STATE.supplierId, from_role:'supplier', text });
+      if(error){ showToast(error.message); return; }
+      const { error: e2 } = await sb.rpc('notify_innous', {
+        p_title: `Nuevo mensaje de ${currentSupplier().name}`, p_body: text.slice(0,140), p_project_id: pid==='general'?null:pid,
+      });
+      if(e2) console.error('notify_innous failed', e2);
+      await refreshRealMessages();
+      route();
+    } else {
+      thread.push({from:'supplier', text, ts:new Date()});
+      route();
+      setTimeout(()=>{ thread.push({from:'innous', text:'Entendido, gracias por la actualización.', ts:new Date()}); if(location.hash.includes('supplier/messages')) route(); }, 900);
+    }
   },
 };
 
