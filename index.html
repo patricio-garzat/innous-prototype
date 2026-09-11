@@ -466,11 +466,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-staged-file button:hover{color:var(--danger);}
 .chat-staged-file i{width:13px;height:13px;flex:0 0 auto;}
 .chat-staged-file button i{width:13px;height:13px;}
-.chat-card-preview{background:var(--surface);color:var(--ink);border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;max-width:220px;}
-.chat-card-title{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-tertiary);margin-bottom:4px;}
+.chat-card-preview{background:var(--surface);color:var(--ink);border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;max-width:280px;min-width:220px;}
+.chat-card-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+.chat-card-title{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--ink-tertiary);}
 .chat-card-title i{width:12px;height:12px;}
 .chat-card-folio{font-weight:700;font-size:13px;color:var(--danger);margin-bottom:3px;}
-.chat-card-row{font-size:12.5px;line-height:1.4;}
+.chat-card-row{font-size:12.5px;line-height:1.4;font-weight:600;margin-bottom:6px;}
+.chat-card-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding-top:6px;border-top:1px solid var(--border);}
+.chat-card-field-label{font-size:9.5px;color:var(--ink-tertiary);text-transform:uppercase;letter-spacing:.02em;font-weight:700;margin-bottom:1px;}
+.chat-card-field-val{font-size:12px;font-weight:600;color:var(--ink-secondary);}
 @media(max-width:768px){
   .chat-panel{flex-direction:column;height:auto;}
   .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
@@ -3710,36 +3714,54 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
    and Purchase Order in a supplier chat in the first place (a Quote card
    carries the client's price/INNOUS's margin; a PO card carries the
    supplier's identity — neither may ever reach the other side). ---- */
+function chatCardField(label, val){ return `<div><div class="chat-card-field-label">${label}</div><div class="chat-card-field-val">${val||'—'}</div></div>`; }
 function chatCardHtml(m){
   const p = findProject(m.cardProjectId);
   if(!p) return `<div class="chat-card-preview"><div class="td-sub">This RFQ is no longer available.</div></div>`;
   const rfqPath = STATE.role==='CLIENT' ? '#/client/rfq/' : STATE.role==='SUPPLIER' ? '#/supplier/rfq/' : '#/innous/rfq/';
   if(m.cardType==='rfq'){
     return `<div class="chat-card-preview">
-      <div class="chat-card-title"><i data-lucide="file-text"></i>RFQ</div>
+      <div class="chat-card-title-row"><div class="chat-card-title"><i data-lucide="file-text"></i>RFQ</div>${statusBadge(p)}</div>
       <div class="chat-card-folio">${p.id}</div>
       <div class="chat-card-row">${escAttr(p.projectName)}</div>
-      <div class="chat-card-row td-sub">${escAttr(p.process)} · ${p.quantity.toLocaleString()} pcs</div>
+      <div class="chat-card-fields">
+        ${chatCardField('Process', escAttr(p.process))}
+        ${chatCardField('Quantity', p.quantity.toLocaleString()+' pcs')}
+        ${chatCardField('Material', escAttr(p.material))}
+        ${chatCardField('Delivery', fmtDate(p.deliveryDate))}
+      </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="navigate('${rfqPath}${p.id}')">View RFQ</button>
     </div>`;
   }
   if(m.cardType==='quote'){
     if(STATE.role==='SUPPLIER') return '';
+    const o = p.order;
     return `<div class="chat-card-preview">
-      <div class="chat-card-title"><i data-lucide="file-text"></i>Formal Quote</div>
-      <div class="chat-card-folio">${p.order?p.order.quoteNumber:'—'}</div>
+      <div class="chat-card-title-row"><div class="chat-card-title"><i data-lucide="file-text"></i>Formal Quote</div>${o?orderStatusBadge(p):''}</div>
+      <div class="chat-card-folio">${o?o.quoteNumber:'—'}</div>
       <div class="chat-card-row">${escAttr(p.projectName)}</div>
-      <div class="chat-card-row td-sub">${p.order?fmtMoney(p.order.customerPrice):'—'}</div>
+      <div class="chat-card-fields">
+        ${chatCardField('Total Price', o?fmtMoney(o.customerPrice):'—')}
+        ${chatCardField('Delivery Time', (p.quoteDeliveryDays?p.quoteDeliveryDays+' days':'—'))}
+        ${chatCardField('Payment Terms', escAttr(p.quotePaymentTerms||''))}
+        ${chatCardField('Quote Validity', (p.quoteValidityDays?p.quoteValidityDays+' days':'—'))}
+      </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download PDF</button>
     </div>`;
   }
   if(m.cardType==='po'){
     if(STATE.role==='CLIENT') return '';
+    const o = p.order;
     return `<div class="chat-card-preview">
-      <div class="chat-card-title"><i data-lucide="file-text"></i>Purchase Order</div>
-      <div class="chat-card-folio">${p.order?p.order.poNumber:'—'}</div>
+      <div class="chat-card-title-row"><div class="chat-card-title"><i data-lucide="file-text"></i>Purchase Order</div>${o?orderStatusBadge(p,true):''}</div>
+      <div class="chat-card-folio">${o?o.poNumber:'—'}</div>
       <div class="chat-card-row">${escAttr(p.projectName)}</div>
-      <div class="chat-card-row td-sub">${p.order&&p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):'—'}</div>
+      <div class="chat-card-fields">
+        ${chatCardField('Total (IVA incl.)', o&&o.supplierCostMxn?fmtMXN(withIva(o.supplierCostMxn)):'—')}
+        ${chatCardField('Entregar en', escAttr(o?.poDeliveryLocation||''))}
+        ${chatCardField('Incoterm', escAttr(o?.poIncoterm||''))}
+        ${chatCardField('Cond. de Pago', escAttr(o?.poPaymentTerms||''))}
+      </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download PDF</button>
     </div>`;
   }
