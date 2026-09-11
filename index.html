@@ -85,6 +85,11 @@ svg{display:block;}
 .topbar-left{display:flex;align-items:center;gap:14px;}
 .mobile-menu-btn{display:none;padding:6px;border-radius:var(--radius-sm);}
 .mobile-menu-btn:hover{background:var(--surface-alt);}
+.nav-hist-btns{display:flex;align-items:center;gap:2px;}
+.nav-hist-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:50%;color:var(--ink-secondary);}
+.nav-hist-btn:hover:not(:disabled){background:var(--surface-alt);color:var(--ink);}
+.nav-hist-btn:disabled{opacity:.35;cursor:default;}
+@media(max-width:640px){.nav-hist-btns{display:none;}}
 .logo{display:flex;align-items:center;}
 .logo-svg{height:88px;width:auto;display:block;}
 @media(max-width:480px){:root{--topbar-h:64px;} .logo-svg{height:40px;}}
@@ -665,6 +670,10 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   <header class="topbar">
     <div class="topbar-left">
       <button class="mobile-menu-btn" onclick="App.toggleSidebar()"><i data-lucide="menu"></i></button>
+      <div class="nav-hist-btns">
+        <button class="nav-hist-btn" id="nav-back-btn" onclick="App.goBack()" aria-label="Back" title="Back"><i data-lucide="chevron-left"></i></button>
+        <button class="nav-hist-btn" id="nav-forward-btn" onclick="App.goForward()" aria-label="Forward" title="Forward"><i data-lucide="chevron-right"></i></button>
+      </div>
       <a href="#/" class="logo" onclick="return App.goHome(event)" aria-label="INNOUS — beyond frontiers" title="INNOUS — beyond frontiers">
         <svg class="logo-svg" viewBox="0 0 2000 723.2" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="INNOUS — beyond frontiers">
           <defs><style>.innous-logo-dark{fill:#000f19;}.innous-logo-blue{fill:#00a3e0;}</style></defs>
@@ -2149,6 +2158,8 @@ function renderShell(){
   const es = STATE.role==='SUPPLIER';
   const isAccount = STATE.authMode==='account';
   const showLogout = STATE.authMode!=='guest'; // account or demo — either way, there should be a way back to the landing page
+  document.getElementById('nav-back-btn').disabled = navHistDepth<=0;
+  document.getElementById('nav-forward-btn').disabled = navHistDepth>=navHistTop;
   document.getElementById('role-switcher').style.display = isAccount ? 'none' : '';
   document.getElementById('logout-btn').style.display = showLogout ? '' : 'none';
   document.getElementById('logout-btn-text').textContent = es ? 'Cerrar Sesión' : (isAccount ? 'Log Out' : 'Exit Demo');
@@ -2712,6 +2723,17 @@ function route(){
 function emptyState(icon,title,sub){
   return `<div class="empty-state"><div class="empty-state-icon"><i data-lucide="${icon}"></i></div><div class="empty-state-title">${title}</div><div>${sub}</div></div>`;
 }
+// In-app back/forward, mirroring what a browser's own chevrons do (see the
+// topbar buttons + App.goBack/goForward below) — NOT the same object as the
+// browser's real history (no API exposes "can I actually go back" for
+// that), just our own position counter over the hashes navigate() has
+// pushed this page load. navHistDepth is how many steps back are
+// available; navHistTop is how many are available forward from here.
+// Rides on top of the real browser history/hashchange underneath (real
+// back/forward — keyboard shortcut, trackpad swipe, the browser's own
+// button — still works and re-renders via the hashchange listener below;
+// it just won't stay in sync with these two counters).
+let navHistDepth = 0, navHistTop = 0;
 function navigate(path){
   // Render synchronously right away rather than relying on the browser's native
   // 'hashchange' event (which fires on the next tick, not immediately) — otherwise
@@ -2720,7 +2742,11 @@ function navigate(path){
   // critically, never persists whatever it just changed). The hashchange listener
   // stays registered too, purely as a fallback for the browser's own back/forward
   // buttons, which don't go through this function.
-  if(location.hash===path){ route(); } else { location.hash = path; route(); }
+  if(location.hash===path){ route(); return; }
+  // A genuinely new destination discards any "forward" history from a
+  // previous back excursion, same as a real browser.
+  navHistDepth++; navHistTop = navHistDepth;
+  location.hash = path; route();
 }
 
 /* =====================================================================
@@ -4470,6 +4496,20 @@ const App = {
     navigate(home);
     return false;
   },
+  // Topbar back/forward chevrons — see navHistDepth/navHistTop above.
+  // Delegates the actual hash change to the real browser history (rather
+  // than replaying a URL from our own stack) so the address bar and our
+  // counters never disagree about which entry is current.
+  goBack(){
+    if(navHistDepth<=0) return;
+    navHistDepth--;
+    history.back();
+  },
+  goForward(){
+    if(navHistDepth>=navHistTop) return;
+    navHistDepth++;
+    history.forward();
+  },
   toggleSidebar(forceClose){
     const sb = document.getElementById('sidebar'), bd = document.getElementById('sidebar-backdrop');
     if(forceClose===true){ sb.classList.remove('open'); bd.classList.remove('open'); return; }
@@ -4738,7 +4778,7 @@ const App = {
     STATE.role = role; STATE.ui.activeChatKey = null;
     document.getElementById('role-menu').classList.remove('open');
     const home = role==='CLIENT'?'#/client/dashboard':role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
-    if(location.hash===home) route(); else location.hash = home;
+    navigate(home);
     showToast(role==='SUPPLIER' ? 'Viendo como Proveedor' : `Viewing as ${ROLE_META[role].label}`);
   },
 
