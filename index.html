@@ -1864,7 +1864,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', settingsBillingCustomerId:'', settingsBillingSupplierId:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4938,41 +4938,67 @@ function supplierBillingSection(s){
   </div>`;
 }
 /* ---- Settings shortcut to the sections above (fix43, extended by fix46
-   for contact info) — the same customerContactSection()/
+   for contact info, redesigned by fix47) — the same customerContactSection()/
    customerBillingSection()/supplierContactSection()/supplierBillingSection()
-   cards that already live on each customer/supplier's own detail page,
-   just reachable from Ajustes too via a pick-an-account dropdown, for
-   whoever expects this data to live in Settings rather than having to
-   open a specific account first. Saves through the exact same App.save*
-   methods — so it's the same data, same persistence, just a second door
-   into it. */
+   cards that already live on each customer/supplier's own detail page, just
+   reachable from Ajustes too, for whoever expects this data to live in
+   Settings rather than having to open a specific account first. Two plain
+   lists (Clientes / Proveedores) — click a row, a modal opens with that
+   one account's contact + billing forms. Saves through the exact same
+   App.save* methods, which now also refresh the modal in place (see
+   refreshAccountInfoModalIfOpen) so a save/CSF-upload shows immediately
+   without closing it. */
 function settingsBillingInfoSection(){
-  const selC = STATE.ui.settingsBillingCustomerId, selS = STATE.ui.settingsBillingSupplierId;
-  const c = CUSTOMERS.find(x=>x.id===selC);
-  const s = SUPPLIERS.find(x=>x.id===selS);
+  const accountRow = (label, id, sub, onclick)=>`<tr class="row-link" onclick="${onclick}"><td class="td-strong">${label}</td><td class="td-sub">${sub||'—'}</td></tr>`;
   return `
-  <div class="card card-pad" style="margin-bottom:16px;">
-    <div class="section-title">Datos de Facturación de Clientes y Proveedores</div>
-    <div class="section-sub">Llena aquí los datos que le falten a la cuenta de un cliente o de un proveedor — quedan guardados en su cuenta y aparecen automáticamente en todas sus futuras cotizaciones y órdenes de compra, sin tener que volver a llenarlos.</div>
-    <div class="form-row" style="margin-top:12px;">
-      <div class="form-group"><label class="field-label">Cliente</label>
-        <select onchange="App.selectSettingsBillingCustomer(this.value)">
-          <option value="">Selecciona un cliente…</option>
-          ${CUSTOMERS.map(cc=>`<option value="${cc.id}" ${cc.id===selC?'selected':''}>${escAttr(cc.company)}</option>`).join('')}
-        </select>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><h3>Datos de Clientes y Proveedores</h3></div>
+    <div class="section-sub" style="padding:14px 20px 0;">Elige una cuenta para editar su contacto y su facturación — quedan guardados y aparecen automáticamente en todas sus futuras cotizaciones y órdenes de compra.</div>
+    <div class="grid grid-2" style="padding:16px 20px 20px;gap:16px;">
+      <div>
+        <div class="field-label" style="margin-bottom:8px;">Clientes</div>
+        <div class="table-wrap" style="border:1px solid var(--border);border-radius:var(--radius);">
+          <table class="data-table"><tbody>
+            ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.company, c.id, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin clientes registrados</td></tr>`}
+          </tbody></table>
+        </div>
       </div>
-      <div class="form-group"><label class="field-label">Proveedor</label>
-        <select onchange="App.selectSettingsBillingSupplier(this.value)">
-          <option value="">Selecciona un proveedor…</option>
-          ${SUPPLIERS.map(ss=>`<option value="${ss.id}" ${ss.id===selS?'selected':''}>${escAttr(ss.name)}</option>`).join('')}
-        </select>
+      <div>
+        <div class="field-label" style="margin-bottom:8px;">Proveedores</div>
+        <div class="table-wrap" style="border:1px solid var(--border);border-radius:var(--radius);">
+          <table class="data-table"><tbody>
+            ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.name, s.id, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin proveedores registrados</td></tr>`}
+          </tbody></table>
+        </div>
       </div>
     </div>
-  </div>
-  ${c ? customerContactSection(c) : ''}
-  ${c ? customerBillingSection(c) : ''}
-  ${s ? supplierContactSection(s) : ''}
-  ${s ? supplierBillingSection(s) : ''}`;
+  </div>`;
+}
+// The modal opened by a row click above — one account's contact + billing
+// forms together, so both are one click away instead of split across two
+// separate cards on a page.
+function accountInfoModalHtml(){
+  const { type, id } = STATE.ui.accountInfoModal || {};
+  if(type==='customer'){
+    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return '';
+    return `
+    <div class="modal-header"><h3>${c.company}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+    <div class="modal-body">${customerContactSection(c)}${customerBillingSection(c)}</div>`;
+  }
+  if(type==='supplier'){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return '';
+    return `
+    <div class="modal-header"><h3>${s.name}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+    <div class="modal-body">${supplierContactSection(s)}${supplierBillingSection(s)}</div>`;
+  }
+  return '';
+}
+// Called after every save/CSF action so a modal left open reflects what was
+// just saved (route() alone only re-renders the page behind it, not this
+// separate modal-root subtree).
+function refreshAccountInfoModalIfOpen(type, id){
+  const m = STATE.ui.accountInfoModal;
+  if(m && m.type===type && m.id===id && document.getElementById('modal-overlay')) openModal(accountInfoModalHtml(), true);
 }
 
 /* ---- INNOUS Quotes (all quotes across platform) ---- */
@@ -6992,8 +7018,7 @@ const App = {
     if(!STATE.ui.customerBillingDrafts[id]) STATE.ui.customerBillingDrafts[id] = {};
     STATE.ui.customerBillingDrafts[id][field] = val;
   },
-  selectSettingsBillingCustomer(id){ STATE.ui.settingsBillingCustomerId = id; route(); },
-  selectSettingsBillingSupplier(id){ STATE.ui.settingsBillingSupplierId = id; route(); },
+  openAccountInfoModal(type, id){ STATE.ui.accountInfoModal = {type, id}; openModal(accountInfoModalHtml(), true); },
   async saveCustomerBillingInfo(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const d = STATE.ui.customerBillingDrafts[id] || {};
@@ -7004,6 +7029,7 @@ const App = {
     }
     Object.assign(c, next);
     showToast('Datos de facturación guardados', 'success');
+    refreshAccountInfoModalIfOpen('customer', id);
     route();
   },
   updateCustomerContactDraft(id,field,val){
@@ -7020,6 +7046,7 @@ const App = {
     }
     Object.assign(c, next);
     showToast('Datos de contacto guardados', 'success');
+    refreshAccountInfoModalIfOpen('customer', id);
     route();
   },
   updateSupplierBillingDraft(id,field,val){
@@ -7036,6 +7063,7 @@ const App = {
     }
     Object.assign(s, next);
     showToast('Datos de facturación guardados', 'success');
+    refreshAccountInfoModalIfOpen('supplier', id);
     route();
   },
   updateSupplierContactDraft(id,field,val){
@@ -7052,6 +7080,7 @@ const App = {
     }
     Object.assign(s, next);
     showToast('Datos de contacto guardados', 'success');
+    refreshAccountInfoModalIfOpen('supplier', id);
     route();
   },
   // Reads a supplier's uploaded Constancia de Situación Fiscal (a real PDF
@@ -7090,6 +7119,7 @@ const App = {
         }
       }
       showToast('Datos detectados de la Constancia — revisa y guarda.', 'success');
+      refreshAccountInfoModalIfOpen('supplier', id);
       route();
     }catch(err){
       console.error('CSF parse failed', err);
@@ -7116,6 +7146,7 @@ const App = {
     }
     s.csfFilePath = null;
     showToast('Constancia eliminada', 'success');
+    refreshAccountInfoModalIfOpen('supplier', id);
     route();
   },
   async addToShortlist(pid,sid){
