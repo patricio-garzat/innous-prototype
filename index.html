@@ -4167,7 +4167,7 @@ function sentDocumentsSection(p){
         ${infoItem('Total Price', fmtMoney(p.order.customerPrice))}
         ${infoItem('Prepared By', p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name)}
       </div>
-      <button class="btn btn-secondary btn-block" style="margin-top:14px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Quote (PDF)</button>
+      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Quote (PDF)</button>
     </div>` : ''}
     ${poSent ? `
     <div class="card card-pad">
@@ -4178,7 +4178,7 @@ function sentDocumentsSection(p){
         ${infoItem('Total (IVA incl.)', q?fmtMXN(withIva(q.quotedTotal)):'—')}
         ${infoItem('Authorized', fmtDate(p.innousAuthorizedAt))}
       </div>
-      <button class="btn btn-secondary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download Purchase Order (PDF)</button>
+      <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download Purchase Order (PDF)</button>
     </div>` : ''}
   </div>`;
 }
