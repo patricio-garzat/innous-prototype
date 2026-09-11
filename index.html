@@ -191,6 +191,8 @@ svg{display:block;}
 .stage-banner-action svg{stroke:#fff;}
 .stage-banner-success{background:var(--success-soft);color:var(--success);}
 .stage-banner-success svg{stroke:var(--success);}
+.stage-banner-danger{background:var(--danger-soft);color:var(--danger);} /* fix38 — rejected/closed RFQs */
+.stage-banner-danger svg{stroke:var(--danger);}
 .stage-banner .btn{flex:0 0 auto;}
 .page-actions{display:flex;gap:8px;flex-wrap:wrap;}
 .section-title{font-size:15px;font-weight:700;margin-bottom:4px;}
@@ -819,6 +821,12 @@ const RFQ_STATUS_META = {
   awarded:{label:'Awarded',cls:'badge-green'},
   in_production:{label:'In Production',cls:'badge-green'},
   completed:{label:'Completed',cls:'badge-purple'}, // distinct from "gray" (not started) and "green" (actively moving) so a finished RFQ reads as finished, not stalled
+  // Terminal, off-the-happy-path status (fix38) — deliberately NOT in
+  // RFQ_STATUS_FLOW, since it isn't a step every RFQ passes through, it's an
+  // exit ramp INNOUS can take from any pre-award status when the project
+  // just isn't workable (usually: couldn't find a willing supplier). See
+  // App.openRejectRfqModal/confirmRejectRfq and rejectedRfqBanner().
+  rejected:{label:'Rejected',cls:'badge-red'},
 };
 /* Order / production timeline — exactly the 6 stages the client and supplier
    both see. The supplier only ever advances it through 'quality_inspection':
@@ -1145,6 +1153,9 @@ function projectRowToJs(row, existing){
     targetPriceMarkupPct: STATE.role==='SUPPLIER' ? null : (row.target_price_markup_pct ?? null),
     targetPriceExchangeRate: STATE.role==='SUPPLIER' ? null : (row.target_price_exchange_rate ?? null),
     targetPriceSupplierBudgetMxn: row.target_price_supplier_budget_mxn ?? null,
+    // Set only when status==='rejected' (fix38) — see App.confirmRejectRfq.
+    rejectedReason: row.rejected_reason || null,
+    rejectedAt: row.rejected_at ? new Date(row.rejected_at) : null,
     isDemo: false,
   };
 }
@@ -1796,7 +1807,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -2661,8 +2672,22 @@ function timeAgo(d){
    but framed as a one-line explanation of what it means for THEM and what (if
    anything) they need to do next — instead of making people decode a badge. */
 function stageBanner(text, tone, cta){
-  const icon = tone==='action' ? 'sparkles' : tone==='success' ? 'check-circle-2' : 'info';
+  const icon = tone==='action' ? 'sparkles' : tone==='success' ? 'check-circle-2' : tone==='danger' ? 'x-circle' : 'info';
   return `<div class="stage-banner stage-banner-${tone}"><i data-lucide="${icon}"></i><span>${text}</span>${cta||''}</div>`;
+}
+// Shown instead of the normal timeline/stage-banner combo once an RFQ is
+// rejected/closed (fix38) — the timeline has nothing meaningful to show
+// (RFQ_STATUS_FLOW.indexOf('rejected') is -1, since 'rejected' is a side
+// exit, not a step every RFQ passes through) and there's nothing left to
+// act on, so replacing both with one clear explanation reads better than a
+// dead progress bar plus a generic banner.
+function rejectedRfqBanner(p, audience){
+  const msg = audience==='innous' ? 'This RFQ was closed and the customer was notified.' : rfqStageMessage(p,'client');
+  return `<div class="card card-pad" style="margin-bottom:20px;">
+    ${stageBanner(msg, 'danger')}
+    ${p.rejectedReason?`<div class="info-item-label" style="margin-top:14px;">Reason</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.rejectedReason}</div>`:''}
+    ${p.rejectedAt?`<div class="field-hint" style="margin-top:10px;">Closed ${fmtDate(p.rejectedAt)}</div>`:''}
+  </div>`;
 }
 function rfqStageMessage(p, audience){
   if(audience==='client'){
@@ -2675,6 +2700,7 @@ function rfqStageMessage(p, audience){
       awarded:"You selected an option — INNOUS is finalizing the order with the manufacturing partner.",
       in_production:"Your order is in production. Track progress on the order page.",
       completed:"This project is complete and delivered.",
+      rejected:"INNOUS was unable to move forward with this project. See the note below for details.",
     })[p.status] || '';
   }
   if(audience==='innous'){
@@ -2687,6 +2713,7 @@ function rfqStageMessage(p, audience){
       awarded: p.innousAuthorizedAt ? "Order confirmed — production is about to begin." : "The customer selected a supplier — authorize the project below to notify them and release the order.",
       in_production:"Order is in production — track milestones on the order page.",
       completed:"Project completed and delivered.",
+      rejected:"This RFQ was closed and the customer was notified.",
     })[p.status] || '';
   }
   if(audience==='supplier'){
@@ -3606,8 +3633,9 @@ ROUTES['client/rfq'] = function(id){
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-primary" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Formal Quote (PDF)</button><button class="btn btn-secondary" onclick="navigate('#/client/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
       </div>
     </div>
+    ${p.status==='rejected' ? rejectedRfqBanner(p,'client') : `
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
-    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Project Information</div>
@@ -3940,7 +3968,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
    INNOUS PORTAL
    ===================================================================== */
 ROUTES['innous/overview'] = function(){
-  const active = PROJECTS.filter(p=>!['completed'].includes(p.status));
+  const active = PROJECTS.filter(p=>!['completed','rejected'].includes(p.status));
   const awaitingQuotes = PROJECTS.filter(p=>['sourcing'].includes(p.status));
   const readyForCustomer = PROJECTS.filter(p=>p.status==='quotes_received');
   const activeOrders = PROJECTS.filter(p=>['awarded','in_production'].includes(p.status));
@@ -3994,7 +4022,7 @@ ROUTES['innous/rfqs'] = function(){
     <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} total requests across the platform</div></div></div>
     <div class="filter-bar">
       <div class="search-bar" style="max-width:280px;"><i data-lucide="search"></i><input type="text" placeholder="Search RFQ, customer, project..." id="rfq-search" onkeyup="App.filterRfqTable()"></div>
-      <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">All Statuses</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}</select>
+      <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">All Statuses</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}<option value="rejected">Rejected</option></select>
     </div>
     <div class="card">
       <div class="table-wrap"><table class="data-table data-table-fixed" id="rfq-table">
@@ -4026,11 +4054,13 @@ ROUTES['innous/rfq'] = function(id){
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Begin Review</button>`:''}
         ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Save Purchase Order Details below first"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>View Order</button>`:''}
+        ${!['awarded','in_production','completed','rejected'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.openRejectRfqModal('${p.id}')"><i data-lucide="x-circle"></i>Reject / Close Project</button>`:''}
         <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Delete RFQ</button>
       </div>
     </div>
+    ${p.status==='rejected' ? rejectedRfqBanner(p,'innous') : `
     ${stageBanner(rfqStageMessage(p,'innous'), ['submitted','under_review'].includes(p.status) || (p.status==='awarded' && !p.innousAuthorizedAt) ?'action':'info')}
-    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>
+    <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
 
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
@@ -5734,6 +5764,66 @@ const App = {
     }
     showToast('RFQ deleted', 'success');
     navigate('#/innous/rfqs');
+  },
+  // "Reject / Close Project" (fix38) — for when INNOUS just can't make this
+  // RFQ work (usually: no willing supplier), instead of leaving it stuck in
+  // sourcing forever. Unlike Delete, this KEEPS the record and its history —
+  // it's a real terminal status the customer sees, with the reason INNOUS
+  // gives them, not a disappearance.
+  openRejectRfqModal(pid){
+    const p = findProject(pid); if(!p) return;
+    STATE.ui.rejectRfqReason = '';
+    openModal(`
+      <div class="modal-header"><h3>Reject / Close Project</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="field-hint" style="margin-bottom:12px;">This closes RFQ ${p.id} ("${escAttr(p.projectName)}") for good — the customer is notified immediately and sees this reason on their RFQ page. Use this when the project genuinely isn't workable (e.g. no supplier was willing to take it), not as a way to just tidy up the list.</div>
+        <div class="form-group"><label class="field-label">Reason (shown to the customer)</label><textarea id="reject-rfq-reason" placeholder="e.g. We were unable to find a manufacturing partner with the right capacity and capabilities for this project within a reasonable timeframe." oninput="STATE.ui.rejectRfqReason=this.value"></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" onclick="App.confirmRejectRfq('${p.id}')"><i data-lucide="x-circle"></i>Close Project &amp; Notify Customer</button>
+      </div>
+    `);
+  },
+  async confirmRejectRfq(pid){
+    const p = findProject(pid); if(!p) return;
+    const reason = (STATE.ui.rejectRfqReason||'').trim();
+    if(!reason){ showToast('A reason is required — the customer will see it.'); return; }
+    const now = new Date();
+    p.status = 'rejected'; p.rejectedReason = reason; p.rejectedAt = now;
+    logActivity(p, 'INNOUS', `RFQ closed: ${reason}`);
+    closeModal();
+    if(!p.isDemo){
+      const { error } = await sb.from('projects').update({
+        status: 'rejected', rejected_reason: reason, rejected_at: now.toISOString(), activity: p.activity,
+      }).eq('id', p.id);
+      if(error){ showToast(error.message); return; }
+      const clientId = isRealAccountId(p.customerId) ? p.customerId : null;
+      const supplierIds = p.invitedSupplierIds.filter(isRealAccountId);
+      if(clientId){
+        const { error: e1 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: [clientId],
+          p_title: `RFQ ${p.id} was closed`,
+          p_body: `INNOUS was unable to move forward with "${p.projectName}". Reason: ${reason}`,
+          p_project_id: p.id, p_link: '#/client/rfq/'+p.id,
+        });
+        if(e1) console.error('innous_send_notification (client) failed', e1);
+      }
+      // Courtesy notice to anyone already invited — they were never going to
+      // hear about this otherwise, since a rejected RFQ simply stops
+      // appearing in their "RFQs Disponibles"/dashboard lists.
+      if(supplierIds.length){
+        const { error: e2 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: supplierIds,
+          p_title: `El RFQ ${p.id} fue cerrado`,
+          p_body: `Innous cerró "${p.projectName}" — ya no está disponible para cotizar.`,
+          p_project_id: p.id,
+        });
+        if(e2) console.error('innous_send_notification (suppliers) failed', e2);
+      }
+    }
+    showToast('RFQ closed', 'success');
+    route();
   },
 
   /* ---- Post-signup mini tour ---- */
