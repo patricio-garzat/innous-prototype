@@ -1078,10 +1078,15 @@ function customerRowToJs(row){
 function supplierRowToJs(row){
   return {
     id: row.user_id, name: row.name, contactName: row.contact_name||'', email: row.email||'', phone: row.phone||'',
+    // Puesto (fix46) — the registered contact's job title, same idea as
+    // customers.position, editable via supplierContactSection.
+    position: row.position||'',
     // Fixed company data (doesn't change order to order) — filled in once
     // from the Purchase Order Details form the first time it's needed, then
     // auto-filled from here on. See App.savePurchaseOrderDetails.
-    rfc: row.rfc||'', address: row.address||'',
+    // legalName/csfFilePath (fix46) — filled from an uploaded Constancia de
+    // Situación Fiscal (see supplierBillingSection / App.onSupplierCsfSelected).
+    rfc: row.rfc||'', address: row.address||'', legalName: row.legal_name||'', csfFilePath: row.csf_file_path||null,
     city: row.city||'', capabilities: row.capabilities||[], machines: row.machines||[], certs: row.certs||[],
     capacity: row.capacity||'Not set', operators: row.operators||0, yearsOperating: row.years_operating||0,
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
@@ -1859,7 +1864,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'', settingsBillingCustomerId:'', settingsBillingSupplierId:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', settingsBillingCustomerId:'', settingsBillingSupplierId:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -2475,10 +2480,11 @@ function generatePurchaseOrderPdf(p){
   // ---- PROVEEDOR / ENTREGA Y CONDICIONES COMERCIALES ----
   const colW = (pageW-16)/2, col2X = marginL+colW+16;
   const proveedorRows = [
-    ['Razón social', supplier.name],
+    ['Razón social', supplier.legalName || supplier.name],
     ['RFC', supplier.rfc],
     ['Domicilio', supplier.address],
     ['Contacto', supplier.contactName],
+    ['Puesto', supplier.position],
     ['Teléfono', supplier.phone],
     ['Correo', supplier.email],
     ['Cotización ref.', `${quoteNumber} — ${fmtDate(q.submittedAt)}`],
@@ -4686,14 +4692,7 @@ ROUTES['innous/customer'] = function(id){
       ${kpiCard('Pedidos Activos', activeOrders, 'en producción o adjudicados', 'cog')}
       ${kpiCard('Pedidos Completados', completed, 'entregados a la fecha', 'check-circle')}
     </div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Información de Contacto</div>
-      <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${c.contact||'—'}</div></div>
-        <div><div class="info-item-label">Correo</div><div class="info-item-val">${c.email||'—'}</div></div>
-        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${c.phone||'—'}</div></div>
-      </div>
-    </div>
+    ${customerContactSection(c)}
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -4709,23 +4708,44 @@ ROUTES['innous/customer'] = function(id){
     </tbody></table></div></div>` : ''}
   </div>`;
 };
-/* ---- Billing Info — the fields that auto-fill this customer's "QUOTATION
-   TO" box on every formal quote (see generateQuotePdf). Not part of
-   self-service signup (Position/Address aren't asked for at signup) — fill
-   them in once, here, and every future RFQ for this customer already has
-   them. */
+/* ---- Contact Info — the contact this customer registered on the
+   platform (name, position/puesto, phone, email). Feeds the "Attn." /
+   "Position" / "Phone" / "E-mail" rows of the formal quote's "QUOTATION
+   TO" box (see generateQuotePdf) — editable here so INNOUS can fix or
+   fill in whatever the customer's own signup didn't capture (Position
+   isn't asked for at signup). */
+function customerContactSection(c){
+  if(!STATE.ui.customerContactDrafts[c.id]) STATE.ui.customerContactDrafts[c.id] = { contact: c.contact||'', position: c.position||'', phone: c.phone||'', email: c.email||'' };
+  const d = STATE.ui.customerContactDrafts[c.id];
+  const upd = (field)=>`App.updateCustomerContactDraft('${c.id}','${field}',this.value)`;
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Datos de Contacto</div>
+    <div class="section-sub">El contacto dado de alta en la plataforma — aparece en la cotización formal de este cliente. Llénalo una vez y aplica a todos sus futuros RFQs.</div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label class="field-label">Nombre y Apellido</label><input type="text" value="${escAttr(d.contact)}" oninput="${upd('contact')}"></div>
+      <div class="form-group"><label class="field-label">Puesto</label><input type="text" value="${escAttr(d.position)}" placeholder="ej. Gerente de Compras" oninput="${upd('position')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Número</label><input type="text" value="${escAttr(d.phone)}" oninput="${upd('phone')}"></div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="${upd('email')}"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerContactInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de Contacto</button></div>
+  </div>`;
+}
+/* ---- Billing Info — the customer's registered address, the last piece
+   the "QUOTATION TO" box needs (see generateQuotePdf / customerContactSection
+   above for the rest). Not part of self-service signup — fill it in once,
+   here, and every future RFQ for this customer already has it. */
 function customerBillingSection(c){
-  if(!STATE.ui.customerBillingDrafts[c.id]) STATE.ui.customerBillingDrafts[c.id] = { position: c.position||'', address: c.address||'' };
+  if(!STATE.ui.customerBillingDrafts[c.id]) STATE.ui.customerBillingDrafts[c.id] = { address: c.address||'' };
   const d = STATE.ui.customerBillingDrafts[c.id];
   const upd = (field)=>`App.updateCustomerBillingDraft('${c.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-bottom:16px;">
     <div class="section-title">Datos de Facturación — para Cotizaciones</div>
-    <div class="section-sub">Llena automáticamente el cuadro "Quotation To" en el PDF de cotización formal de este cliente — llénalo una vez y aplica a todos sus futuros RFQs.</div>
-    <div class="form-row" style="margin-top:12px;">
-      <div class="form-group"><label class="field-label">Puesto / Departamento</label><input type="text" value="${escAttr(d.position)}" placeholder="ej. Gerente de Compras" oninput="${upd('position')}"></div>
-      <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, ciudad, estado, país, C.P." oninput="${upd('address')}"></div>
-    </div>
+    <div class="section-sub">Llena automáticamente el renglón "Address" del cuadro "Quotation To" en el PDF de cotización formal de este cliente.</div>
+    <div class="form-group" style="margin-top:12px;"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, ciudad, estado, país, C.P." oninput="${upd('address')}"></div>
     <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerBillingInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
@@ -4774,14 +4794,7 @@ ROUTES['innous/supplier'] = function(id){
       ${kpiCard('Calidad', s.quality+'%', 'tasa de aceptación', 'shield-check')}
       ${kpiCard('Proyectos Ganados', won, 'de '+proj.length+' invitados', 'trophy')}
     </div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Información de Contacto</div>
-      <div class="info-grid" style="margin-top:12px;">
-        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${s.contactName||'—'}</div></div>
-        <div><div class="info-item-label">Correo</div><div class="info-item-val">${s.email||'—'}</div></div>
-        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${s.phone||'—'}</div></div>
-      </div>
-    </div>
+    ${supplierContactSection(s)}
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -4811,35 +4824,127 @@ ROUTES['innous/supplier'] = function(id){
     </tbody></table></div></div>` : ''}
   </div>`;
 };
-/* ---- Billing Info — RFC and Domicilio for this supplier's Purchase
-   Orders (see generatePurchaseOrderPdf / poInfoBlock's PROVEEDOR panel).
-   Same underlying suppliers.rfc/address columns App.savePurchaseOrderDetails
-   already writes to the first time they're needed on a real order — this is
-   just the proactive place to fill them in ahead of time, from the
-   supplier's own profile, so that inline prompt never even comes up. */
+/* ---- Constancia de Situación Fiscal (CSF) parser (fix46) — a supplier's
+   uploaded SAT constancia has a real text layer (it's a generated PDF, not
+   a scan), so pdf.js's getTextContent() gets us plain text straight off it,
+   no OCR needed. SAT's CSF is a fixed government template — the same
+   labels, in the same order, on every one — so rather than trust a strict
+   column layout (pdf.js can reorder side-by-side table cells within a
+   row), this treats every known label as an anchor and takes whatever text
+   falls between one label and whichever OTHER known label comes next. That
+   survives most local reordering as long as the labels themselves stay
+   intact, which they always do — each is one contiguous string in SAT's
+   generator. This only ever fills the DRAFT fields (see
+   App.onSupplierCsfSelected) — INNOUS still has to review and click
+   Guardar, so a bad read on some CSF layout variant never silently commits. */
+const CSF_FIELD_LABELS = [
+  'RFC:', 'Denominación/Razón Social:', 'Régimen Capital:', 'Nombre Comercial:',
+  'Fecha inicio de operaciones:', 'Estatus en el padrón:', 'Fecha de último cambio de estado:',
+  'Código Postal:', 'Tipo de Vialidad:', 'Nombre de Vialidad:', 'Número Exterior:',
+  'Número Interior:', 'Nombre de la Colonia:', 'Nombre de la Localidad:',
+  'Nombre del Municipio o Demarcación Territorial:', 'Nombre de la Entidad Federativa:',
+  'Entre Calle:', 'Y Calle:', 'Actividades Económicas:',
+];
+function parseCsfText(text){
+  const norm = text.replace(/\s+/g,' ').trim();
+  const out = {};
+  for(let i=0;i<CSF_FIELD_LABELS.length;i++){
+    const label = CSF_FIELD_LABELS[i];
+    const start = norm.indexOf(label);
+    if(start===-1) continue;
+    const from = start+label.length;
+    let end = norm.length;
+    for(let j=0;j<CSF_FIELD_LABELS.length;j++){
+      if(j===i) continue;
+      const idx = norm.indexOf(CSF_FIELD_LABELS[j], from);
+      if(idx!==-1 && idx<end) end = idx;
+    }
+    out[label] = norm.slice(from, end).trim();
+  }
+  return out;
+}
+// Assembles the CSF's ~9 separate domicilio fields into the one address
+// line the PO's "Domicilio" row actually shows — same shape as INNOUS's
+// own address in DEFAULT_SETTINGS ("Palma Real No. 115, Fracc. ... C.P.").
+function csfAddressLine(f){
+  const vialidad = f['Nombre de Vialidad:']||'', extNo = f['Número Exterior:']||'', intNo = f['Número Interior:']||'';
+  const colonia = f['Nombre de la Colonia:']||'', municipio = f['Nombre del Municipio o Demarcación Territorial:']||'';
+  const estado = f['Nombre de la Entidad Federativa:']||'', cp = f['Código Postal:']||'';
+  let calle = vialidad;
+  if(extNo) calle += ' No. '+extNo;
+  if(intNo) calle += ' Int. '+intNo;
+  const bits = [calle.trim(), colonia?('Col. '+colonia):'', municipio, estado].filter(Boolean);
+  let addr = bits.join(', ');
+  if(cp) addr += ' '+cp;
+  return addr.replace(/\s+/g,' ').trim();
+}
+/* ---- Contact Info — the contact this supplier registered on the
+   platform (name, puesto, phone, email). Feeds the "Contacto" / "Puesto" /
+   "Teléfono" / "Correo" rows of the Purchase Order's "PROVEEDOR" panel
+   (see generatePurchaseOrderPdf) — editable here since Puesto isn't asked
+   for at signup. */
+function supplierContactSection(s){
+  if(!STATE.ui.supplierContactDrafts[s.id]) STATE.ui.supplierContactDrafts[s.id] = { contactName: s.contactName||'', position: s.position||'', phone: s.phone||'', email: s.email||'' };
+  const d = STATE.ui.supplierContactDrafts[s.id];
+  const upd = (field)=>`App.updateSupplierContactDraft('${s.id}','${field}',this.value)`;
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Datos de Contacto</div>
+    <div class="section-sub">El contacto dado de alta en la plataforma — aparece en la Orden de Compra de este proveedor. Llénalo una vez y aplica a todos sus futuros pedidos.</div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label class="field-label">Nombre y Apellido</label><input type="text" value="${escAttr(d.contactName)}" oninput="${upd('contactName')}"></div>
+      <div class="form-group"><label class="field-label">Puesto</label><input type="text" value="${escAttr(d.position)}" placeholder="ej. Gerente de Ventas" oninput="${upd('position')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Número</label><input type="text" value="${escAttr(d.phone)}" oninput="${upd('phone')}"></div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="${upd('email')}"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierContactInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Contacto</button></div>
+  </div>`;
+}
+/* ---- Billing Info — exactly what a Constancia de Situación Fiscal (CSF)
+   carries: Razón Social, RFC and the registered Domicilio, for this
+   supplier's Purchase Orders (see generatePurchaseOrderPdf /
+   poInfoBlock's PROVEEDOR panel). Upload the CSF PDF here and its text
+   layer is parsed automatically (parseCsfText/csfAddressLine below) to
+   fill the three fields below — always into the DRAFT, never saved on
+   its own, so INNOUS still reviews before Guardar. The uploaded file
+   itself is kept in Storage (suppliers.csf_file_path) so it can be
+   reopened later. */
 function supplierBillingSection(s){
-  if(!STATE.ui.supplierBillingDrafts[s.id]) STATE.ui.supplierBillingDrafts[s.id] = { rfc: s.rfc||'', address: s.address||'' };
+  if(!STATE.ui.supplierBillingDrafts[s.id]) STATE.ui.supplierBillingDrafts[s.id] = { legalName: s.legalName||'', rfc: s.rfc||'', address: s.address||'' };
   const d = STATE.ui.supplierBillingDrafts[s.id];
   const upd = (field)=>`App.updateSupplierBillingDraft('${s.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-bottom:16px;">
     <div class="section-title">Datos de Facturación — para Órdenes de Compra</div>
-    <div class="section-sub">Llena automáticamente el cuadro "Proveedor" en la Orden de Compra de este proveedor — llénalo una vez y aplica a todos sus futuros pedidos.</div>
-    <div class="form-row" style="margin-top:12px;">
+    <div class="section-sub">Lo que pide una Constancia de Situación Fiscal — llénalo una vez y aplica a todos los futuros pedidos de este proveedor.</div>
+    <div class="form-group" style="margin-top:12px;">
+      <label class="field-label">Constancia de Situación Fiscal (PDF)</label>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="file" id="csf-input-${s.id}" accept=".pdf,application/pdf" style="display:none;" onchange="App.onSupplierCsfSelected('${s.id}',this)">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('csf-input-${s.id}').click()"><i data-lucide="upload"></i>Subir Constancia (PDF)</button>
+        ${s.csfFilePath ? `<button type="button" class="btn btn-ghost btn-sm" onclick="App.viewSupplierCsf('${s.id}')"><i data-lucide="file-text"></i>Ver constancia guardada</button>` : ''}
+      </div>
+      <div class="field-hint">Se leen automáticamente Razón Social, RFC y Domicilio — revísalos abajo antes de guardar.</div>
+    </div>
+    <div class="form-group"><label class="field-label">Razón Social</label><input type="text" value="${escAttr(d.legalName)}" placeholder="Como aparece en la Constancia de Situación Fiscal" oninput="${upd('legalName')}"></div>
+    <div class="form-row">
       <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" placeholder="XXXX000000XX0" oninput="${upd('rfc')}"></div>
       <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, número, colonia, C.P., ciudad, estado" oninput="${upd('address')}"></div>
     </div>
     <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierBillingInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
-/* ---- Settings shortcut to the two sections above (fix43) — the same
-   customerBillingSection()/supplierBillingSection() cards that already
-   live on each customer/supplier's own detail page, just reachable from
-   Ajustes too via a pick-an-account dropdown, for whoever expects billing
-   data to live in Settings rather than having to open a specific account
-   first. Saves through the exact same App.saveCustomerBillingInfo /
-   App.saveSupplierBillingInfo — so it's the same data, same persistence,
-   just a second door into it. */
+/* ---- Settings shortcut to the sections above (fix43, extended by fix46
+   for contact info) — the same customerContactSection()/
+   customerBillingSection()/supplierContactSection()/supplierBillingSection()
+   cards that already live on each customer/supplier's own detail page,
+   just reachable from Ajustes too via a pick-an-account dropdown, for
+   whoever expects this data to live in Settings rather than having to
+   open a specific account first. Saves through the exact same App.save*
+   methods — so it's the same data, same persistence, just a second door
+   into it. */
 function settingsBillingInfoSection(){
   const selC = STATE.ui.settingsBillingCustomerId, selS = STATE.ui.settingsBillingSupplierId;
   const c = CUSTOMERS.find(x=>x.id===selC);
@@ -4863,7 +4968,9 @@ function settingsBillingInfoSection(){
       </div>
     </div>
   </div>
+  ${c ? customerContactSection(c) : ''}
   ${c ? customerBillingSection(c) : ''}
+  ${s ? supplierContactSection(s) : ''}
   ${s ? supplierBillingSection(s) : ''}`;
 }
 
@@ -6889,13 +6996,29 @@ const App = {
   async saveCustomerBillingInfo(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const d = STATE.ui.customerBillingDrafts[id] || {};
-    const next = { position: (d.position||'').trim(), address: (d.address||'').trim() };
+    const next = { address: (d.address||'').trim() };
     if(isRealAccountId(id)){
-      const { error } = await sb.from('customers').update({ position: next.position, address: next.address }).eq('user_id', id);
+      const { error } = await sb.from('customers').update({ address: next.address }).eq('user_id', id);
       if(error){ showToast(error.message); return; }
     }
     Object.assign(c, next);
     showToast('Datos de facturación guardados', 'success');
+    route();
+  },
+  updateCustomerContactDraft(id,field,val){
+    if(!STATE.ui.customerContactDrafts[id]) STATE.ui.customerContactDrafts[id] = {};
+    STATE.ui.customerContactDrafts[id][field] = val;
+  },
+  async saveCustomerContactInfo(id){
+    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
+    const d = STATE.ui.customerContactDrafts[id] || {};
+    const next = { contact:(d.contact||'').trim(), position:(d.position||'').trim(), phone:(d.phone||'').trim(), email:(d.email||'').trim() };
+    if(isRealAccountId(id)){
+      const { error } = await sb.from('customers').update({ contact: next.contact, position: next.position, phone: next.phone, email: next.email }).eq('user_id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    Object.assign(c, next);
+    showToast('Datos de contacto guardados', 'success');
     route();
   },
   updateSupplierBillingDraft(id,field,val){
@@ -6905,14 +7028,78 @@ const App = {
   async saveSupplierBillingInfo(id){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
     const d = STATE.ui.supplierBillingDrafts[id] || {};
-    const next = { rfc: (d.rfc||'').trim(), address: (d.address||'').trim() };
+    const next = { legalName:(d.legalName||'').trim(), rfc: (d.rfc||'').trim(), address: (d.address||'').trim() };
     if(isRealAccountId(id)){
-      const { error } = await sb.from('suppliers').update({ rfc: next.rfc, address: next.address }).eq('user_id', id);
+      const { error } = await sb.from('suppliers').update({ legal_name: next.legalName, rfc: next.rfc, address: next.address }).eq('user_id', id);
       if(error){ showToast(error.message); return; }
     }
     Object.assign(s, next);
     showToast('Datos de facturación guardados', 'success');
     route();
+  },
+  updateSupplierContactDraft(id,field,val){
+    if(!STATE.ui.supplierContactDrafts[id]) STATE.ui.supplierContactDrafts[id] = {};
+    STATE.ui.supplierContactDrafts[id][field] = val;
+  },
+  async saveSupplierContactInfo(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+    const d = STATE.ui.supplierContactDrafts[id] || {};
+    const next = { contactName:(d.contactName||'').trim(), position:(d.position||'').trim(), phone:(d.phone||'').trim(), email:(d.email||'').trim() };
+    if(isRealAccountId(id)){
+      const { error } = await sb.from('suppliers').update({ contact_name: next.contactName, position: next.position, phone: next.phone, email: next.email }).eq('user_id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    Object.assign(s, next);
+    showToast('Datos de contacto guardados', 'success');
+    route();
+  },
+  // Reads a supplier's uploaded Constancia de Situación Fiscal (a real PDF
+  // text layer, not a scan) via pdf.js, parses it (parseCsfText/
+  // csfAddressLine above), and fills the billing DRAFT — never saves on
+  // its own, so INNOUS still reviews the fields before Guardar. Also
+  // keeps the uploaded PDF on file (suppliers.csf_file_path) for real
+  // accounts, so it can be reopened later via App.viewSupplierCsf.
+  async onSupplierCsfSelected(id, input){
+    const file = input.files && input.files[0]; input.value = '';
+    if(!file) return;
+    if(!/pdf$/i.test(file.name) && file.type!=='application/pdf'){ showToast('Sube la Constancia de Situación Fiscal en PDF.'); return; }
+    showToast('Leyendo la Constancia…');
+    try{
+      if(!window.pdfjsLib) throw new Error('El lector de PDF no cargó.');
+      const buf = await file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdfDoc.getPage(1);
+      const content = await page.getTextContent();
+      const text = content.items.map(it=>it.str).join(' ');
+      const fields = parseCsfText(text);
+      const razonSocial = fields['Denominación/Razón Social:'], rfc = fields['RFC:'];
+      if(!razonSocial && !rfc){ showToast('No se pudieron leer los datos — revisa que sea la Constancia de Situación Fiscal del SAT.'); return; }
+      if(!STATE.ui.supplierBillingDrafts[id]) STATE.ui.supplierBillingDrafts[id] = {};
+      const d = STATE.ui.supplierBillingDrafts[id];
+      if(razonSocial) d.legalName = razonSocial;
+      if(rfc) d.rfc = rfc;
+      const addr = csfAddressLine(fields);
+      if(addr) d.address = addr;
+      if(isRealAccountId(id)){
+        const path = `${id}/csf-${Date.now()}.pdf`;
+        const { error: upErr } = await sb.storage.from('account-docs').upload(path, file, { contentType:'application/pdf' });
+        if(!upErr){
+          await sb.from('suppliers').update({ csf_file_path: path }).eq('user_id', id);
+          const s = SUPPLIERS.find(x=>x.id===id); if(s) s.csfFilePath = path;
+        }
+      }
+      showToast('Datos detectados de la Constancia — revisa y guarda.', 'success');
+      route();
+    }catch(err){
+      console.error('CSF parse failed', err);
+      showToast('No se pudo leer el PDF. Verifica el archivo e intenta de nuevo.');
+    }
+  },
+  async viewSupplierCsf(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s || !s.csfFilePath){ showToast('No hay constancia guardada.'); return; }
+    const { data, error } = await sb.storage.from('account-docs').createSignedUrl(s.csfFilePath, 300);
+    if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
+    window.open(data.signedUrl, '_blank');
   },
   async addToShortlist(pid,sid){
     const p = findProject(pid);
