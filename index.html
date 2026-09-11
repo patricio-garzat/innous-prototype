@@ -1990,7 +1990,13 @@ function rfqResponsibility(p){
     submitted:'INNOUS', under_review:'INNOUS',
     sourcing: p.supplierQuotes.some(q=>q.status==='submitted') ? 'INNOUS' : 'SUPPLIER',
     quotes_received:'INNOUS', customer_review:'CLIENT',
-    awarded:'INNOUS',
+    // Before authorization, INNOUS still has to fill in Purchase Order
+    // Details and click "Authorize & Notify Supplier" — their turn. The
+    // instant that happens, the supplier is notified and needs to start
+    // production (mark "in_production") — same handoff rfqStageMessage()
+    // already describes for both audiences; this was hardcoded to 'INNOUS'
+    // the whole time 'awarded' lasted, which is wrong for that second half.
+    awarded: p.innousAuthorizedAt ? 'SUPPLIER' : 'INNOUS',
     in_production: (p.order && innousNextOrderStatus(p)) ? 'INNOUS' : 'SUPPLIER',
     completed:null,
   };
@@ -2740,7 +2746,7 @@ function rfqStageMessage(p, audience){
       sourcing:"INNOUS is matching and inviting manufacturing partners for your project.",
       quotes_received:"Supplier quotes are in — INNOUS is comparing them to build your shortlist.",
       customer_review:"Your quotes are ready to review. Select an option below to move forward.",
-      awarded:"You selected an option — INNOUS is finalizing the order with the manufacturing partner.",
+      awarded: p.innousAuthorizedAt ? "Your order is confirmed — production is starting with the manufacturing partner." : "You selected an option — INNOUS is finalizing the order with the manufacturing partner.",
       in_production:"Your order is in production. Track progress on the order page.",
       completed:"This project is complete and delivered.",
       rejected:"INNOUS was unable to move forward with this project. See the note below for details.",
