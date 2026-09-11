@@ -1111,6 +1111,20 @@ function projectRowToJs(row, existing){
     // null until INNOUS explicitly authorizes the project; until then the
     // winning supplier's own portal still shows the RFQ as pending review.
     innousAuthorizedAt: row.innous_authorized_at ? new Date(row.innous_authorized_at) : null,
+    // Optional client-set "target price" (fix36) — client picks it, INNOUS
+    // sets the markup/rate once and locks them in when sending to
+    // suppliers. CONFIDENTIALITY: a supplier must never see the raw USD
+    // target price or the markup % (together they'd reveal each other) —
+    // only targetPriceSupplierBudgetMxn, the number already computed with
+    // both baked in. RLS on `projects` doesn't scope this column-by-column
+    // (a supplier's SELECT policy covers the whole row, same as
+    // customer_id already does — see supabase-schema.sql), so the real
+    // protection here is that this app never reads the raw fields into a
+    // supplier's own state at all, only ever the pre-computed budget.
+    targetPriceUsd: STATE.role==='SUPPLIER' ? null : (row.target_price_usd ?? null),
+    targetPriceMarkupPct: STATE.role==='SUPPLIER' ? null : (row.target_price_markup_pct ?? null),
+    targetPriceExchangeRate: STATE.role==='SUPPLIER' ? null : (row.target_price_exchange_rate ?? null),
+    targetPriceSupplierBudgetMxn: row.target_price_supplier_budget_mxn ?? null,
     isDemo: false,
   };
 }
@@ -2883,7 +2897,7 @@ function pendingItems(){
   } else { // SUPPLIER
     supplierInvited().filter(p=>{
       const q = supplierQuoteFor(p);
-      return (!q || q.status!=='submitted') && ['sourcing','quotes_received'].includes(p.status);
+      return (!q || (q.status!=='submitted' && q.status!=='declined')) && ['sourcing','quotes_received'].includes(p.status);
     }).forEach(p=>{
       items.push({navId:'rfqs', icon:'file-text', text:`Cotizar — ${p.projectName}`, sub:p.id, path:'#/supplier/rfq/'+p.id});
     });
@@ -3436,7 +3450,7 @@ function rfqMiniTable(list){
    adding/removing a simulated file — the fields repopulate from state
    instead of the form resetting to blank. */
 ROUTES['client/new-rfq'] = function(){
-  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryCountry:'US', deliveryZip:'', deliveryLocation:'', specialReq:'' }; STATE.ui.newRfqFiles = []; }
+  if(!STATE.ui.newRfqDraft){ STATE.ui.newRfqDraft = { process:'CNC Machining', projectName:'', description:'', quantity:'', material:'', deliveryMethod:'delivery', deliveryDate:'', deliveryCountry:'US', deliveryZip:'', deliveryLocation:'', specialReq:'', targetPriceUsd:'' }; STATE.ui.newRfqFiles = []; }
   const d = STATE.ui.newRfqDraft;
   return `
   <div class="content-inner" style="max-width:820px;">
@@ -3490,6 +3504,11 @@ ROUTES['client/new-rfq'] = function(){
         <div class="field-hint" id="zip-lookup-status"></div>
       </div>` : ''}
       <div class="form-group"><label class="field-label">Special requirements</label><textarea name="specialReq" oninput="STATE.ui.newRfqDraft.specialReq=this.value" placeholder="Packaging, testing, finish, etc.">${escAttr(d.specialReq)}</textarea></div>
+      <div class="form-group">
+        <label class="field-label">Target price (USD) — optional</label>
+        <input type="number" name="targetPriceUsd" step="0.01" min="0" value="${escAttr(d.targetPriceUsd)}" oninput="STATE.ui.newRfqDraft.targetPriceUsd=this.value" placeholder="Leave blank if you don't have one">
+        <div class="field-hint">If you have a budget in mind, INNOUS will try to source a supplier that can meet it. The first supplier that accepts your target price is awarded the project immediately.</div>
+      </div>
       <hr class="divider">
       <div class="section-title">Upload drawings &amp; project files</div>
       <div class="section-sub">Supported: PDF, STEP, DWG, DXF, JPG, PNG — up to 25 MB each</div>
@@ -3557,6 +3576,7 @@ ROUTES['client/rfq'] = function(id){
           ${infoItem('Material', p.material)}
           ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
           ${infoItem('Delivery Location', p.deliveryLocation)}
+          ${p.targetPriceUsd?infoItem('Target Price', fmtMoney(p.targetPriceUsd)):''}
         </div>
         <hr class="divider">
         <div class="info-item-label">Description</div>
@@ -3952,6 +3972,7 @@ ROUTES['innous/rfq'] = function(id){
           ${infoItem('Material', p.material)}
           ${infoItem('Delivery Date', fmtDate(p.deliveryDate))}
           ${infoItem('Delivery Location', p.deliveryLocation)}
+          ${p.targetPriceUsd?infoItem('Target Price', fmtMoney(p.targetPriceUsd)):''}
         </div>
         <hr class="divider">
         <div class="info-item-label">Specifications</div>
@@ -3972,6 +3993,7 @@ ROUTES['innous/rfq'] = function(id){
       </div>
     </div>
 
+    ${p.targetPriceUsd && ['sourcing','under_review'].includes(p.status) ? targetPriceSourcingSection(p) : ''}
     ${p.status==='sourcing' || p.status==='under_review' ? supplierMatchingSection(p) : ''}
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? supplierResponsesSection(p) : ''}
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? quoteComparisonSection(p) : ''}
@@ -4021,6 +4043,32 @@ function sentDocumentsSection(p){
   </div>`;
 }
 
+// Target Price Sourcing — only shown when the client set an optional target
+// price. Before the first supplier is invited, INNOUS can still adjust the
+// markup % and exchange rate (defaults come from Settings, same as the
+// normal quote-comparison flow — see getMarkup/getExchangeRate). The moment
+// App.sendRfqToSuppliers actually invites someone, those two numbers get
+// written to the projects row and are locked from then on (see the function
+// itself) so every supplier invited, whenever that happens, sees the exact
+// same MXN budget. CONFIDENTIALITY: this whole box only ever renders on the
+// INNOUS side — a supplier's own RFQ view never calls this function.
+function targetPriceSourcingSection(p){
+  const locked = p.invitedSupplierIds.length > 0;
+  const markup = locked ? p.targetPriceMarkupPct : getMarkup(p.id, '__target__');
+  const rate = locked ? p.targetPriceExchangeRate : getExchangeRate(p.id);
+  const budgetMxn = locked ? p.targetPriceSupplierBudgetMxn : (p.targetPriceUsd / (1 + markup/100)) * rate;
+  return `
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div class="section-title">Target Price Sourcing</div>
+    <div class="section-sub">The customer set a target price of ${fmtMoney(p.targetPriceUsd)}. ${locked ? 'The markup and exchange rate below are locked — every supplier invited sees this same budget.' : 'Set your markup and the exchange rate to use before inviting suppliers — once you send the first invite, these numbers lock in.'}</div>
+    <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
+      <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${markup}" style="width:100px;" ${locked?'disabled':`onchange="App.setMarkup('${p.id}','__target__', this.value)"`}></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
+      <div><div class="field-label">Supplier Budget (MXN)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMXN(budgetMxn)}</div></div>
+    </div>
+    <div class="field-hint" style="margin-top:10px;">Suppliers only ever see this MXN budget — never the target price in USD or your markup %.</div>
+  </div>`;
+}
 function supplierMatchingSection(p){
   // Only relevant while INNOUS could still be inviting suppliers — once the RFQ
   // has moved into comparing/shortlisting quotes (or further), this no longer
@@ -4077,11 +4125,13 @@ function supplierResponsesSection(p){
       ${p.invitedSupplierIds.map((sid,i)=>{
         const q = p.supplierQuotes.find(x=>x.supplierId===sid);
         const submitted = q && q.status==='submitted';
+        const declined = q && q.status==='declined';
         const s = SUPPLIERS.find(x=>x.id===sid);
+        const badge = declined ? ['badge-gray','Declined'] : submitted ? ['badge-green','Submitted'] : ['badge-amber','Pending'];
         return `<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/suppliers')">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div style="font-weight:600;font-size:12.5px;">${s?s.name:'Deleted Supplier'}</div>
-            <span class="badge ${submitted?'badge-green':'badge-amber'}">${submitted?'Submitted':'Pending'}</span>
+            <span class="badge ${badge[0]}">${badge[1]}</span>
           </div>
           <div class="td-sub" style="margin-top:6px;">${s?s.city:'—'}</div>
         </div>`;
@@ -4902,7 +4952,7 @@ function supplierQuoteFor(p){ return p.supplierQuotes.find(q=>q.supplierId===STA
 
 ROUTES['supplier/dashboard'] = function(){
   const invited = supplierInvited();
-  const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || q.status!=='submitted'; }).filter(p=>['sourcing','quotes_received'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || (q.status!=='submitted' && q.status!=='declined'); }).filter(p=>['sourcing','quotes_received'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const submitted = invited.filter(p=>{ const q=supplierQuoteFor(p); return q && q.status==='submitted'; });
   const activeOrders = invited.filter(p=>p.order && supplierWon(p) && ['awarded','in_production'].includes(p.status));
   const completedOrders = invited.filter(p=>p.order && supplierWon(p) && p.status==='completed');
@@ -4955,11 +5005,18 @@ ROUTES['supplier/rfqs'] = function(){
 function supplierRfqCard(p){
   const q = supplierQuoteFor(p);
   const submitted = q && q.status==='submitted';
+  const declined = q && q.status==='declined';
+  const isTargetPrice = !!p.targetPriceSupplierBudgetMxn;
+  let badge = '<span class="badge badge-amber">Acción Requerida</span>';
+  if(p.status==='completed') badge = '<span class="badge badge-purple">Proyecto Completado</span>';
+  else if(declined) badge = '<span class="badge badge-gray">No Asignado</span>';
+  else if(submitted && isTargetPrice) badge = '<span class="badge badge-green">Aceptado</span>';
+  else if(submitted) badge = '<span class="badge badge-green">Cotización Enviada</span>';
   return `
   <div class="card card-pad">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="td-sub mono">${p.id}</div><div style="font-weight:700;font-size:14.5px;margin-top:2px;">${p.projectName}</div></div>
-      ${p.status==='completed'?'<span class="badge badge-purple">Proyecto Completado</span>':submitted?'<span class="badge badge-green">Cotización Enviada</span>':'<span class="badge badge-amber">Acción Requerida</span>'}
+      ${badge}
     </div>
     <div class="cap-list">${[procES(p.process),p.material].map(t=>`<span class="tag">${t}</span>`).join('')}</div>
     <div class="info-grid" style="grid-template-columns:1fr 1fr;margin:12px 0;">
@@ -4968,8 +5025,8 @@ function supplierRfqCard(p){
       ${infoItem('Ubicación', p.deliveryLocation)}
       ${infoItem('Archivos', p.files.filter(f=>f.redactedPath).length+' adjuntos')}
     </div>
-    <div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>
-    ${!submitted ? `<button class="btn btn-primary btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">Ver RFQ</button>` : `<div class="field-hint">Ya enviaste tu cotización — consulta su estatus en Mis Cotizaciones.</div>`}
+    ${isTargetPrice && !submitted && !declined ? `<div class="td-sub" style="margin-bottom:10px;"><i data-lucide="zap" style="width:11px;height:11px;display:inline;"></i> Precio fijo: ${fmtMXN(p.targetPriceSupplierBudgetMxn)} — el primero en aceptar se queda con el proyecto.</div>` : `<div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>`}
+    ${declined ? `<div class="field-hint">Otro proveedor aceptó este proyecto antes que tú.</div>` : !submitted ? `<button class="btn btn-primary btn-block" onclick="navigate('#/supplier/rfq/${p.id}')">Ver RFQ</button>` : isTargetPrice ? `<div class="field-hint">${p.innousAuthorizedAt ? 'Aceptaste este proyecto — consulta el detalle en Mis Órdenes.' : 'Aceptaste este proyecto — INNOUS está finalizando los detalles del pedido.'}</div>` : `<div class="field-hint">Ya enviaste tu cotización — consulta su estatus en Mis Cotizaciones.</div>`}
   </div>`;
 }
 
@@ -4978,11 +5035,20 @@ ROUTES['supplier/rfq'] = function(id){
   const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','RFQ no disponible','Esta solicitud no fue enviada a tu empresa.');
   const q = supplierQuoteFor(p);
   const submitted = q && q.status==='submitted';
+  const declined = q && q.status==='declined';
+  const isTargetPrice = !!p.targetPriceSupplierBudgetMxn;
+  let headerBadge = '<span class="badge badge-amber">Pendiente de Cotizar</span>';
+  if(p.status==='completed') headerBadge = '<span class="badge badge-purple">Proyecto Completado</span>';
+  else if(declined) headerBadge = '<span class="badge badge-gray">No Asignado</span>';
+  else if(submitted && isTargetPrice) headerBadge = '<span class="badge badge-green">Aceptado</span>';
+  else if(submitted) headerBadge = '<span class="badge badge-green">Cotización Enviada</span>';
   return `
   <div class="content-inner" style="max-width:900px;">
     <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
-    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${p.status==='completed'?'<span class="badge badge-purple">Proyecto Completado</span>':submitted?'<span class="badge badge-green">Cotización Enviada</span>':'<span class="badge badge-amber">Pendiente de Cotizar</span>'}</div>
-    ${stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'?'success':(submitted?'info':'action'))}
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${headerBadge}</div>
+    ${declined ? stageBanner('Otro proveedor aceptó este proyecto al precio fijo antes que tú. Ya no está disponible.', 'info')
+      : (isTargetPrice && submitted && !p.innousAuthorizedAt) ? stageBanner('Aceptaste el precio fijo — INNOUS está finalizando los detalles del pedido antes de liberarlo.', 'info')
+      : stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'?'success':(submitted?'info':'action'))}
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
         <div class="section-title">Especificaciones del RFQ</div>
@@ -5007,9 +5073,37 @@ ROUTES['supplier/rfq'] = function(id){
         })()}</div>
       </div>
     </div>
-    ${submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p)}
+    ${isTargetPrice ? targetPriceSupplierSection(p, q, declined, submitted) : (submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p))}
   </div>`;
 };
+// Target-price RFQs replace the normal quote form entirely: the supplier
+// only ever sees the fixed MXN budget INNOUS already computed (never the
+// client's raw USD target price or INNOUS's markup %) and picks
+// Accept/Decline — no unit-price negotiation, since the whole point of a
+// target price is that the client already set the number.
+function targetPriceSupplierSection(p, q, declined, submitted){
+  if(declined){
+    return `<div class="card card-pad"><div class="section-title">Proyecto No Asignado</div><div class="section-sub" style="margin-top:6px;">Otro proveedor aceptó este proyecto al precio fijo antes que tú. Gracias por tu interés — te seguiremos invitando a nuevos RFQs según tus capacidades.</div></div>`;
+  }
+  if(submitted){
+    // supplierWon() (and therefore the Order page) only unlocks once INNOUS
+    // authorizes the project (see App.authorizeProject) — same gate every
+    // other awarded supplier goes through, target price or not. Until then
+    // this card is the only confirmation the supplier gets.
+    const authorized = !!p.innousAuthorizedAt;
+    return `<div class="card card-pad"><div class="section-title">Aceptaste Este Proyecto</div><div class="section-sub" style="margin-top:6px;">Confirmaste el precio fijo de ${fmtMXN(p.targetPriceSupplierBudgetMxn)}. ${authorized ? 'El proyecto es tuyo — consulta los siguientes pasos en tu pedido.' : 'INNOUS está finalizando los detalles del pedido — te notificaremos en cuanto esté listo para producción.'}</div>${authorized ? `<button class="btn btn-secondary" style="margin-top:14px;" onclick="navigate('#/supplier/order/${p.id}')">Ver Orden</button>` : ''}</div>`;
+  }
+  return `
+  <div class="card card-pad">
+    <div class="section-title">Precio Fijo del Cliente</div>
+    <div class="section-sub" style="margin-top:6px;">El cliente ya fijó el presupuesto para este proyecto. El primer proveedor que acepte se queda con el proyecto de inmediato — no hay comparación de cotizaciones.</div>
+    <div style="margin:18px 0;"><div class="field-label">Precio Fijo (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(p.targetPriceSupplierBudgetMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(p.targetPriceSupplierBudgetMxn)} + IVA (16%)</div></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" onclick="App.acceptTargetPrice('${p.id}')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(p.targetPriceSupplierBudgetMxn)}</button>
+      <button class="btn btn-secondary" onclick="App.declineTargetPrice('${p.id}')">No Puedo con Este Precio</button>
+    </div>
+  </div>`;
+}
 // Shown wherever the supplier needs to see their own submitted quote in
 // full — a proper itemized breakdown (unit price × qty, extras, total) plus
 // the terms that go with it, not just a scattered info-grid. Everything
@@ -6131,6 +6225,7 @@ const App = {
         process: STATE.ui.newRfqDraft.process, quantity: parseInt(f.get('quantity'))||1, material: f.get('material'),
         delivery_date: f.get('deliveryDate')||null, delivery_location: deliveryLocation,
         quality_req: 'Standard quality documentation.', special_req: f.get('specialReq')||'—',
+        target_price_usd: parseFloat(f.get('targetPriceUsd'))||null,
         files: [], status:'submitted', activity,
       }).select('id').single(), 12000, 'submitRfq');
       if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
@@ -6195,6 +6290,19 @@ const App = {
     // earlier round the moment INNOUS invited anyone new.
     const newIds = STATE.ui.selectedInviteSuppliers.filter(sid=>!p.invitedSupplierIds.includes(sid));
     if(!newIds.length){ STATE.ui.selectedInviteSuppliers = []; return; }
+    // If this is a target-price RFQ and nobody has been invited yet, lock in
+    // the markup % and exchange rate right now — the computed MXN budget from
+    // this exact moment is what every supplier invited (now or later) will
+    // see, so it can never quietly drift under them.
+    const lockingTargetPrice = p.targetPriceUsd && p.targetPriceSupplierBudgetMxn==null;
+    let projectsUpdate = {};
+    if(lockingTargetPrice){
+      const markup = getMarkup(p.id, '__target__');
+      const rate = getExchangeRate(p.id);
+      const budgetMxn = (p.targetPriceUsd / (1 + markup/100)) * rate;
+      p.targetPriceMarkupPct = markup; p.targetPriceExchangeRate = rate; p.targetPriceSupplierBudgetMxn = budgetMxn;
+      projectsUpdate = { target_price_markup_pct: markup, target_price_exchange_rate: rate, target_price_supplier_budget_mxn: budgetMxn };
+    }
     p.invitedSupplierIds = [...p.invitedSupplierIds, ...newIds];
     newIds.forEach(sid=>{ p.supplierQuotes.push(p.isDemo ? makeQuoteStub(p, sid, false) : makeRealQuoteStub(sid)); });
     if(p.status==='submitted' || p.status==='under_review') p.status = 'sourcing';
@@ -6204,7 +6312,8 @@ const App = {
       if(e1){ showToast(e1.message); return; }
       const { error: e2 } = await sb.from('supplier_quotes').insert(newIds.map(sid=>({ project_id: p.id, supplier_id: sid, status:'pending' })));
       if(e2){ showToast(e2.message); return; }
-      const { error: e3 } = await sb.from('projects').update({ status: p.status }).eq('id', p.id);
+      projectsUpdate.status = p.status;
+      const { error: e3 } = await sb.from('projects').update(projectsUpdate).eq('id', p.id);
       if(e3){ showToast(e3.message); return; }
     }
     STATE.ui.selectedInviteSuppliers = [];
@@ -6527,6 +6636,33 @@ const App = {
     showToast('Cotización enviada con éxito', 'success');
     navigate('#/supplier/quote/'+pid);
     return false;
+  },
+  // "First come, first served" — the database function itself re-checks
+  // (atomically, via `where selected_supplier_id is null`) that nobody beat
+  // this supplier to it; the error message below is exactly what comes back
+  // when that race is lost, so there's nothing to pre-check client-side.
+  async acceptTargetPrice(pid){
+    const p = findProject(pid); if(!p) return;
+    const { error } = await sb.rpc('supplier_accept_target_price', { p_project_id: pid });
+    if(error){ showToast(error.message); await refreshRealProjects(); route(); return; }
+    await refreshRealProjects();
+    showToast('¡Aceptaste el proyecto!', 'success');
+    route();
+  },
+  // Declining isn't security-critical the way accepting is (nothing is
+  // awarded, nothing to race) — a plain client-side update to this
+  // supplier's own supplier_quotes row is enough; RLS already only lets a
+  // supplier update their own row.
+  async declineTargetPrice(pid){
+    const p = findProject(pid); if(!p) return;
+    const q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
+    if(q) q.status = 'declined';
+    if(!p.isDemo){
+      const { error } = await sb.from('supplier_quotes').update({ status:'declined' }).eq('project_id', pid).eq('supplier_id', STATE.supplierId);
+      if(error){ showToast(error.message); return; }
+    }
+    showToast('Rechazaste este proyecto.', 'success');
+    route();
   },
 
   /* ---- Status transitions ---- */
