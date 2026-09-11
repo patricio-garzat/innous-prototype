@@ -1481,7 +1481,15 @@ async function pollLiveUpdates(){
   // route() runs anyway and picks up everything this just fetched.
   const active = document.activeElement;
   const isTyping = active && ['INPUT','TEXTAREA','SELECT'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
-  if(!isTyping) route();
+  // Same idea for an open Ajustes accordion section (fix49): route() fully
+  // replaces #app-content's innerHTML, so a brand-new .settings-panel node
+  // is created every tick — its CSS "slide/fade in" entrance animation
+  // (accountPwPanelIn) plays again each time, which reads as the whole
+  // panel jumping/refreshing every ~12s even though nothing you're looking
+  // at actually changed. Skip the re-render while a section is open here,
+  // same as mid-typing.
+  const isOnOpenSettingsPanel = location.hash==='#/innous/settings' && !!STATE.ui.settingsOpenSection;
+  if(!isTyping && !isOnOpenSettingsPanel) route();
 }
 async function enterAppAsUser(user){
   const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
