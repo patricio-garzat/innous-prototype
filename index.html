@@ -3991,22 +3991,35 @@ ROUTES['supplier/rfq'] = function(id){
         <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>La identidad del comprador, las cotizaciones de otros proveedores y el precio final al cliente son gestionados por INNOUS y no se comparten con los proveedores. Los dibujos que ves aquí ya fueron revisados por INNOUS para quitar cualquier información de contacto del cliente.</div></div>
       </div>
     </div>
-    ${submitted ? supplierSubmittedQuoteCard(q) : supplierQuoteForm(p)}
+    ${submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p)}
   </div>`;
 };
-function supplierSubmittedQuoteCard(q){
+// Shown wherever the supplier needs to see their own submitted quote in
+// full — a proper itemized breakdown (unit price × qty, extras, total) plus
+// the terms that go with it, not just a scattered info-grid. Everything
+// here is in MXN, exactly what the supplier proposed; INNOUS's markup and
+// the USD conversion for the client happen entirely downstream of this and
+// never appear here.
+function supplierSubmittedQuoteCard(p, q){
+  const unitTotal = q.unitPrice * p.quantity;
   return `
   <div class="card card-pad">
     <div class="section-title">Tu Cotización Enviada</div>
-    <div class="info-grid" style="margin-top:12px;">
-      ${infoItem('Precio Unitario', fmtMXN2(q.unitPrice))}
-      ${infoItem('Herramental', fmtMXN(q.tooling))}
-      ${infoItem('Preparación', fmtMXN(q.setup))}
-      ${infoItem('Envío', q.shipping?fmtMXN(q.shipping):'Incluido')}
-      ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
+    <div class="section-sub">${procES(p.process)}${p.material?' · '+p.material:''} — ${p.quantity.toLocaleString()} pzas</div>
+    <div class="pricing-panel" style="margin-top:14px;">
+      <div class="pricing-row"><span>Precio Unitario (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()} pzas)</span><span class="td-strong">${fmtMXN(unitTotal)}</span></div>
+      <div class="pricing-row"><span>Herramental</span><span>${q.tooling?fmtMXN(q.tooling):'—'}</span></div>
+      <div class="pricing-row"><span>Preparación / Setup</span><span>${q.setup?fmtMXN(q.setup):'—'}</span></div>
+      <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
+      <div class="pricing-row total"><span>Total de tu Cotización</span><span>${fmtMXN(q.quotedTotal)}</span></div>
     </div>
-    <hr class="divider">
-    <div style="font-size:12.5px;color:var(--ink-tertiary);">Enviada el ${fmtDate(q.submittedAt)} · Vigente por ${q.validity}</div>
+    <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:16px;">
+      ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
+      ${infoItem('Vigencia de la Cotización', q.validity)}
+      ${infoItem('Enviada el', fmtDate(q.submittedAt))}
+      ${infoItem('Destino', p.deliveryLocation)}
+    </div>
+    ${q.notes ? `<hr class="divider"><div class="info-item-label">Notas</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${q.notes}</div>` : ''}
   </div>`;
 }
 function supplierQuoteForm(p){
@@ -4063,7 +4076,7 @@ ROUTES['supplier/quote'] = function(id){
     <div class="breadcrumb"><a href="#/supplier/quotes">Mis Cotizaciones</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${supplierQuoteStatusBadge(p)}</div>
     ${stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'||won?'success':'info')}
-    ${supplierSubmittedQuoteCard(q)}
+    ${supplierSubmittedQuoteCard(p, q)}
     ${won && p.order ? `<button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="navigate('#/supplier/order/${p.id}')"><i data-lucide="package"></i>Ver Pedido</button>` : ''}
   </div>`;
 };
