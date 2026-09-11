@@ -1859,7 +1859,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'', settingsBillingCustomerId:'', settingsBillingSupplierId:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -2130,7 +2130,12 @@ function generateQuotePdf(p){
   const doc = new jsPDF({ unit:'pt', format:'letter' });
   const marginL = 40, marginR = 572, pageW = marginR-marginL;
   const navy = [0,56,101], accent = [0,163,224], danger = [185,28,28], ink = [24,24,27], inkSec = [82,82,91];
-  const client = currentClient();
+  // currentClient() reads STATE.clientId — the logged-in client's OWN id,
+  // which is unset/irrelevant when INNOUS (not the client) is the one
+  // downloading this PDF from its own panel. Look the client up by the
+  // RFQ's actual customerId first, so the quote always carries the right
+  // client's info regardless of who downloads it.
+  const client = CUSTOMERS.find(c=>c.id===p.customerId) || currentClient();
   const awarded = p.shortlist.find(s=>s.supplierId===p.selectedSupplierId) || {};
   const total = p.order ? (p.order.customerPrice||0) : 0;
   const unitPrice = p.quantity ? total/p.quantity : total;
@@ -2220,15 +2225,17 @@ function generateQuotePdf(p){
   y += 12;
 
   // ---- Item table ----
-  const cW = {item:24, part:70, qty:34, uom:32, unit:60, total:66};
-  cW.desc = pageW - (cW.item+cW.part+cW.qty+cW.uom+cW.unit+cW.total);
+  // No PART/DRAWING NO. column — Innous's own RFQ drawings live in the
+  // portal, not the customer-facing quote, and the column always read "—"
+  // in practice anyway. Its width folds into DESCRIPTION below.
+  const cW = {item:24, qty:34, uom:32, unit:60, total:66};
+  cW.desc = pageW - (cW.item+cW.qty+cW.uom+cW.unit+cW.total);
   const cX = {}; let run = marginL;
-  ['item','desc','part','qty','uom','unit','total'].forEach(k=>{ cX[k]=run; run+=cW[k]; });
+  ['item','desc','qty','uom','unit','total'].forEach(k=>{ cX[k]=run; run+=cW[k]; });
   doc.setFillColor(...accent); doc.rect(marginL, y, pageW, 16, 'F');
   doc.setFont('Calibri','bold'); doc.setFontSize(6.5); doc.setTextColor(255,255,255);
   doc.text('ITEM', cX.item+cW.item/2, y+11, {align:'center'});
   doc.text('DESCRIPTION', cX.desc+6, y+11);
-  doc.text('PART / DRAWING NO.', cX.part+cW.part/2, y+11, {align:'center'});
   doc.text('QTY', cX.qty+cW.qty/2, y+11, {align:'center'});
   doc.text('UOM', cX.uom+cW.uom/2, y+11, {align:'center'});
   doc.text('UNIT PRICE', cX.unit+cW.unit/2, y+11, {align:'center'});
@@ -2249,9 +2256,9 @@ function generateQuotePdf(p){
     let unit = '—', itemTotal = '—';
     if(singleItem){ unit = fmtMoneyPdf2(unitPrice); itemTotal = fmtMoneyPdf2(total); }
     else if(it.targetPriceUsd){ itemTotal = fmtMoneyPdf2(it.targetPriceUsd); unit = fmtMoneyPdf2(it.quantity ? it.targetPriceUsd/it.quantity : it.targetPriceUsd); }
-    return { item:String(i+1), desc:doc.splitTextToSize(descText, cW.desc-12), part:'—', qty:String(it.quantity||0), uom:'PCS', unit, total:itemTotal };
+    return { item:String(i+1), desc:doc.splitTextToSize(descText, cW.desc-12), qty:String(it.quantity||0), uom:'PCS', unit, total:itemTotal };
   });
-  for(let i=lineItems.length; i<6; i++) lineItems.push({ item:String(i+1), desc:[''], part:'', qty:'', uom:'', unit:'', total:'' });
+  for(let i=lineItems.length; i<6; i++) lineItems.push({ item:String(i+1), desc:[''], qty:'', uom:'', unit:'', total:'' });
 
   const bodyTop = y;
   doc.setFont('Calibri','normal'); doc.setFontSize(7.5);
@@ -2260,7 +2267,6 @@ function generateQuotePdf(p){
     doc.setTextColor(...ink);
     doc.text(itm.item, cX.item+cW.item/2, y+rowH/2+3, {align:'center'});
     doc.text(itm.desc, cX.desc+6, y+9);
-    doc.text(itm.part, cX.part+cW.part/2, y+rowH/2+3, {align:'center'});
     doc.text(itm.qty, cX.qty+cW.qty/2, y+rowH/2+3, {align:'center'});
     doc.text(itm.uom, cX.uom+cW.uom/2, y+rowH/2+3, {align:'center'});
     doc.text(itm.unit, cX.unit+cW.unit/2, y+rowH/2+3, {align:'center'});
@@ -2271,7 +2277,7 @@ function generateQuotePdf(p){
   });
   doc.setDrawColor(210,210,214); doc.setLineWidth(0.5);
   doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
-  ['desc','part','qty','uom','unit','total'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
+  ['desc','qty','uom','unit','total'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
   y += 12;
   if(!singleItem && items.some(it=>!it.targetPriceUsd)){
     doc.setFont('Calibri','italic'); doc.setFontSize(6.8); doc.setTextColor(...inkSec);
@@ -2339,33 +2345,23 @@ function generateQuotePdf(p){
   });
   y = Math.max(ly1,ly2) + 16;
 
-  // ---- Acceptance of Quotation (left) + Prepared-by signature (right) ----
-  const accW = pageW*0.6, accBoxH = 50, sigX = marginL+accW+20;
-  doc.setFillColor(...accent); doc.rect(marginL, y, accW, 16, 'F');
-  doc.setFont('Calibri','bold'); doc.setFontSize(7.5); doc.setTextColor(255,255,255);
-  doc.text('ACCEPTANCE OF QUOTATION', marginL+6, y+11);
-  doc.setDrawColor(210,210,214); doc.rect(marginL, y+16, accW, accBoxH, 'S');
-  doc.setFont('Calibri','normal'); doc.setFontSize(7); doc.setTextColor(...inkSec);
-  doc.text(doc.splitTextToSize('To proceed, please sign and return this page or issue a purchase order referencing the quote number above.', accW-16), marginL+8, y+28);
-  const lineY = y+16+accBoxH-12;
-  const fieldW = (accW-16-2*10)/3;
-  [['Customer PO No.', marginL+8], ['Name and position', marginL+8+fieldW+10], ['Signature and date', marginL+8+2*(fieldW+10)]].forEach(([label,fx])=>{
-    doc.setDrawColor(180,184,190); doc.setLineWidth(0.5);
-    doc.line(fx, lineY, fx+fieldW, lineY);
-    doc.setFont('Calibri','normal'); doc.setFontSize(6.3); doc.setTextColor(...inkSec);
-    doc.text(label, fx, lineY+9);
-  });
-
+  // ---- Prepared-by signature ----
+  // The boxed "Acceptance of Quotation" panel (customer PO no./name/
+  // signature lines) was dropped — Innous's clients confirm and place
+  // their order through the portal itself, not by signing and returning
+  // this PDF, so the panel never actually got used. The prepared-by
+  // signature block stays, now on its own at the left margin.
+  const sigBoxH = 50;
   doc.setFont('Calibri','bold'); doc.setFontSize(9); doc.setTextColor(...ink);
-  doc.text(p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name, sigX, y+14);
+  doc.text(p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name, marginL, y+10);
   doc.setFont('Calibri','normal'); doc.setFontSize(7.5); doc.setTextColor(...inkSec);
-  doc.text(INNOUS_QUOTE_SIGNATURE.title, sigX, y+26);
+  doc.text(INNOUS_QUOTE_SIGNATURE.title, marginL, y+22);
   doc.setTextColor(37,99,235);
-  doc.text(p.quoteSalespersonEmail || INNOUS_QUOTE_SIGNATURE.email, sigX, y+38);
+  doc.text(p.quoteSalespersonEmail || INNOUS_QUOTE_SIGNATURE.email, marginL, y+34);
   doc.setTextColor(...inkSec);
-  doc.text('www.innous.com.mx', sigX, y+50);
+  doc.text('www.innous.com.mx', marginL, y+46);
 
-  y += 16+accBoxH+16;
+  y += sigBoxH+16;
 
   // ---- Footer ----
   doc.setFont('Calibri','normal'); doc.setFontSize(6.5); doc.setTextColor(...inkSec);
@@ -2501,16 +2497,19 @@ function generatePurchaseOrderPdf(p){
   let y = Math.max(y1,y2) + 16;
 
   // ---- Item table ----
-  const cW = {partida:26, cant:44, unidad:40, parte:78, unit:62, importe:70};
-  cW.desc = pageW - (cW.partida+cW.cant+cW.unidad+cW.parte+cW.unit+cW.importe);
+  // No NO. PARTE / PLANO column — same reasoning as the client quote's
+  // PART/DRAWING NO. column: Innous's own drawings live in the portal,
+  // not this document, and the column always read "—" anyway. Its width
+  // folds into DESCRIPCIÓN below.
+  const cW = {partida:26, cant:44, unidad:40, unit:62, importe:70};
+  cW.desc = pageW - (cW.partida+cW.cant+cW.unidad+cW.unit+cW.importe);
   const cX = {}; let run = marginL;
-  ['partida','cant','unidad','parte','desc','unit','importe'].forEach(k=>{ cX[k]=run; run+=cW[k]; });
+  ['partida','cant','unidad','desc','unit','importe'].forEach(k=>{ cX[k]=run; run+=cW[k]; });
   doc.setFillColor(...navy); doc.rect(marginL, y, pageW, 16, 'F');
   doc.setFont('Calibri','bold'); doc.setFontSize(7); doc.setTextColor(255,255,255);
   doc.text('PARTIDA', cX.partida+cW.partida/2, y+11, {align:'center'});
   doc.text('CANT.', cX.cant+cW.cant/2, y+11, {align:'center'});
   doc.text('UNIDAD', cX.unidad+cW.unidad/2, y+11, {align:'center'});
-  doc.text('NO. PARTE / PLANO', cX.parte+cW.parte/2, y+11, {align:'center'});
   doc.text('DESCRIPCIÓN', cX.desc+6, y+11);
   doc.text('P. UNITARIO', cX.unit+cW.unit/2, y+11, {align:'center'});
   doc.text('IMPORTE', cX.importe+cW.importe/2, y+11, {align:'center'});
@@ -2536,10 +2535,10 @@ function generatePurchaseOrderPdf(p){
     // Real per-item price the supplier submitted (fix42) — the other
     // fallback besides a target-price item's pre-computed supplierCostMxn.
     else if(q.itemPrices && q.itemPrices[i]){ importe = fmtMXNPdf(q.itemPrices[i].total); unit = fmtMXNPdf2(q.itemPrices[i].unitPrice); }
-    return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', parte:'—', desc:doc.splitTextToSize(descText, cW.desc-12), unit, importe };
+    return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', desc:doc.splitTextToSize(descText, cW.desc-12), unit, importe };
   });
-  if(q.shipping) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:['Envío'], unit:fmtMXNPdf(q.shipping), importe:fmtMXNPdf(q.shipping) });
-  for(let i=lineItems.length; i<7; i++) lineItems.push({ partida:String(i+1), cant:'', unidad:'', parte:'', desc:[''], unit:'', importe:'' });
+  if(q.shipping) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', desc:['Envío'], unit:fmtMXNPdf(q.shipping), importe:fmtMXNPdf(q.shipping) });
+  for(let i=lineItems.length; i<7; i++) lineItems.push({ partida:String(i+1), cant:'', unidad:'', desc:[''], unit:'', importe:'' });
 
   const bodyTop = y;
   doc.setFont('Calibri','normal'); doc.setFontSize(7.5);
@@ -2549,7 +2548,6 @@ function generatePurchaseOrderPdf(p){
     doc.text(item.partida, cX.partida+cW.partida/2, y+rowH/2+3, {align:'center'});
     doc.text(item.cant, cX.cant+cW.cant/2, y+rowH/2+3, {align:'center'});
     doc.text(item.unidad, cX.unidad+cW.unidad/2, y+rowH/2+3, {align:'center'});
-    doc.text(item.parte, cX.parte+cW.parte/2, y+rowH/2+3, {align:'center'});
     doc.text(item.desc, cX.desc+6, y+9);
     doc.text(item.unit, cX.unit+cW.unit/2, y+rowH/2+3, {align:'center'});
     doc.text(item.importe, cX.importe+cW.importe/2, y+rowH/2+3, {align:'center'});
@@ -2559,7 +2557,7 @@ function generatePurchaseOrderPdf(p){
   });
   doc.setDrawColor(210,210,214); doc.setLineWidth(0.5);
   doc.rect(marginL, bodyTop, pageW, y-bodyTop, 'S');
-  ['cant','unidad','parte','desc','unit','importe'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
+  ['cant','unidad','desc','unit','importe'].forEach(k=>{ doc.line(cX[k], bodyTop, cX[k], y); });
   y += 14;
   if(!singleItem && items.some((it,i)=>it.supplierCostMxn==null && !(q.itemPrices && q.itemPrices[i]))){
     doc.setFont('Calibri','italic'); doc.setFontSize(6.8); doc.setTextColor(...inkSec);
@@ -2629,8 +2627,13 @@ function generatePurchaseOrderPdf(p){
   y = Math.max(ly1,ly2) + 20;
 
   // ---- Signatures ----
-  const sigW = (pageW-28)/3;
-  const sigs = [['ELABORÓ — COMPRAS','Nombre, firma y fecha'], ['AUTORIZÓ — INNOUS','Nombre, firma y fecha'], ['ACEPTACIÓN DEL PROVEEDOR','Nombre, firma, sello y fecha']];
+  // No "Aceptación del Proveedor" line — same reasoning as dropping the
+  // client quote's "Acceptance of Quotation" box: the supplier accepts
+  // the order through the portal itself (see App.authorizeProject /
+  // the supplier notification), not by signing and returning this PDF.
+  // Only Innous's own internal sign-off lines remain.
+  const sigW = (pageW-14)/2;
+  const sigs = [['ELABORÓ — COMPRAS','Nombre, firma y fecha'], ['AUTORIZÓ — INNOUS','Nombre, firma y fecha']];
   sigs.forEach(([title,sub],i)=>{
     const x = marginL + i*(sigW+14);
     doc.setDrawColor(180,184,190); doc.setLineWidth(0.75);
@@ -4829,6 +4832,40 @@ function supplierBillingSection(s){
     <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierBillingInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
+/* ---- Settings shortcut to the two sections above (fix43) — the same
+   customerBillingSection()/supplierBillingSection() cards that already
+   live on each customer/supplier's own detail page, just reachable from
+   Ajustes too via a pick-an-account dropdown, for whoever expects billing
+   data to live in Settings rather than having to open a specific account
+   first. Saves through the exact same App.saveCustomerBillingInfo /
+   App.saveSupplierBillingInfo — so it's the same data, same persistence,
+   just a second door into it. */
+function settingsBillingInfoSection(){
+  const selC = STATE.ui.settingsBillingCustomerId, selS = STATE.ui.settingsBillingSupplierId;
+  const c = CUSTOMERS.find(x=>x.id===selC);
+  const s = SUPPLIERS.find(x=>x.id===selS);
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Datos de Facturación de Clientes y Proveedores</div>
+    <div class="section-sub">Llena aquí los datos que le falten a la cuenta de un cliente o de un proveedor — quedan guardados en su cuenta y aparecen automáticamente en todas sus futuras cotizaciones y órdenes de compra, sin tener que volver a llenarlos.</div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label class="field-label">Cliente</label>
+        <select onchange="App.selectSettingsBillingCustomer(this.value)">
+          <option value="">Selecciona un cliente…</option>
+          ${CUSTOMERS.map(cc=>`<option value="${cc.id}" ${cc.id===selC?'selected':''}>${escAttr(cc.company)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="field-label">Proveedor</label>
+        <select onchange="App.selectSettingsBillingSupplier(this.value)">
+          <option value="">Selecciona un proveedor…</option>
+          ${SUPPLIERS.map(ss=>`<option value="${ss.id}" ${ss.id===selS?'selected':''}>${escAttr(ss.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  </div>
+  ${c ? customerBillingSection(c) : ''}
+  ${s ? supplierBillingSection(s) : ''}`;
+}
 
 /* ---- INNOUS Quotes (all quotes across platform) ---- */
 ROUTES['innous/quotes'] = function(){
@@ -5228,6 +5265,7 @@ ROUTES['innous/settings'] = function(){
         <div class="form-group"><label class="field-label">Teléfono</label><input type="text" value="${escAttr(d.phone)}" oninput="STATE.ui.settingsDraft.phone=this.value"></div>
       </div>
     </div>
+    ${settingsBillingInfoSection()}
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Precios por Defecto</div>
       <div class="section-sub">Se aplica como punto de partida al comparar nuevas cotizaciones de proveedores.</div>
@@ -6846,6 +6884,8 @@ const App = {
     if(!STATE.ui.customerBillingDrafts[id]) STATE.ui.customerBillingDrafts[id] = {};
     STATE.ui.customerBillingDrafts[id][field] = val;
   },
+  selectSettingsBillingCustomer(id){ STATE.ui.settingsBillingCustomerId = id; route(); },
+  selectSettingsBillingSupplier(id){ STATE.ui.settingsBillingSupplierId = id; route(); },
   async saveCustomerBillingInfo(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
     const d = STATE.ui.customerBillingDrafts[id] || {};
