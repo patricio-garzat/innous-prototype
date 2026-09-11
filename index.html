@@ -1141,7 +1141,6 @@ function projectRowToJs(row, existing){
     quoteValidityDays: row.quote_validity_days || null,
     quoteToolingNote: row.quote_tooling_note || null,
     quoteDiscount: row.quote_discount || 0,
-    quoteFreight: row.quote_freight || 0,
     // Gate between "client picked a supplier" and "supplier is told" — see
     // App.authorizeProject() and supabase-fix23-innous-authorize.sql. Stays
     // null until INNOUS explicitly authorizes the project; until then the
@@ -1175,7 +1174,7 @@ function quoteRowToJs(row){
   const s = SUPPLIERS.find(x=>x.id===row.supplier_id);
   return {
     supplierId: row.supplier_id, status: row.status,
-    unitPrice: row.unit_price, tooling: row.tooling||0, setup: row.setup||0, shipping: row.shipping||0,
+    unitPrice: row.unit_price, shipping: row.shipping||0,
     quotedTotal: row.quoted_total, leadTimeDays: row.lead_time_days, paymentTerms: row.payment_terms||'',
     validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
     submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
@@ -1194,6 +1193,10 @@ function shortlistRowToJs(row){
     // shortlist_client_view doesn't have these columns either, so they come
     // back undefined -> 0/null for a client session no matter what.
     supplierCostMxn: row.supplier_cost_mxn ?? 0, exchangeRate: row.exchange_rate ?? null,
+    // Shipping baked into customerPrice at the moment this entry was added
+    // (fix41) — shortlist_client_view doesn't carry this column either
+    // (the client only ever needs the already-inclusive customerPrice).
+    freightUsd: row.freight_usd ?? 0,
     customerPrice: row.customer_price, leadTimeDays: row.lead_time_days, rating: row.rating||0,
     badge: row.badge||null, addedAt: row.added_at ? new Date(row.added_at) : new Date(),
   };
@@ -1213,6 +1216,12 @@ function orderRowToJs(row){
     // Only ever present for INNOUS's own view and the supplier's own order
     // (orders_supplier_view) — orders_client_view never has these columns.
     supplierCostMxn: row.supplier_cost_mxn ?? 0, exchangeRate: row.exchange_rate ?? null,
+    // Shipping baked into customerPrice when the client picked this quote
+    // (fix41) — unlike supplierCost/markupPct this ISN'T confidential to the
+    // client (it's literally what they're being charged for shipping), so
+    // orders_client_view carries it too — the client's own Quote PDF needs
+    // it to break Subtotal and Shipping back out as separate lines.
+    freightUsd: row.freight_usd ?? 0,
     quoteNumber: row.quote_number || null,
     // Purchase Order fields — filled in by INNOUS right before authorizing
     // (see quoteDetailsSection's sibling, purchaseOrderDetailsSection, and
@@ -1588,19 +1597,17 @@ function buildProjects(){
 function makeQuoteStub(proj, supplierId, submitted){
   const supplier = SUPPLIERS.find(s=>s.id===supplierId);
   const unit = +(rnd(30,400) + rng()).toFixed(2);
-  const tooling = rnd(0,3)*500 + rnd(0,900);
-  const setup = rnd(300,2200);
   const shipping = rng()>0.5 ? rnd(400,2200) : 0;
-  const quotedTotal = unit*proj.quantity + tooling + setup + shipping;
+  const quotedTotal = unit*proj.quantity + shipping;
   return {
     supplierId,
     status: submitted ? 'submitted':'pending',
-    unitPrice: unit, tooling, setup, shipping,
+    unitPrice: unit, shipping,
     quotedTotal,
     leadTimeDays: rnd(14,45),
     paymentTerms: pick(['50% deposit / 50% on delivery','Net 30','30% deposit / 70% on shipment','Net 45']),
     validity: '30 days',
-    notes: submitted ? 'Quote includes standard packaging. Tooling amortized over first order.' : '',
+    notes: submitted ? 'Quote includes standard packaging.' : '',
     documents: submitted ? ['cost-breakdown.pdf'] : [],
     submittedAt: submitted ? addDays(proj.createdAt, rnd(2,6)) : null,
     rating: supplier.rating, onTime: supplier.onTime,
@@ -1612,7 +1619,7 @@ function makeQuoteStub(proj, supplierId, submitted){
 function makeRealQuoteStub(supplierId){
   const supplier = SUPPLIERS.find(s=>s.id===supplierId);
   return {
-    supplierId, status:'pending', unitPrice:null, tooling:0, setup:0, shipping:0, quotedTotal:null,
+    supplierId, status:'pending', unitPrice:null, shipping:0, quotedTotal:null,
     leadTimeDays:null, paymentTerms:'', validity:'', notes:'', documents:[], submittedAt:null,
     rating: supplier?.rating||0, onTime: supplier?.onTime||0,
   };
@@ -1657,17 +1664,17 @@ function supplierSafeActivity(activity){
 
 function seedHeroQuotesAndShortlist(proj){
   const specs = {
-    s1:{unit:185,tooling:1200,setup:500,shipping:0,lead:28,terms:'50% deposit / 50% on delivery'},
-    s2:{unit:178,tooling:2000,setup:800,shipping:1500,lead:21,terms:'Net 30'},
-    s5:{unit:165,tooling:1000,setup:600,shipping:2000,lead:35,terms:'30% deposit / 70% on shipment'},
-    s7:{unit:196,tooling:900,setup:450,shipping:0,lead:24,terms:'Net 30'},
-    s11:{unit:172,tooling:1500,setup:700,shipping:1100,lead:26,terms:'50% deposit / 50% on delivery'},
-    s13:{unit:190,tooling:1100,setup:520,shipping:0,lead:19,terms:'Net 45'},
+    s1:{unit:185,shipping:0,lead:28,terms:'50% deposit / 50% on delivery'},
+    s2:{unit:178,shipping:1500,lead:21,terms:'Net 30'},
+    s5:{unit:165,shipping:2000,lead:35,terms:'30% deposit / 70% on shipment'},
+    s7:{unit:196,shipping:0,lead:24,terms:'Net 30'},
+    s11:{unit:172,shipping:1100,lead:26,terms:'50% deposit / 50% on delivery'},
+    s13:{unit:190,shipping:0,lead:19,terms:'Net 45'},
   };
   proj.supplierQuotes = proj.invitedSupplierIds.map(sid=>{
     const sp = specs[sid]; const supplier = SUPPLIERS.find(s=>s.id===sid);
-    const quotedTotal = sp.unit*proj.quantity+sp.tooling+sp.setup+sp.shipping;
-    return {supplierId:sid,status:'submitted',unitPrice:sp.unit,tooling:sp.tooling,setup:sp.setup,shipping:sp.shipping,
+    const quotedTotal = sp.unit*proj.quantity+sp.shipping;
+    return {supplierId:sid,status:'submitted',unitPrice:sp.unit,shipping:sp.shipping,
       quotedTotal, leadTimeDays:sp.lead, paymentTerms:sp.terms, validity:'30 days',
       notes:'Quote includes standard export packaging.', documents:['cost-breakdown.pdf'],
       submittedAt: addDays(proj.createdAt, rnd(3,7)), rating:supplier.rating, onTime:supplier.onTime};
@@ -1815,7 +1822,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, rejectRfqReason:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -2104,8 +2111,18 @@ function generateQuotePdf(p){
   // estimate. Falls back to the longest shortlisted lead time only if
   // INNOUS hasn't set it yet for this RFQ.
   const deliveryDays = p.quoteDeliveryDays || awarded.leadTimeDays || null;
-  const discount = p.quoteDiscount || 0, freight = p.quoteFreight || 0;
-  const grandTotal = total - discount + freight;
+  // Shipping (fix41) is baked into `total` already — it was added to the
+  // customer's price back when INNOUS built the shortlist, before this
+  // customer ever picked an option, using whatever freight App.setFreight
+  // had at that moment (see App.addToShortlist). p.order.freightUsd is
+  // that exact snapshotted number, frozen onto the winning order — using it
+  // here (never a live p.quoteFreight, which could've changed since) is
+  // what backs "Subtotal" (pre-shipping) out of `total` for display,
+  // without ever adding shipping to the grand total a second time.
+  const freight = (p.order && p.order.freightUsd) || 0;
+  const subtotal = total - freight;
+  const discount = p.quoteDiscount || 0;
+  const grandTotal = total - discount;
 
   // Calibri (see INNOUS_QUOTE_FONT_TTF above) — only a regular weight was
   // provided, so 'bold'/'italic'/'bolditalic' all point at that same file:
@@ -2241,7 +2258,7 @@ function generateQuotePdf(p){
     doc.text(doc.splitTextToSize(notesText, notesW-16), marginL+8, y+30);
   }
 
-  const totRows = [['Subtotal',fmtMoneyPdf(total)],['Discount',fmtMoneyPdf(discount)],['Freight',fmtMoneyPdf(freight)]];
+  const totRows = [['Subtotal',fmtMoneyPdf(subtotal)],['Freight',fmtMoneyPdf(freight)],['Discount',fmtMoneyPdf(discount)]];
   let ty = y;
   totRows.forEach(([label,val],i)=>{
     const rh = 16;
@@ -2324,8 +2341,8 @@ function generateQuotePdf(p){
    client's formal quote PDF above, generated once INNOUS authorizes the
    project (App.authorizeProject) and the supplier can see their order at
    all. Always in Spanish, always in MXN — this is INNOUS confirming the
-   supplier's OWN proposal back to them (unit price, tooling, setup,
-   shipping, lead time — all straight from their own submitted quote), never
+   supplier's OWN proposal back to them (unit price, shipping,
+   lead time — all straight from their own submitted quote), never
    the client's price, INNOUS's markup, or anything client-identifying. */
 // Draws one of the boxed, title-barred info panels the real Orden de Compra
 // format uses (the top-right OC summary, PROVEEDOR, ENTREGA Y CONDICIONES
@@ -2368,8 +2385,8 @@ function poInfoBlock(doc, x, y, w, title, rows, barColor, ink, inkSec){
    format exactly (see supabase-fix29-purchase-order-format.sql for the
    folio scheme). Generated once INNOUS authorizes the project and the
    supplier can see their order at all. Always Spanish, always MXN — this
-   confirms the supplier's OWN proposal back to them (unit price, tooling,
-   setup, shipping, lead time, all straight from their own submitted
+   confirms the supplier's OWN proposal back to them (unit price,
+   shipping, lead time, all straight from their own submitted
    quote), never the client's price, INNOUS's markup, or anything about
    the client. Everything under "Purchase Order Details" (buyer, RFC,
    delivery/payment terms) is what INNOUS filled in before authorizing —
@@ -2481,9 +2498,7 @@ function generatePurchaseOrderPdf(p){
     else if(it.supplierCostMxn!=null){ importe = fmtMXNPdf(it.supplierCostMxn); unit = fmtMXNPdf2(it.quantity ? it.supplierCostMxn/it.quantity : it.supplierCostMxn); }
     return { partida:String(i+1), cant:String(it.quantity||0), unidad:'PZA', parte:'—', desc:doc.splitTextToSize(descText, cW.desc-12), unit, importe };
   });
-  [['Herramental',q.tooling],['Preparación / Setup',q.setup],['Envío',q.shipping]].forEach(([label,amt])=>{
-    if(amt) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:[label], unit:fmtMXNPdf(amt), importe:fmtMXNPdf(amt) });
-  });
+  if(q.shipping) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:['Envío'], unit:fmtMXNPdf(q.shipping), importe:fmtMXNPdf(q.shipping) });
   for(let i=lineItems.length; i<7; i++) lineItems.push({ partida:String(i+1), cant:'', unidad:'', parte:'', desc:[''], unit:'', importe:'' });
 
   const bodyTop = y;
@@ -4024,7 +4039,11 @@ ROUTES['innous/overview'] = function(){
   const completedOrders = PROJECTS.filter(p=>p.status==='completed');
   const allOrders = [...activeOrders, ...completedOrders];
   const revenue = allOrders.reduce((s,p)=>s+p.order.customerPrice,0);
-  const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost),0);
+  // Shipping passed through to the customer (fix41) isn't margin — it's
+  // baked into customerPrice for display, but subtracted back out here so
+  // "Gross Margin" doesn't overstate profit by whatever was charged for
+  // freight.
+  const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0)),0);
   const recent = PROJECTS.flatMap(p=>p.activity.map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,7);
   const pending = pendingItems();
 
@@ -4323,12 +4342,22 @@ function getExchangeRate(pid){ if(STATE.ui.exchangeRateDrafts[pid]===undefined) 
 // pricing does to it: margin and both the plain and IVA-inclusive customer
 // price update live as markup/exchange rate change, so INNOUS always knows
 // exactly what it's making before adding a supplier to the shortlist.
-function quoteCompareCard(p, q, rate, isShortlisted){
+// Shipping cost (fix41) — added to the customer's price BEFORE the
+// shortlist ever gets sent, same lifecycle as markup/exchange rate: a
+// shared, ephemeral working value (getFreight/App.setFreight) that gets
+// snapshotted into each shortlist entry the moment it's added
+// (App.addToShortlist), and never retroactively touches entries already
+// added. This replaced a "Freight" field that used to live in Formal Quote
+// Details and only got applied once the final PDF was generated — AFTER
+// the customer had already picked an option based on a price that didn't
+// include it.
+function getFreight(pid){ return STATE.ui.freightDrafts[pid] ?? 0; }
+function quoteCompareCard(p, q, rate, freight, isShortlisted){
   const supplier = SUPPLIERS.find(s=>s.id===q.supplierId);
   const markup = getMarkup(p.id, q.supplierId);
   const costUsd = q.quotedTotal/rate;
-  const customerPrice = costUsd*(1+markup/100);
-  const marginUsd = customerPrice - costUsd;
+  const customerPrice = costUsd*(1+markup/100) + freight;
+  const marginUsd = customerPrice - costUsd - freight;
   const marginPct = customerPrice>0 ? (marginUsd/customerPrice*100) : 0;
   return `
   <div class="card card-pad" style="box-shadow:none;border:1px solid var(--border,#EAEAEA);">
@@ -4343,9 +4372,7 @@ function quoteCompareCard(p, q, rate, isShortlisted){
     <div class="info-item-label" style="margin-bottom:6px;">Supplier's Quote</div>
     <div class="pricing-panel">
       <div class="pricing-row"><span>Unit Price (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()})</span><span>${fmtMXN(q.unitPrice*p.quantity)}</span></div>
-      ${q.tooling?`<div class="pricing-row"><span>Tooling</span><span>${fmtMXN(q.tooling)}</span></div>`:''}
-      ${q.setup?`<div class="pricing-row"><span>Setup</span><span>${fmtMXN(q.setup)}</span></div>`:''}
-      <div class="pricing-row"><span>Shipping</span><span>${q.shipping?fmtMXN(q.shipping):'Included'}</span></div>
+      <div class="pricing-row"><span>Shipping (supplier's)</span><span>${q.shipping?fmtMXN(q.shipping):'Included'}</span></div>
       <div class="pricing-row total"><span>Total Cost</span><span>${fmtMXN(q.quotedTotal)} <span style="font-weight:400;opacity:0.85;">(${fmtMoney(costUsd)})</span></span></div>
     </div>
     <div class="info-item-label" style="margin:14px 0 8px;">Your Pricing</div>
@@ -4354,6 +4381,7 @@ function quoteCompareCard(p, q, rate, isShortlisted){
       <div><div class="field-label">INNOUS Margin</div><div style="font-size:16px;font-weight:700;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:1px;">${marginPct.toFixed(1)}% of customer price</div></div>
     </div>
     <div class="pricing-panel" style="margin-top:12px;">
+      ${freight?`<div class="pricing-row"><span>Product Price</span><span>${fmtMoney(customerPrice-freight)}</span></div><div class="pricing-row"><span>Shipping (to customer)</span><span>${fmtMoney(freight)}</span></div>`:''}
       <div class="pricing-row"><span>Customer Price</span><span class="td-strong">${fmtMoney(customerPrice)}</span></div>
       <div class="pricing-row total"><span>Customer Price incl. IVA (16%)</span><span>${fmtMoney(withIva(customerPrice))}</span></div>
     </div>
@@ -4364,14 +4392,19 @@ function quoteComparisonSection(p){
   if(!submitted.length) return '';
   const shortlisted = new Set(p.shortlist.map(s=>s.supplierId));
   const rate = getExchangeRate(p.id);
+  const freight = getFreight(p.id);
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;">
       <div><div class="section-title">Compare Supplier Quotes</div><div class="section-sub">Supplier pricing is confidential — only visible within the INNOUS portal. Suppliers quote in MXN — set today's rate to convert to USD.</div></div>
-      <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" step="0.01" min="0.01" value="${rate}" style="width:100px;" onchange="App.setExchangeRate('${p.id}', this.value)"></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;"><label class="field-label">Exchange Rate (MXN per USD)</label><input type="number" step="0.01" min="0.01" value="${rate}" style="width:100px;" onchange="App.setExchangeRate('${p.id}', this.value)"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Shipping to Customer (USD)</label><input type="number" step="0.01" min="0" value="${freight}" style="width:100px;" onchange="App.setFreight('${p.id}', this.value)"></div>
+      </div>
     </div>
+    <div class="field-hint" style="margin-top:6px;">Set shipping before adding suppliers to the shortlist — it's baked into the customer price the moment each option is added, so the customer always sees the real total before picking.</div>
     <div class="grid grid-2" style="margin-top:16px;">
-      ${submitted.map(q=>quoteCompareCard(p, q, rate, shortlisted.has(q.supplierId))).join('')}
+      ${submitted.map(q=>quoteCompareCard(p, q, rate, freight, shortlisted.has(q.supplierId))).join('')}
     </div>
     ${p.shortlist.length ? shortlistPreview(p) : ''}
     ${p.shortlist.length ? quoteDetailsSection(p, {required:true}) : ''}
@@ -4390,6 +4423,7 @@ function shortlistPreview(p){
   return `
   <div style="margin:16px 0;">
     <div class="info-item-label" style="margin-bottom:8px;">Customer Shortlist Preview</div>
+    <div class="section-sub" style="margin:-4px 0 8px;">Prices shown here already include shipping — exactly what the customer sees.</div>
     <div class="grid grid-5">
       ${p.shortlist.map(s=>`
         <div class="card card-pad" style="box-shadow:none;">
@@ -4407,7 +4441,7 @@ function sentShortlistReadonlySection(p){
     <div class="section-title">Shortlist Sent to Customer</div>
     <div class="section-sub">Awaiting ${customerName(p.customerId)}'s decision. Supplier identities and cost breakdowns are never shown to the customer — this pricing detail is visible only within INNOUS.</div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Supplier</th><th>Supplier Cost (MXN)</th><th>Rate</th><th>Supplier Cost (USD)</th><th>Markup</th><th>INNOUS Margin</th><th>Customer Price</th><th>Lead Time</th><th>Badge</th></tr></thead><tbody>
-      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${s.supplierCostMxn?fmtMXN(s.supplierCostMxn):'—'}</td><td class="td-sub">${s.exchangeRate||'—'}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost)}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
+      ${p.shortlist.map(s=>`<tr><td class="td-strong">${supplierName(s.supplierId)}</td><td>${s.supplierCostMxn?fmtMXN(s.supplierCostMxn):'—'}</td><td class="td-sub">${s.exchangeRate||'—'}</td><td>${fmtMoney(s.supplierCost)}</td><td>${s.markupPct}%</td><td>${fmtMoney(s.customerPrice-s.supplierCost-(s.freightUsd||0))}</td><td class="td-strong">${fmtMoney(s.customerPrice)}</td><td>${s.leadTimeDays} days</td><td>${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}">${s.badge}</span>`:''}</td></tr>`).join('')}
     </tbody></table></div>
   </div>`;
 }
@@ -4441,7 +4475,6 @@ function quoteDetailsSection(p, opts){
       validityDays: p.quoteValidityDays || QUOTE_TERMS_DEFAULTS.validityDays,
       toolingNote: p.quoteToolingNote || QUOTE_TERMS_DEFAULTS.toolingNote,
       discount: p.quoteDiscount || 0,
-      freight: p.quoteFreight || 0,
     };
   }
   const d = STATE.ui.quoteDetailsDrafts[p.id];
@@ -4471,10 +4504,7 @@ function quoteDetailsSection(p, opts){
       <div class="form-group"><label class="field-label">Quote Validity (days)</label><input type="number" min="0" value="${d.validityDays}" oninput="${upd('validityDays')}"></div>
       <div class="form-group"><label class="field-label">Tooling / FAI / Certs.</label><input type="text" value="${escAttr(d.toolingNote)}" oninput="${upd('toolingNote')}"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="field-label">Discount (USD)</label><input type="number" min="0" step="0.01" value="${d.discount}" oninput="${upd('discount')}"></div>
-      <div class="form-group"><label class="field-label">Freight (USD)</label><input type="number" min="0" step="0.01" value="${d.freight}" oninput="${upd('freight')}"></div>
-    </div>
+    <div class="form-group" style="max-width:calc(50% - 8px);"><label class="field-label">Discount (USD)</label><input type="number" min="0" step="0.01" value="${d.discount}" oninput="${upd('discount')}"></div>
     <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveQuoteDetails('${p.id}')"><i data-lucide="save"></i>Save Quote Details</button></div>
   </div>`;
 }
@@ -4808,7 +4838,8 @@ ROUTES['innous/quote'] = function(pid, sid){
         ${infoItem('Exchange Rate', shortlisted.exchangeRate||'—')}
         ${infoItem('Supplier Cost (USD)', fmtMoney(shortlisted.supplierCost))}
         ${infoItem('Markup', shortlisted.markupPct+'%')}
-        ${infoItem('INNOUS Margin', fmtMoney(shortlisted.customerPrice-shortlisted.supplierCost))}
+        ${infoItem('Shipping (USD)', fmtMoney(shortlisted.freightUsd||0))}
+        ${infoItem('INNOUS Margin', fmtMoney(shortlisted.customerPrice-shortlisted.supplierCost-(shortlisted.freightUsd||0)))}
       </div>
     </div>` : `
     <div class="card card-pad">
@@ -4816,8 +4847,6 @@ ROUTES['innous/quote'] = function(pid, sid){
       <div class="section-sub">This supplier's quote was never added to the shortlist — the customer never saw it. Showing what the supplier submitted (in MXN, their own currency).</div>
       <div class="pricing-panel" style="margin-top:14px;">
         <div class="pricing-row"><span>Unit Price (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()})</span><span class="td-strong">${fmtMXN(q.unitPrice*p.quantity)}</span></div>
-        <div class="pricing-row"><span>Herramental</span><span>${q.tooling?fmtMXN(q.tooling):'—'}</span></div>
-        <div class="pricing-row"><span>Preparación / Setup</span><span>${q.setup?fmtMXN(q.setup):'—'}</span></div>
         <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
         <div class="pricing-row total"><span>Total</span><span>${fmtMXN(q.quotedTotal)}</span></div>
       </div>
@@ -4838,7 +4867,7 @@ ROUTES['innous/orders'] = function(){
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Customer</th><th>Supplier</th><th>Supplier Cost</th><th>Customer Price</th><th>Margin</th><th>Production</th><th>Payment</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
-        <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost)}</td>
+        <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))}</td>
         <td>${orderStatusBadge(p)}</td><td class="td-sub">${p.order.paymentStatus}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
@@ -4850,7 +4879,7 @@ ROUTES['innous/order'] = function(id){
   const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
   const labels = ORDER_STATUS_FLOW.map(s=>orderStatusLabelFor(p, s));
-  const margin = p.order.customerPrice-p.order.supplierCost;
+  const margin = p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0);
   const nextStatus = innousNextOrderStatus(p);
   return `
   <div class="content-inner">
@@ -4869,7 +4898,7 @@ ROUTES['innous/order'] = function(id){
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
     <div class="grid grid-3" style="margin-bottom:20px;">
       ${kpiCard('Supplier Cost', p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost), 'paid to '+supplierName(p.selectedSupplierId), 'factory')}
-      ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId), 'dollar-sign')}
+      ${kpiCard('Customer Price', fmtMoney(p.order.customerPrice), 'billed to '+customerName(p.customerId)+(p.order.freightUsd?' · incl. '+fmtMoney(p.order.freightUsd)+' shipping':''), 'dollar-sign')}
       ${kpiCard('Gross Margin', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margin ('+p.order.markupPct+'% markup)', 'trending-up')}
     </div>
     <div class="grid grid-2" style="margin-bottom:20px;">
@@ -4994,7 +5023,7 @@ ROUTES['innous/analytics'] = function(){
   const supplierCostMxnOf = p => p.order.supplierCostMxn || p.order.supplierCost*rateFor(p);
   const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+customerPriceMxn(p),0)/withOrder.length : 0;
   const revenue = withOrder.reduce((s,p)=>s+customerPriceMxn(p),0);
-  const margin = withOrder.reduce((s,p)=>s+(customerPriceMxn(p)-supplierCostMxnOf(p)),0);
+  const margin = withOrder.reduce((s,p)=>s+(customerPriceMxn(p)-supplierCostMxnOf(p)-(p.order.freightUsd||0)*rateFor(p)),0);
 
   const custCounts = {}; withOrder.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+customerPriceMxn(p); });
   const topCustomers = Object.entries(custCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -5331,8 +5360,6 @@ function supplierSubmittedQuoteCard(p, q){
     <div class="section-sub">${procES(p.process)}${p.material?' · '+p.material:''} — ${p.quantity.toLocaleString()} pzas</div>
     <div class="pricing-panel" style="margin-top:14px;">
       <div class="pricing-row"><span>Precio Unitario (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()} pzas)</span><span class="td-strong">${fmtMXN(unitTotal)}</span></div>
-      <div class="pricing-row"><span>Herramental</span><span>${q.tooling?fmtMXN(q.tooling):'—'}</span></div>
-      <div class="pricing-row"><span>Preparación / Setup</span><span>${q.setup?fmtMXN(q.setup):'—'}</span></div>
       <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
       <div class="pricing-row"><span>Subtotal</span><span>${fmtMXN(q.quotedTotal)}</span></div>
       <div class="pricing-row"><span>IVA (16%)</span><span>${fmtMXN(q.quotedTotal*IVA_RATE)}</span></div>
@@ -6640,6 +6667,7 @@ const App = {
   /* ---- Quote comparison / markup / shortlist ---- */
   setMarkup(pid,sid,val){ STATE.ui.markupDrafts[markupKey(pid,sid)] = parseFloat(val)||0; route(); },
   setExchangeRate(pid,val){ const n=parseFloat(val); STATE.ui.exchangeRateDrafts[pid] = (n>0)?n:STATE.settings.defaultExchangeRate; route(); },
+  setFreight(pid,val){ STATE.ui.freightDrafts[pid] = Math.max(0, parseFloat(val)||0); route(); },
   // No route() here on purpose — these fire on every keystroke (oninput), and
   // re-rendering the whole page on each one would blow away focus/cursor
   // position mid-type. The draft only gets written to disk on Save below.
@@ -6665,7 +6693,6 @@ const App = {
       quoteValidityDays: parseInt(d.validityDays) || QUOTE_TERMS_DEFAULTS.validityDays,
       quoteToolingNote: (d.toolingNote||'').trim() || QUOTE_TERMS_DEFAULTS.toolingNote,
       quoteDiscount: parseFloat(d.discount) || 0,
-      quoteFreight: parseFloat(d.freight) || 0,
     };
     if(!p.isDemo){
       const { error } = await sb.from('projects').update({
@@ -6673,7 +6700,7 @@ const App = {
         quote_payment_terms: next.quotePaymentTerms, quote_delivery_days: next.quoteDeliveryDays,
         quote_country_origin: next.quoteCountryOrigin, quote_warranty: next.quoteWarranty,
         quote_validity_days: next.quoteValidityDays, quote_tooling_note: next.quoteToolingNote,
-        quote_discount: next.quoteDiscount, quote_freight: next.quoteFreight,
+        quote_discount: next.quoteDiscount,
       }).eq('id', pid);
       if(error){ showToast(error.message); return; }
     }
@@ -6756,6 +6783,11 @@ const App = {
     const q = p.supplierQuotes.find(x=>x.supplierId===sid);
     const markup = getMarkup(pid,sid);
     const exchangeRate = getExchangeRate(pid);
+    // Shipping to the customer (fix41) — snapshotted here too, same as
+    // markup/exchange rate: whatever App.setFreight has it at right now is
+    // what gets baked into THIS entry's price, permanently. Changing it
+    // afterward only affects suppliers added to the shortlist later.
+    const freight = getFreight(pid);
     // q.quotedTotal is what the supplier actually typed, in MXN — everything
     // downstream of this point (margin math, the client's shortlist, the
     // formal quote PDF) works in USD, so the conversion happens exactly
@@ -6763,15 +6795,15 @@ const App = {
     // The original MXN total and the rate used are kept alongside it purely
     // as INNOUS's own record of what's actually owed to the supplier.
     const supplierCost = q.quotedTotal/exchangeRate;
-    const customerPrice = supplierCost*(1+markup/100);
-    p.shortlist.push({supplierId:sid, supplierCost, supplierCostMxn:q.quotedTotal, exchangeRate, markupPct:markup, customerPrice, leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
+    const customerPrice = supplierCost*(1+markup/100) + freight;
+    p.shortlist.push({supplierId:sid, supplierCost, supplierCostMxn:q.quotedTotal, exchangeRate, markupPct:markup, freightUsd:freight, customerPrice, leadTimeDays:q.leadTimeDays, rating:q.rating, addedAt:new Date('2026-09-08')});
     const badges = computeBadges(p.shortlist);
     p.shortlist.forEach(s=>s.badge=badges[s.supplierId]);
     if(p.status==='sourcing') p.status='quotes_received';
     if(!p.isDemo){
       const { error: e1 } = await sb.from('shortlist').upsert({
         project_id: pid, supplier_id: sid, supplier_cost: supplierCost, supplier_cost_mxn: q.quotedTotal, exchange_rate: exchangeRate, markup_pct: markup,
-        customer_price: customerPrice, lead_time_days: q.leadTimeDays, rating: q.rating||0,
+        freight_usd: freight, customer_price: customerPrice, lead_time_days: q.leadTimeDays, rating: q.rating||0,
       });
       if(e1){ showToast(e1.message); return; }
       // Badges are recomputed across the whole shortlist every time (best price gets a badge, etc.)
@@ -6925,15 +6957,13 @@ const App = {
     const f = new FormData(e.target);
     const p = findProject(pid);
     const unit = parseFloat(f.get('unitPrice'))||0;
-    const tooling = parseFloat(f.get('tooling'))||0;
-    const setup = parseFloat(f.get('setup'))||0;
     const shipping = parseFloat(f.get('shipping'))||0;
-    const quotedTotal = unit*p.quantity+tooling+setup+shipping;
+    const quotedTotal = unit*p.quantity+shipping;
     const leadTimeDays = parseInt(f.get('leadTimeDays'))||30;
     const paymentTerms = f.get('paymentTerms'), validity = f.get('validity'), notes = f.get('notes');
     const supplier = currentSupplier();
     let q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
-    const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, tooling, setup, shipping, quotedTotal,
+    const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, shipping, quotedTotal,
       leadTimeDays, paymentTerms, validity, notes, documents:[], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
     if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
     if(p.status==='sourcing') p.status='sourcing';
@@ -6943,7 +6973,7 @@ const App = {
     logActivity(p, supplier.name, 'Supplier submitted a quote.');
     if(!p.isDemo){
       const { error } = await sb.from('supplier_quotes').update({
-        status:'submitted', unit_price:unit, tooling, setup, shipping, quoted_total:quotedTotal,
+        status:'submitted', unit_price:unit, shipping, quoted_total:quotedTotal,
         lead_time_days:leadTimeDays, payment_terms:paymentTerms, validity, notes, submitted_at:new Date().toISOString(),
       }).eq('project_id', pid).eq('supplier_id', STATE.supplierId);
       if(error){ showToast(error.message); return false; }
