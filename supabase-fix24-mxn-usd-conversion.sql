@@ -69,9 +69,14 @@ grant execute on function client_select_quote(text, uuid) to authenticated;
 -- El proveedor puede ver su propio monto en MXN y el tipo de cambio usado
 -- (es su propia cotización, no hay nada que esconderle) — sigue sin ver
 -- nada del precio final al cliente ni el margen.
+-- IMPORTANT: new columns must be appended at the END of the select list —
+-- Postgres's CREATE OR REPLACE VIEW refuses to change the name/position of
+-- an existing output column (that needs ALTER VIEW ... RENAME COLUMN
+-- instead), so supplier_cost_mxn/exchange_rate go last here, not inserted
+-- after supplier_cost.
 create or replace view orders_supplier_view with (security_invoker = true) as
-  select project_id, supplier_id, status, supplier_cost, supplier_cost_mxn, exchange_rate, quality_status,
-         quality_documents, quality_certificates, estimated_delivery
+  select project_id, supplier_id, status, supplier_cost, quality_status,
+         quality_documents, quality_certificates, estimated_delivery, supplier_cost_mxn, exchange_rate
   from orders;
 
 -- shortlist_client_view y orders_client_view no se tocan — ya listan sus
