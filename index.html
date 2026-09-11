@@ -926,13 +926,22 @@ const LAST_NAMES=['Turner','Sanchez','Bennett','Okafor','Mitchell','Reyes','Fost
 function escAttr(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
 function fmtDateShort(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
-function fmtMoney(n){return '$'+Math.round(n).toLocaleString('en-US');}
-function fmtMoney2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
-// Suppliers (Mexican) always quote in pesos — this labels that explicitly so
-// a peso figure is never mistaken for the USD amounts shown everywhere else
-// in the same screens (see quoteComparisonSection / supplierQuoteForm).
-function fmtMXN(n){return 'MX$'+Math.round(n).toLocaleString('en-US');}
-function fmtMXN2(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Every dollar figure shown anywhere in the live portal always spells out
+// USD or MXN, never just a bare "$" — a plain "$" is genuinely ambiguous
+// here (pesos are casually written with "$" too), and INNOUS in particular
+// looks at USD and MXN figures side by side constantly. The two PDFs
+// (generateQuotePdf / generatePurchaseOrderPdf) use the *Pdf variants
+// instead, just below — each document already declares its one currency up
+// front, and jsPDF's fixed-width table cells don't have room to spare for a
+// repeated suffix on every single line.
+function fmtMoney(n){return '$'+Math.round(n).toLocaleString('en-US')+' USD';}
+function fmtMoney2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' USD';}
+function fmtMXN(n){return 'MX$'+Math.round(n).toLocaleString('en-US')+' MXN';}
+function fmtMXN2(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' MXN';}
+function fmtMoneyPdf(n){return '$'+Math.round(n).toLocaleString('en-US');}
+function fmtMoneyPdf2(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtMXNPdf(n){return 'MX$'+Math.round(n).toLocaleString('en-US');}
+function fmtMXNPdf2(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
 function daysFromNow(n){return addDays(new Date('2026-09-08'),n);}
 
@@ -1977,7 +1986,7 @@ function generateQuotePdf(p){
   const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
   const descLines = doc.splitTextToSize(descText, cW.desc-12);
   const lineItems = [
-    { item:'1', desc:descLines, part:'—', qty:String(p.quantity||0), uom:'PCS', unit:fmtMoney2(unitPrice), total:fmtMoney2(total) },
+    { item:'1', desc:descLines, part:'—', qty:String(p.quantity||0), uom:'PCS', unit:fmtMoneyPdf2(unitPrice), total:fmtMoneyPdf2(total) },
   ];
   for(let i=lineItems.length; i<6; i++) lineItems.push({ item:String(i+1), desc:[''], part:'', qty:'', uom:'', unit:'', total:'' });
 
@@ -2018,7 +2027,7 @@ function generateQuotePdf(p){
     doc.text(doc.splitTextToSize(notesText, notesW-16), marginL+8, y+30);
   }
 
-  const totRows = [['Subtotal',fmtMoney(total)],['Discount',fmtMoney(discount)],['Freight',fmtMoney(freight)]];
+  const totRows = [['Subtotal',fmtMoneyPdf(total)],['Discount',fmtMoneyPdf(discount)],['Freight',fmtMoneyPdf(freight)]];
   let ty = y;
   totRows.forEach(([label,val],i)=>{
     const rh = 16;
@@ -2031,7 +2040,7 @@ function generateQuotePdf(p){
   doc.setFillColor(...navy); doc.rect(col2X, ty, totW, 18, 'F');
   doc.setFont('Calibri','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
   doc.text('TOTAL', col2X+6, ty+12);
-  doc.text(fmtMoney(grandTotal), col2X+totW-6, ty+12, {align:'right'});
+  doc.text(fmtMoneyPdf(grandTotal), col2X+totW-6, ty+12, {align:'right'});
   ty += 18;
   doc.setDrawColor(210,210,214); doc.rect(col2X, y, totW, ty-y, 'S');
 
@@ -2242,10 +2251,10 @@ function generatePurchaseOrderPdf(p){
   const descText = `${(p.process||'').toUpperCase()}${p.material?', '+p.material.toUpperCase():''}. ${(p.description||'').toUpperCase()}`.trim();
   const descLines = doc.splitTextToSize(descText, cW.desc-12);
   const lineItems = [
-    { partida:'1', cant:String(p.quantity||0), unidad:'PZA', parte:'—', desc:descLines, unit:fmtMXN2(q.unitPrice||0), importe:fmtMXN(q.unitPrice?q.unitPrice*p.quantity:0) },
+    { partida:'1', cant:String(p.quantity||0), unidad:'PZA', parte:'—', desc:descLines, unit:fmtMXNPdf2(q.unitPrice||0), importe:fmtMXNPdf(q.unitPrice?q.unitPrice*p.quantity:0) },
   ];
   [['Herramental',q.tooling],['Preparación / Setup',q.setup],['Envío',q.shipping]].forEach(([label,amt])=>{
-    if(amt) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:[label], unit:fmtMXN(amt), importe:fmtMXN(amt) });
+    if(amt) lineItems.push({ partida:String(lineItems.length+1), cant:'1', unidad:'LOTE', parte:'—', desc:[label], unit:fmtMXNPdf(amt), importe:fmtMXNPdf(amt) });
   });
   for(let i=lineItems.length; i<7; i++) lineItems.push({ partida:String(i+1), cant:'', unidad:'', parte:'', desc:[''], unit:'', importe:'' });
 
@@ -2283,7 +2292,7 @@ function generatePurchaseOrderPdf(p){
   }
 
   const subtotal = q.quotedTotal||0, iva = subtotal*0.16, totalConIva = subtotal+iva;
-  const totRows = [['Subtotal',fmtMXN(subtotal)],['Descuento',fmtMXN(0)],['Flete / maniobras',fmtMXN(0)],['IVA 16%',fmtMXN(iva)]];
+  const totRows = [['Subtotal',fmtMXNPdf(subtotal)],['Descuento',fmtMXNPdf(0)],['Flete / maniobras',fmtMXNPdf(0)],['IVA 16%',fmtMXNPdf(iva)]];
   let ty = y;
   totRows.forEach(([label,val],i)=>{
     const rh = 16;
@@ -2296,7 +2305,7 @@ function generatePurchaseOrderPdf(p){
   doc.setFillColor(...navy); doc.rect(col2X, ty, totW, 18, 'F');
   doc.setFont('Calibri','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
   doc.text('TOTAL', col2X+6, ty+12);
-  doc.text(fmtMXN(totalConIva), col2X+totW-6, ty+12, {align:'right'});
+  doc.text(fmtMXNPdf(totalConIva), col2X+totW-6, ty+12, {align:'right'});
   ty += 18;
   doc.setDrawColor(210,210,214); doc.rect(col2X, y, totW, ty-y, 'S');
   doc.setFont('Calibri','italic'); doc.setFontSize(7); doc.setTextColor(...inkSec);
@@ -3441,7 +3450,7 @@ function quoteCard(p, s, idx){
     ${s.badge?`<span class="award-badge ${BADGE_CLASS[s.badge]}" style="align-self:flex-start;">${s.badge}</span>`:''}
     <div>
       <div class="td-sub" style="margin-bottom:4px;">Supplier Option ${String(idx+1).padStart(2,'0')}</div>
-      <div class="quote-price">${fmtMoney(s.customerPrice)} <span style="font-size:13px;font-weight:600;color:var(--ink-tertiary);">USD</span></div>
+      <div class="quote-price">${fmtMoney(s.customerPrice)}</div>
     </div>
     <div class="cap-list">
       <span class="tag"><i data-lucide="clock" style="width:11px;height:11px;"></i>&nbsp;${s.leadTimeDays} days</span>
@@ -3697,8 +3706,49 @@ ROUTES['innous/rfq'] = function(id){
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? quoteComparisonSection(p) : ''}
     ${p.status==='customer_review' ? sentShortlistReadonlySection(p) : ''}
     ${p.status==='awarded' && !p.innousAuthorizedAt ? purchaseOrderDetailsSection(p) : ''}
+    ${sentDocumentsSection(p)}
   </div>`;
 };
+/* ---- Sent Documents — once a formal document has actually gone out the
+   door to the customer or the supplier, INNOUS can pull it back up right
+   here instead of having to reconstruct it from the Quotes/Orders menus.
+   Each box only appears once its document actually exists: the Quote once
+   the customer has a supplier and a price to see (same gate as the
+   customer's own "Download Formal Quote" button), the Purchase Order once
+   INNOUS has actually authorized it (before that it's still just a draft
+   only INNOUS can preview from the Order page). */
+function sentDocumentsSection(p){
+  const quoteSent = !!p.order && ['awarded','in_production','completed'].includes(p.status);
+  const poSent = !!p.innousAuthorizedAt;
+  if(!quoteSent && !poSent) return '';
+  const supplier = SUPPLIERS.find(s=>s.id===p.selectedSupplierId);
+  const q = p.supplierQuotes.find(x=>x.supplierId===p.selectedSupplierId);
+  return `
+  <div class="grid grid-2" style="margin-bottom:20px;">
+    ${quoteSent ? `
+    <div class="card card-pad">
+      <div class="section-title">Quote Sent to Customer</div>
+      <div class="info-grid" style="margin-top:12px;">
+        ${infoItem('Quote Number', p.order.quoteNumber||'—')}
+        ${infoItem('Customer', customerName(p.customerId))}
+        ${infoItem('Total Price', fmtMoney(p.order.customerPrice))}
+        ${infoItem('Prepared By', p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name)}
+      </div>
+      <button class="btn btn-secondary btn-block" style="margin-top:14px;" onclick="App.downloadQuotePdf('${p.id}')"><i data-lucide="file-down"></i>Download Quote (PDF)</button>
+    </div>` : ''}
+    ${poSent ? `
+    <div class="card card-pad">
+      <div class="section-title">Purchase Order Sent to Supplier</div>
+      <div class="info-grid" style="margin-top:12px;">
+        ${infoItem('PO Number', p.order.poNumber||'—')}
+        ${infoItem('Supplier', supplier?supplier.name:'—')}
+        ${infoItem('Total', q?fmtMXN(q.quotedTotal):'—')}
+        ${infoItem('Authorized', fmtDate(p.innousAuthorizedAt))}
+      </div>
+      <button class="btn btn-secondary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download Purchase Order (PDF)</button>
+    </div>` : ''}
+  </div>`;
+}
 
 function supplierMatchingSection(p){
   // Only relevant while INNOUS could still be inviting suppliers — once the RFQ
@@ -4657,7 +4707,6 @@ ROUTES['supplier/rfq'] = function(id){
           if(visible.length) return visible.map(f=>fileIconChip({...f, path:f.redactedPath})).join('');
           return `<div class="td-sub">${p.files.length ? 'INNOUS está revisando los archivos antes de compartirlos contigo.' : 'Sin archivos adjuntos.'}</div>`;
         })()}</div>
-        <div class="confidential-note" style="margin-top:14px;"><i data-lucide="shield"></i><div>La identidad del comprador, las cotizaciones de otros proveedores y el precio final al cliente son gestionados por INNOUS y no se comparten con los proveedores. Los dibujos que ves aquí ya fueron revisados por INNOUS para quitar cualquier información de contacto del cliente.</div></div>
       </div>
     </div>
     ${submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p)}
@@ -4702,7 +4751,7 @@ function supplierSubmittedQuoteCard(p, q){
 // jumps to the end of whatever field was mid-edit.
 function supplierQuoteForm(p){
   if(!STATE.ui.supplierQuoteDrafts[p.id]){
-    STATE.ui.supplierQuoteDrafts[p.id] = { unitPrice:'', tooling:'', setup:'', shipping:'', leadTimeDays:'', validity:'30 días', notes:'' };
+    STATE.ui.supplierQuoteDrafts[p.id] = { unitPrice:'', leadTimeDays:'', validity:'30 días', notes:'' };
   }
   const d = STATE.ui.supplierQuoteDrafts[p.id];
   const upd = (field)=>`App.updateSupplierQuoteDraft('${p.id}','${field}',this.value)`;
@@ -4711,20 +4760,11 @@ function supplierQuoteForm(p){
     <div class="section-title">Enviar Tu Cotización</div>
     <div class="form-row">
       <div class="form-group"><label class="field-label">Precio unitario (MXN)</label><input type="number" step="0.01" name="unitPrice" required placeholder="ej. 3,200.00" value="${d.unitPrice}" oninput="${upd('unitPrice')}"></div>
-      <div class="form-group"><label class="field-label">Herramental (MXN)</label><input type="number" name="tooling" placeholder="0" value="${d.tooling}" oninput="${upd('tooling')}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="field-label">Preparación / Setup (MXN)</label><input type="number" name="setup" placeholder="0" value="${d.setup}" oninput="${upd('setup')}"></div>
-      <div class="form-group"><label class="field-label">Envío (MXN)</label><input type="number" name="shipping" placeholder="0 (dejar en blanco si está incluido)" value="${d.shipping}" oninput="${upd('shipping')}"></div>
-    </div>
-    <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Cotiza en pesos mexicanos (MXN) — Innous convierte a dólares al armar la cotización formal para el cliente.</div>
-    <div class="form-row">
       <div class="form-group"><label class="field-label">Tiempo de entrega (días)</label><input type="number" name="leadTimeDays" required placeholder="ej. 28" value="${d.leadTimeDays}" oninput="${upd('leadTimeDays')}"></div>
-      <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity" onchange="${upd('validity')}">${['15 días','30 días','45 días','60 días'].map(v=>`<option ${d.validity===v?'selected':''}>${v}</option>`).join('')}</select></div>
     </div>
-    <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Las condiciones de pago y el tiempo de entrega que verá el cliente en su cotización formal los define Innous directamente — el tiempo de entrega que pongas aquí es solo tu estimado interno para comparación.</div>
+    <div class="field-hint" style="margin-top:-8px;margin-bottom:14px;">Cotiza en pesos mexicanos (MXN) — Innous convierte a dólares al armar la cotización formal para el cliente. Las condiciones de pago que verá el cliente las define Innous directamente.</div>
+    <div class="form-group"><label class="field-label">Vigencia de la cotización</label><select name="validity" onchange="${upd('validity')}">${['15 días','30 días','45 días','60 días'].map(v=>`<option ${d.validity===v?'selected':''}>${v}</option>`).join('')}</select></div>
     <div class="form-group"><label class="field-label">Notas</label><textarea name="notes" placeholder="Cualquier supuesto, exclusión o aclaración..." oninput="${upd('notes')}">${d.notes}</textarea></div>
-    <div class="form-group"><label class="field-label">Documentos</label><button type="button" class="btn btn-secondary btn-sm" onclick="showToast('cost-breakdown.pdf adjuntado')"><i data-lucide="paperclip"></i>Adjuntar cost-breakdown.pdf</button></div>
     <hr class="divider">
     <div style="display:flex;justify-content:flex-end;"><button type="submit" class="btn btn-primary"><i data-lucide="send"></i>Enviar Cotización</button></div>
   </form>`;
@@ -6030,7 +6070,7 @@ const App = {
     openModal(`
       <div class="modal-header"><h3>Manufacturing Option Details</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="quote-price" style="margin-bottom:10px;">${fmtMoney(s.customerPrice)} <span style="font-size:13px;font-weight:600;color:var(--ink-tertiary);">USD total</span></div>
+        <div class="quote-price" style="margin-bottom:10px;">${fmtMoney(s.customerPrice)} <span style="font-size:13px;font-weight:600;color:var(--ink-tertiary);">total</span></div>
         <div class="info-grid" style="grid-template-columns:1fr 1fr;">
           ${infoItem('Lead Time', s.leadTimeDays+' days')}
           ${infoItem('Quality Rating', s.rating+' / 5.0')}
@@ -6148,7 +6188,7 @@ const App = {
     const supplier = currentSupplier();
     let q = p.supplierQuotes.find(x=>x.supplierId===STATE.supplierId);
     const data = {supplierId:STATE.supplierId, status:'submitted', unitPrice:unit, tooling, setup, shipping, quotedTotal,
-      leadTimeDays, paymentTerms, validity, notes, documents:['cost-breakdown.pdf'], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
+      leadTimeDays, paymentTerms, validity, notes, documents:[], submittedAt:new Date('2026-09-08'), rating:supplier.rating, onTime:supplier.onTime};
     if(q) Object.assign(q,data); else p.supplierQuotes.push(data);
     if(p.status==='sourcing') p.status='sourcing';
     // Kept local-only, deliberately not persisted to the shared activity log —
