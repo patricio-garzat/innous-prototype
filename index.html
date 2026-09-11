@@ -4141,7 +4141,6 @@ ROUTES['innous/rfq'] = function(id){
       <div class="page-actions">
         ${statusBadge(p)}${responsibilityChip(p,'INNOUS')}
         ${p.status==='submitted'?`<button class="btn btn-primary" onclick="App.advanceStatus('${p.id}','under_review')"><i data-lucide="eye"></i>Iniciar Revisión</button>`:''}
-        ${p.status==='awarded' && !p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Guarda primero los Detalles de la Orden de Compra abajo"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>`:''}
         ${['awarded','in_production','completed'].includes(p.status)?`<button class="btn btn-secondary" onclick="navigate('#/innous/order/${p.id}')"><i data-lucide="package"></i>Ver Pedido</button>`:''}
         ${!['awarded','in_production','completed','rejected'].includes(p.status)?`<button class="btn btn-secondary" onclick="App.openRejectRfqModal('${p.id}')"><i data-lucide="x-circle"></i>Rechazar / Cerrar Proyecto</button>`:''}
         <button class="btn btn-danger" onclick="App.deleteRfq('${p.id}')"><i data-lucide="trash-2"></i>Eliminar RFQ</button>
@@ -4616,7 +4615,16 @@ function purchaseOrderDetailsSection(p){
       <div class="form-group"><label class="field-label">Forma de Pago</label><input type="text" value="${escAttr(d.paymentMethod)}" oninput="${upd('paymentMethod')}"></div>
     </div>
     <div class="form-group"><label class="field-label">Observaciones / Instrucciones Especiales</label><textarea oninput="${upd('notes')}">${escAttr(d.notes)}</textarea></div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Guardar Detalles de la Orden de Compra</button></div>
+    <hr class="divider">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div>
+        ${!isConfirmed ? `<div class="td-sub" style="color:var(--danger);">Guarda los datos antes de poder autorizar y notificar al proveedor</div>` : ''}
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Guardar Detalles de la Orden de Compra</button>
+        <button class="btn btn-primary" ${isConfirmed?'':'disabled title="Guarda primero los Detalles de la Orden de Compra"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -4933,7 +4941,6 @@ ROUTES['innous/order'] = function(id){
         <button class="btn btn-secondary" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Cliente</button>
         <button class="btn btn-secondary" onclick="App.startChat('supplier','${p.selectedSupplierId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Proveedor</button>
         <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Orden de Compra (PDF)</button>
-        ${!p.innousAuthorizedAt?`<button class="btn btn-primary" ${purchaseOrderDetailsComplete(p)?'':'disabled title="Guarda primero los Detalles de la Orden de Compra abajo"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Deshacer Última Actualización</button>`:''}
         ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
     </div>
