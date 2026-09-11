@@ -4366,7 +4366,7 @@ function quoteCompareCard(p, q, rate, freight, isShortlisted){
         <div style="font-weight:700;font-size:14.5px;">${supplier?supplier.name:'Deleted Supplier'}</div>
         <div class="td-sub">${supplier?`${supplier.city} · ${supplier.rating}★`:'—'} · ${q.leadTimeDays} days lead time</div>
       </div>
-      ${isShortlisted?'<span class="badge badge-green">Shortlisted</span>':`<button class="btn btn-secondary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')"><i data-lucide="plus"></i>Add to Shortlist</button>`}
+      ${isShortlisted?'<span class="badge badge-green">Shortlisted</span>':`<button class="btn btn-primary btn-sm" ${p.shortlist.length>=5?'disabled':''} onclick="App.addToShortlist('${p.id}','${q.supplierId}')"><i data-lucide="plus"></i>Add to Shortlist</button>`}
     </div>
     <hr class="divider">
     <div class="info-item-label" style="margin-bottom:6px;">Supplier's Quote</div>
@@ -5537,7 +5537,7 @@ ROUTES['supplier/production'] = function(){
         const nextStatus = supplierNextOrderStatus(p);
         const doneText = p.order.status==='delivered' ? 'Completo' : 'En logística (INNOUS)';
         return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p, true)}</td>
-        <td>${nextStatus?`<button class="btn btn-secondary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
+        <td>${nextStatus?`<button class="btn btn-primary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
       }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
