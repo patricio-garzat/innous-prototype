@@ -985,9 +985,15 @@ function fmtDateShort(d){return d.toLocaleDateString('en-US',{month:'short',day:
 // and "$368.57" in another. The "2"-suffixed functions now just duplicate
 // their base counterpart — kept only so existing call sites don't need to
 // change — never use Math.round on a money value anywhere else either.
+// Portal-facing amounts always carry an explicit currency code ("USD"/"MXN")
+// since this app mixes both currencies constantly — that suffix is the part
+// doing real work (a bare "$" is ambiguous between the two). The "MX$"
+// prefix used to duplicate that same information ("MX$122,000.00 MXN"),
+// which read as confusing rather than extra-clear — both formatters now use
+// a single "$" and let the suffix alone say which currency it is.
 function fmtMoney(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' USD';}
 function fmtMoney2(n){return fmtMoney(n);}
-function fmtMXN(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' MXN';}
+function fmtMXN(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' MXN';}
 function fmtMXN2(n){return fmtMXN(n);}
 function fmtMoneyPdf(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtMoneyPdf2(n){return fmtMoneyPdf(n);}
