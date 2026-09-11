@@ -2362,7 +2362,7 @@ function renderShell(){
   // a detail page (e.g. "#/supplier/order/IN-2026-00458") should keep its parent
   // list item highlighted (e.g. "Active Orders"), not go dark — normalize the
   // singular detail segment to the plural nav id it belongs under.
-  const SEG_ALIAS = {rfq:'rfqs', order:'orders'};
+  const SEG_ALIAS = {rfq:'rfqs', order:'orders', quote:'quotes'};
   const rawSeg = activePath.split('/')[2];
   const activeSeg = SEG_ALIAS[rawSeg] || rawSeg;
   document.getElementById('sidebar').innerHTML = `
@@ -2842,13 +2842,13 @@ function route(){
     history.replaceState(null,'',hash);
   }
   const parts = hash.replace('#/','').split('/');
-  const role = parts[0], page = parts[1], param = parts[2];
+  const role = parts[0], page = parts[1];
   const key = role+'/'+page;
   const el = document.getElementById('app-content');
   const samePage = (hash === lastRoutedHash);
   const prevScroll = el.scrollTop;
   try{
-    if(ROUTES[key]){ el.innerHTML = ROUTES[key](param); }
+    if(ROUTES[key]){ el.innerHTML = ROUTES[key](...parts.slice(2)); }
     else { el.innerHTML = emptyState('compass','Page not found','This section is not part of the demo yet.'); }
   }catch(err){
     console.error(err);
@@ -3733,12 +3733,71 @@ ROUTES['innous/quotes'] = function(){
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Quotes</div><div class="page-subtitle">${rows.length} supplier quotes submitted across all RFQs</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Supplier</th><th>Total Cost</th><th>Lead Time</th><th>Submitted</th><th>Shortlisted</th></tr></thead><tbody>
-      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')">
-        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMoney(q.quotedTotal)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Supplier</th><th>Total Cost (MXN)</th><th>Lead Time</th><th>Submitted</th><th>Shortlisted</th></tr></thead><tbody>
+      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
+        <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Yes</span>':'<span class="badge badge-gray">No</span>'}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
+  </div>`;
+};
+/* ---- INNOUS: a single supplier quote, standalone — deliberately NOT the
+   whole RFQ page (files, comparison tools, quote-detail editing, etc.).
+   Clicking a row in "Quotes" used to dump you on the exact same page as
+   clicking the RFQ from the RFQs list, which made the Quotes list itself
+   pointless. This shows just what matters about ONE quote: if it made the
+   shortlist, exactly what the customer was shown for it (their price and
+   lead time, no supplier identity/cost — same boundary the customer's own
+   view has); if it didn't, that it was never sent. INNOUS's own cost/margin
+   context sits below either way, since this view is INNOUS-only. */
+ROUTES['innous/quote'] = function(pid, sid){
+  const p = findProject(pid); if(!p) return emptyState('search','Quote not found','');
+  const q = p.supplierQuotes.find(x=>x.supplierId===sid);
+  if(!q) return emptyState('search','Quote not found','');
+  const shortlisted = p.shortlist.find(s=>s.supplierId===sid);
+  return `
+  <div class="content-inner" style="max-width:700px;">
+    <div class="breadcrumb"><a href="#/innous/quotes">Quotes</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${supplierName(sid)} → ${customerName(p.customerId)}</div></div>
+      ${shortlisted?'<span class="badge badge-green">Sent to Customer</span>':'<span class="badge badge-gray">Not Shortlisted</span>'}
+    </div>
+    ${shortlisted ? `
+    <div class="card card-pad">
+      <div class="section-title">What the Customer Was Shown</div>
+      <div class="section-sub">Exactly the price and lead time ${customerName(p.customerId)} saw for this option — supplier identity, cost, and INNOUS's margin were never part of it.</div>
+      <div class="pricing-panel" style="margin-top:14px;">
+        <div class="pricing-row"><span>Customer Price (USD)</span><span class="td-strong">${fmtMoney(shortlisted.customerPrice)}</span></div>
+        <div class="pricing-row"><span>Lead Time</span><span>${shortlisted.leadTimeDays} days</span></div>
+        <div class="pricing-row"><span>Quality Rating</span><span>${shortlisted.rating||0} / 5.0</span></div>
+        ${shortlisted.badge?`<div class="pricing-row"><span>Badge</span><span class="award-badge ${BADGE_CLASS[shortlisted.badge]}">${shortlisted.badge}</span></div>`:''}
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-top:16px;">
+      <div class="section-title">Internal Details</div>
+      <div class="section-sub">Visible only within INNOUS.</div>
+      <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:12px;">
+        ${infoItem('Supplier Cost (MXN)', shortlisted.supplierCostMxn?fmtMXN(shortlisted.supplierCostMxn):'—')}
+        ${infoItem('Exchange Rate', shortlisted.exchangeRate||'—')}
+        ${infoItem('Supplier Cost (USD)', fmtMoney(shortlisted.supplierCost))}
+        ${infoItem('Markup', shortlisted.markupPct+'%')}
+        ${infoItem('INNOUS Margin', fmtMoney(shortlisted.customerPrice-shortlisted.supplierCost))}
+      </div>
+    </div>` : `
+    <div class="card card-pad">
+      <div class="section-title">Not Sent to Customer</div>
+      <div class="section-sub">This supplier's quote was never added to the shortlist — the customer never saw it. Showing what the supplier submitted (in MXN, their own currency).</div>
+      <div class="pricing-panel" style="margin-top:14px;">
+        <div class="pricing-row"><span>Unit Price (${fmtMXN2(q.unitPrice)} × ${p.quantity.toLocaleString()})</span><span class="td-strong">${fmtMXN(q.unitPrice*p.quantity)}</span></div>
+        <div class="pricing-row"><span>Herramental</span><span>${q.tooling?fmtMXN(q.tooling):'—'}</span></div>
+        <div class="pricing-row"><span>Preparación / Setup</span><span>${q.setup?fmtMXN(q.setup):'—'}</span></div>
+        <div class="pricing-row"><span>Envío</span><span>${q.shipping?fmtMXN(q.shipping):'Incluido'}</span></div>
+        <div class="pricing-row total"><span>Total</span><span>${fmtMXN(q.quotedTotal)}</span></div>
+      </div>
+      <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:16px;">
+        ${infoItem('Lead Time', q.leadTimeDays+' days')}
+        ${infoItem('Submitted', fmtDate(q.submittedAt))}
+      </div>
+    </div>`}
   </div>`;
 };
 
