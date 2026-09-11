@@ -4548,7 +4548,7 @@ ROUTES['innous/quotes'] = function(){
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Customer</th><th>Supplier</th><th>Total Cost (MXN)</th><th>Lead Time</th><th>Submitted</th><th>Shortlisted</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} days</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
-        <td>${p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Yes</span>':'<span class="badge badge-gray">No</span>'}</td>
+        <td>${p.targetPriceSupplierBudgetMxn ? '<span class="badge badge-blue">Target Price</span>' : p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Yes</span>':'<span class="badge badge-gray">No</span>'}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -4567,13 +4567,39 @@ ROUTES['innous/quote'] = function(pid, sid){
   const q = p.supplierQuotes.find(x=>x.supplierId===sid);
   if(!q) return emptyState('search','Quote not found','');
   const shortlisted = p.shortlist.find(s=>s.supplierId===sid);
+  // A target-price RFQ never goes through the shortlist/comparison step at
+  // all — the first supplier to accept is awarded directly (see
+  // App.acceptTargetPrice / supplier_accept_target_price). Only the winner
+  // ever reaches this page with status 'submitted' (everyone else invited
+  // gets marked 'declined'), so that alone identifies this case — no need
+  // to also check p.selectedSupplierId.
+  const isTargetPriceAward = !!p.targetPriceSupplierBudgetMxn && q.status==='submitted';
   return `
   <div class="content-inner" style="max-width:700px;">
     <div class="breadcrumb"><a href="#/innous/quotes">Quotes</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id} · ${supplierName(sid)} → ${customerName(p.customerId)}</div></div>
-      ${shortlisted?'<span class="badge badge-green">Sent to Customer</span>':'<span class="badge badge-gray">Not Shortlisted</span>'}
+      ${isTargetPriceAward?'<span class="badge badge-blue">Awarded — Target Price</span>':shortlisted?'<span class="badge badge-green">Sent to Customer</span>':'<span class="badge badge-gray">Not Shortlisted</span>'}
     </div>
-    ${shortlisted ? `
+    ${isTargetPriceAward ? `
+    <div class="card card-pad">
+      <div class="section-title">Awarded via Target Price</div>
+      <div class="section-sub">The customer set a fixed target price for this RFQ — ${supplierName(sid)} was the first supplier to accept it, so the project was awarded directly. No shortlist or customer comparison happened; that's the whole point of a target price.</div>
+      <div class="pricing-panel" style="margin-top:14px;">
+        <div class="pricing-row"><span>Customer Target Price (USD)</span><span class="td-strong">${fmtMoney(p.targetPriceUsd)}</span></div>
+        <div class="pricing-row"><span>Supplier Budget (MXN)</span><span>${fmtMXN(p.targetPriceSupplierBudgetMxn)}</span></div>
+        <div class="pricing-row"><span>Lead Time</span><span>${q.leadTimeDays} days</span></div>
+      </div>
+    </div>
+    <div class="card card-pad" style="margin-top:16px;">
+      <div class="section-title">Internal Details</div>
+      <div class="section-sub">Visible only within INNOUS.</div>
+      <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:12px;">
+        ${infoItem('Markup', (p.targetPriceMarkupPct??'—')+'%')}
+        ${infoItem('Exchange Rate', p.targetPriceExchangeRate??'—')}
+        ${infoItem('Supplier Cost (MXN)', fmtMXN(p.targetPriceSupplierBudgetMxn))}
+        ${infoItem('INNOUS Margin (USD)', p.order?fmtMoney(p.order.customerPrice-p.order.supplierCost):'—')}
+      </div>
+    </div>` : shortlisted ? `
     <div class="card card-pad">
       <div class="section-title">What the Customer Was Shown</div>
       <div class="section-sub">Exactly the price and lead time ${customerName(p.customerId)} saw for this option — supplier identity, cost, and INNOUS's margin were never part of it.</div>
