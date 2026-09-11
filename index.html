@@ -3385,7 +3385,6 @@ ROUTES['innous/rfq'] = function(id){
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? supplierResponsesSection(p) : ''}
     ${p.invitedSupplierIds.length>0 && ['sourcing','quotes_received'].includes(p.status) ? quoteComparisonSection(p) : ''}
     ${p.status==='customer_review' ? sentShortlistReadonlySection(p) : ''}
-    ${['customer_review','awarded','in_production','completed'].includes(p.status) ? quoteDetailsSection(p) : ''}
   </div>`;
 };
 
