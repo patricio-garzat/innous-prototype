@@ -813,6 +813,17 @@ function innousNextOrderStatus(p){
   if(idx < ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT)) return null;
   return ORDER_STATUS_FLOW[idx+1];
 }
+// Mirror of the two functions above, for the "Undo last update" button —
+// true only when the CURRENT status was reached by that same role's own
+// forward transition, so nobody can undo a step the other side made.
+function supplierCanRevertOrder(p){
+  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  return idx>0 && idx<=ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT);
+}
+function innousCanRevertOrder(p){
+  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+  return idx>ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT);
+}
 
 /* An INNOUS-deleted example (non-account) customer/supplier shouldn't reappear
    after a refresh just because the demo seed data is rebuilt from scratch on
@@ -2974,7 +2985,7 @@ function quoteCard(p, s, idx){
 
 /* ---- Client Orders List ---- */
 ROUTES['client/orders'] = function(){
-  const mine = clientProjects().filter(p=>p.order);
+  const mine = clientProjects().filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Orders</div><div class="page-subtitle">${mine.length} projects in production or completed</div></div></div>
@@ -3545,7 +3556,7 @@ ROUTES['innous/quotes'] = function(){
 
 /* ---- INNOUS Orders List ---- */
 ROUTES['innous/orders'] = function(){
-  const orders = PROJECTS.filter(p=>p.order);
+  const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Orders</div><div class="page-subtitle">${orders.length} orders — active and completed</div></div></div>
@@ -3572,6 +3583,7 @@ ROUTES['innous/order'] = function(id){
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p.order.status)}
         ${!p.innousAuthorizedAt?`<button class="btn btn-primary" onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Authorize & Notify Supplier</button>`:''}
+        ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Undo Last Update</button>`:''}
         ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Mark as: ${orderStatusLabel(nextStatus)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'innous'), p.order.status==='delivered'?'success':((nextStatus || !p.innousAuthorizedAt)?'action':'info'))}
@@ -3636,7 +3648,7 @@ function logisticsBlock(p){
 
 /* ---- INNOUS Production board ---- */
 ROUTES['innous/production'] = function(){
-  const orders = PROJECTS.filter(p=>p.order && p.status!=='completed');
+  const orders = PROJECTS.filter(p=>p.order && p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const groups = ORDER_STATUS_FLOW.map(st=>({st, items: orders.filter(p=>p.order.status===st)}));
   return `
   <div class="content-inner">
@@ -3847,7 +3859,7 @@ function supplierQuoteFor(p){ return p.supplierQuotes.find(q=>q.supplierId===STA
 
 ROUTES['supplier/dashboard'] = function(){
   const invited = supplierInvited();
-  const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || q.status!=='submitted'; }).filter(p=>['sourcing','quotes_received'].includes(p.status));
+  const available = invited.filter(p=>{ const q=supplierQuoteFor(p); return !q || q.status!=='submitted'; }).filter(p=>['sourcing','quotes_received'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const submitted = invited.filter(p=>{ const q=supplierQuoteFor(p); return q && q.status==='submitted'; });
   const activeOrders = invited.filter(p=>p.order && supplierWon(p) && ['awarded','in_production'].includes(p.status));
   const completedOrders = invited.filter(p=>p.order && supplierWon(p) && p.status==='completed');
@@ -3888,7 +3900,7 @@ function supplierRfqMiniTable(list){
 
 /* ---- Supplier Available RFQs ---- */
 ROUTES['supplier/rfqs'] = function(){
-  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status));
+  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">RFQs Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
@@ -3998,7 +4010,7 @@ function supplierQuoteForm(p){
 
 /* ---- Supplier My Quotes ---- */
 ROUTES['supplier/quotes'] = function(){
-  const rows = supplierInvited().map(p=>({p,q:supplierQuoteFor(p)})).filter(r=>r.q && r.q.status==='submitted');
+  const rows = supplierInvited().map(p=>({p,q:supplierQuoteFor(p)})).filter(r=>r.q && r.q.status==='submitted').sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Mis Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones enviadas</div></div></div>
@@ -4030,7 +4042,7 @@ function supplierQuoteStatusBadge(p){
 /* ---- Supplier Active Orders ---- */
 function supplierOrders(){ return PROJECTS.filter(p=>supplierWon(p) && p.order); }
 ROUTES['supplier/orders'] = function(){
-  const orders = supplierOrders().filter(p=>p.status!=='completed');
+  const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Pedidos Activos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div></div>
@@ -4067,7 +4079,9 @@ ROUTES['supplier/order'] = function(id){
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/supplier/orders">Pedidos Activos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div>
-      <div class="page-actions">${orderStatusBadge(p.order.status, true)}${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabel(nextStatus, true)}</button>`:''}</div>
+      <div class="page-actions">${orderStatusBadge(p.order.status, true)}
+        ${supplierCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Regresar Estatus</button>`:''}
+        ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabel(nextStatus, true)}</button>`:''}</div>
     </div>
     ${stageBanner(orderStageMessage(p,'supplier'), bannerKind)}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(labels, stageIdx)}</div>
@@ -4098,7 +4112,7 @@ ROUTES['supplier/order'] = function(id){
 
 /* ---- Supplier Production (list view of all active orders w/ update) ---- */
 ROUTES['supplier/production'] = function(){
-  const orders = supplierOrders().filter(p=>p.status!=='completed');
+  const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Actualiza el estatus de producción conforme avance el trabajo</div></div></div>
@@ -5303,8 +5317,60 @@ const App = {
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     const next = ORDER_STATUS_FLOW[idx+1];
     if(!next) return;
-    if(next==='shipped'){ App.openShipOrderModal(pid); return; }
+    if(next==='shipped'){ App.openShipOrderModal(pid); return; } // that modal IS the confirmation — no need for a second one on top
+    const isSupplier = STATE.role==='SUPPLIER';
+    const label = orderStatusLabel(next, isSupplier);
+    const sure = isSupplier
+      ? confirm(`¿Confirmas que quieres marcar este pedido como "${label}"? Si te equivocas, podrás regresarlo después.`)
+      : confirm(`Mark this order as "${label}"? If this was a mistake, you can revert it afterward.`);
+    if(!sure) return;
     await App._doAdvanceOrderStatus(pid, next);
+  },
+  // The mirror of advanceOrderStatus — undoes the LAST forward step only,
+  // one at a time. Gated per role exactly the same way the forward button
+  // already is (supplierNextOrderStatus/innousNextOrderStatus): whichever
+  // side made a given transition is the one allowed to walk it back, so a
+  // supplier can't undo INNOUS's shipping/delivery calls and vice versa.
+  async revertOrderStatus(pid){
+    const p = findProject(pid); if(!p || !p.order) return;
+    const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
+    if(idx<=0) return;
+    const prev = ORDER_STATUS_FLOW[idx-1];
+    const isSupplier = STATE.role==='SUPPLIER';
+    const label = orderStatusLabel(prev, isSupplier);
+    const sure = isSupplier
+      ? confirm(`¿Regresar este pedido a "${label}"? Esto deshace la última actualización de estatus.`)
+      : confirm(`Revert this order back to "${label}"? This undoes the last status update.`);
+    if(!sure) return;
+    const wasShipped = p.order.status==='shipped';
+    const wasCompleted = p.status==='completed';
+    p.order.status = prev;
+    if(p.order.milestones[idx]){ p.order.milestones[idx].done = false; p.order.milestones[idx].date = null; }
+    if(wasCompleted){ p.status = 'in_production'; recalcSupplierMetrics(p.selectedSupplierId); }
+    logActivity(p, isSupplier?supplierName(STATE.supplierId):'INNOUS', `Reverted status back to "${ORDER_STATUS_META[prev].label}".`);
+    if(!p.isDemo){
+      const { error: e1 } = await sb.from('orders').update({status: prev}).eq('project_id', pid);
+      if(e1){ showToast(e1.message); return; }
+      if(wasCompleted){
+        const { error: e2 } = await sb.from('projects').update({status:'in_production'}).eq('id', pid);
+        if(e2){ showToast(e2.message); return; }
+        await persistSupplierMetrics(p.selectedSupplierId);
+      }
+      // The client already got a "your order shipped" notification for the
+      // mistake being undone here — tell them so they don't go looking for
+      // a package that, as far as they now know, hasn't actually left yet.
+      if(wasShipped && isRealAccountId(p.customerId)){
+        const { error: e3 } = await sb.rpc('innous_send_notification', {
+          p_user_ids: [p.customerId],
+          p_title: `Update on order ${p.id}`,
+          p_body: `The shipping notice for "${p.projectName}" was sent by mistake — your order hasn't actually shipped yet and is back in ${orderStatusLabel(prev)}. We'll notify you again once it really ships.`,
+          p_project_id: p.id,
+        });
+        if(e3) console.error('innous_send_notification (revert-shipped) failed', e3);
+      }
+    }
+    showToast(`Pedido ${p.id} regresado a ${label}`, 'success');
+    route();
   },
   openShipOrderModal(pid){
     const p = findProject(pid); if(!p) return;
