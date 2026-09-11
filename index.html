@@ -170,7 +170,15 @@ svg{display:block;}
 .sidebar-footer-card-title{font-family:'Ubuntu',sans-serif;font-size:12.5px;font-weight:700;margin-bottom:3px;color:#fff;position:relative;}
 .sidebar-footer-card-sub{font-size:11px;color:rgba(255,255,255,0.68);line-height:1.4;position:relative;}
 
-.content{flex:1;overflow-y:auto;padding:28px 32px 60px;}
+/* .content is a flex item of .app-body; without min-width:0 a flex item
+   won't shrink below its content's intrinsic width, so a wide table
+   inside (e.g. My RFQs, whose cells are all white-space:nowrap) forces
+   .content itself wider than the viewport and the WHOLE PAGE scrolls
+   horizontally, on top of the .table-wrap's own scrollbar. min-width:0
+   lets .content shrink to the viewport and pushes all overflow into
+   .table-wrap's contained overflow-x:auto instead. overflow-x:hidden is
+   a second line of defense against the same failure mode elsewhere. */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:28px 32px 60px;min-width:0;}
 .content-inner{max-width:1320px;margin:0 auto;}
 
 /* ============ TYPOGRAPHY / HEADER ============ */
@@ -288,6 +296,12 @@ table.data-table-fixed td .badge{max-width:100%;min-width:0;overflow:hidden;text
 table.data-table tbody tr:hover{background:var(--surface-alt);}
 table.data-table tbody tr:last-child td{border-bottom:none;}
 .td-strong{font-weight:600;}
+/* The RFQ id column in every list table (client/innous/supplier) is
+   `td-strong mono` — give it the brand's Ubuntu Bold instead of the
+   generic monospace used for other ids/tracking numbers, so RFQ numbers
+   stand out the same way page titles do. More specific than .mono, so
+   plain `.mono` cells (tracking numbers, etc.) are unaffected. */
+.td-strong.mono{font-family:'Ubuntu',sans-serif;font-weight:700;}
 .td-sub{color:var(--ink-tertiary);font-size:12px;}
 .row-link{cursor:pointer;}
 /* Dense comparison table (INNOUS quote comparison): tighter padding + a couple of
