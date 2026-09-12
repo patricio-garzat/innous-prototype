@@ -5071,39 +5071,48 @@ function supplierBillingSection(s){
   </div>`;
 }
 /* ---- Settings shortcut to the sections above (fix43, extended by fix46
-   for contact info, redesigned by fix47) — the same customerContactSection()/
-   customerBillingSection()/supplierContactSection()/supplierBillingSection()
-   cards that already live on each customer/supplier's own detail page, just
-   reachable from Ajustes too, for whoever expects this data to live in
-   Settings rather than having to open a specific account first. Two plain
-   lists (Clientes / Proveedores) — click a row, a modal opens with that
-   one account's contact + billing forms. Saves through the exact same
-   App.save* methods, which now also refresh the modal in place (see
-   refreshAccountInfoModalIfOpen) so a save/CSF-upload shows immediately
-   without closing it. */
+   for contact info, redesigned by fix47, split into two searchable lists
+   by fix53) — the same customerContactSection()/customerBillingSection()/
+   supplierContactSection()/supplierBillingSection() cards that already
+   live on each customer/supplier's own detail page, just reachable from
+   Ajustes too. Click a row, a modal opens with that one account's contact
+   + billing forms. Saves through the exact same App.save* methods, which
+   now also refresh the modal in place (see refreshAccountInfoModalIfOpen)
+   so a save/CSF-upload shows immediately without closing it.
+   Clientes and Proveedores are two separate, full-width cards (not a
+   side-by-side grid — with real company names that ran long, the two
+   narrow columns pushed their table wider than the column and spilled
+   out of the accordion panel) each with its own search box. Filtering is
+   done in the DOM (App.filterAccountsList), the same pattern
+   App.filterRfqTable already uses, rather than re-rendering the whole
+   page on every keystroke — that would also drop focus out of the search
+   box after each character. */
 function settingsBillingInfoSection(){
-  const accountRow = (label, id, sub, onclick)=>`<tr class="row-link" onclick="${onclick}"><td class="td-strong">${label}</td><td class="td-sub">${sub||'—'}</td></tr>`;
+  const accountRow = (label, sub, onclick)=>{
+    const searchText = escAttr(`${label} ${sub||''}`.toLowerCase());
+    return `<tr class="row-link" data-search="${searchText}" onclick="${onclick}"><td class="td-strong">${label}</td><td class="td-sub">${sub||'—'}</td></tr>`;
+  };
   return `
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-header"><h3>Datos de Clientes y Proveedores</h3></div>
-    <div class="section-sub" style="padding:14px 20px 0;">Elige una cuenta para editar su contacto y su facturación — quedan guardados y aparecen automáticamente en todas sus futuras cotizaciones y órdenes de compra.</div>
-    <div class="grid grid-2" style="padding:16px 20px 20px;gap:16px;">
-      <div>
-        <div class="field-label" style="margin-bottom:8px;">Clientes</div>
-        <div class="table-wrap" style="border:1px solid var(--border);border-radius:var(--radius);">
-          <table class="data-table"><tbody>
-            ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.company, c.id, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin clientes registrados</td></tr>`}
-          </tbody></table>
-        </div>
-      </div>
-      <div>
-        <div class="field-label" style="margin-bottom:8px;">Proveedores</div>
-        <div class="table-wrap" style="border:1px solid var(--border);border-radius:var(--radius);">
-          <table class="data-table"><tbody>
-            ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.name, s.id, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin proveedores registrados</td></tr>`}
-          </tbody></table>
-        </div>
-      </div>
+    <div class="card-header"><h3>Clientes</h3></div>
+    <div style="padding:14px 20px 0;">
+      <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-customer-search" placeholder="Buscar cliente..." onkeyup="App.filterAccountsList('customer')"></div>
+    </div>
+    <div class="table-wrap" style="margin-top:14px;">
+      <table class="data-table" id="settings-customers-table"><tbody>
+        ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.company, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin clientes registrados</td></tr>`}
+      </tbody></table>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><h3>Proveedores</h3></div>
+    <div style="padding:14px 20px 0;">
+      <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-supplier-search" placeholder="Buscar proveedor..." onkeyup="App.filterAccountsList('supplier')"></div>
+    </div>
+    <div class="table-wrap" style="margin-top:14px;">
+      <table class="data-table" id="settings-suppliers-table"><tbody>
+        ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.name, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin proveedores registrados</td></tr>`}
+      </tbody></table>
     </div>
   </div>`;
 }
@@ -7146,6 +7155,19 @@ const App = {
       const matchesText = tr.dataset.search.includes(q);
       const matchesStatus = !status || tr.dataset.status===status;
       tr.style.display = (matchesText && matchesStatus) ? '' : 'none';
+    });
+  },
+  // Same DOM-filter pattern as filterRfqTable above, for the Clientes/
+  // Proveedores lists in Ajustes (settingsBillingInfoSection) — kept as a
+  // pure DOM toggle rather than re-rendering the page so the search box
+  // never loses focus mid-keystroke.
+  filterAccountsList(type){
+    const inputId = type==='customer' ? 'settings-customer-search' : 'settings-supplier-search';
+    const tableId = type==='customer' ? 'settings-customers-table' : 'settings-suppliers-table';
+    const q = (document.getElementById(inputId)?.value||'').toLowerCase();
+    document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr=>{
+      if(tr.dataset.search===undefined) return; // the "sin registros" placeholder row
+      tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
     });
   },
 
