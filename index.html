@@ -1904,7 +1904,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4748,6 +4748,27 @@ ROUTES['innous/customer'] = function(id){
     </tbody></table></div></div>` : ''}
   </div>`;
 };
+/* ---- Company Info (fix54) — the customer's own name/location, i.e. what
+   identifies the account itself everywhere in the app (page titles,
+   avatars, the Clientes list, the "Company" row of the formal quote's
+   "QUOTATION TO" box) — not part of the Contact or Billing sections
+   below, but just as much something only Innous should be changing now.
+   `company`/`city` already exist as plain customer-signup columns; this
+   is just the first time they're editable after the fact. */
+function customerCompanySection(c){
+  if(!STATE.ui.customerCompanyDrafts[c.id]) STATE.ui.customerCompanyDrafts[c.id] = { company: c.company||'', city: c.city||'' };
+  const d = STATE.ui.customerCompanyDrafts[c.id];
+  const upd = (field)=>`App.updateCustomerCompanyDraft('${c.id}','${field}',this.value)`;
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Datos de la Empresa</div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.company)}" oninput="${upd('company')}"></div>
+      <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" placeholder="Ciudad, estado" oninput="${upd('city')}"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerCompanyInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de la Empresa</button></div>
+  </div>`;
+}
 /* ---- Contact Info — the contact this customer registered on the
    platform (name, position/puesto, phone, email). Feeds the "Attn." /
    "Position" / "Phone" / "E-mail" rows of the formal quote's "QUOTATION
@@ -5011,6 +5032,27 @@ function csfAddressLine(f){
   if(cp) addr += ' '+cp;
   return addr.replace(/\s+/g,' ').trim();
 }
+/* ---- Company Info (fix54) — the supplier's own display name/location,
+   i.e. what identifies the account everywhere in the app (page titles,
+   avatars, the Proveedores list) — distinct from Razón Social in
+   supplierBillingSection below, which is specifically the CSF's fiscal
+   name for the Purchase Order and can legitimately differ from this
+   display name. `name`/`city` already exist as plain supplier-signup
+   columns; this is just the first time they're editable after the fact. */
+function supplierCompanySection(s){
+  if(!STATE.ui.supplierCompanyDrafts[s.id]) STATE.ui.supplierCompanyDrafts[s.id] = { name: s.name||'', city: s.city||'' };
+  const d = STATE.ui.supplierCompanyDrafts[s.id];
+  const upd = (field)=>`App.updateSupplierCompanyDraft('${s.id}','${field}',this.value)`;
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Datos de la Empresa</div>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.name)}" oninput="${upd('name')}"></div>
+      <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" placeholder="Ciudad, estado" oninput="${upd('city')}"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierCompanyInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de la Empresa</button></div>
+  </div>`;
+}
 /* ---- Contact Info — the contact this supplier registered on the
    platform (name, puesto, phone, email). Feeds the "Contacto" / "Puesto" /
    "Teléfono" / "Correo" rows of the Purchase Order's "PROVEEDOR" panel
@@ -5125,13 +5167,13 @@ function accountInfoModalHtml(){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return '';
     return `
     <div class="modal-header"><h3>${c.company}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${customerContactSection(c)}${customerBillingSection(c)}</div>`;
+    <div class="modal-body">${customerCompanySection(c)}${customerContactSection(c)}${customerBillingSection(c)}</div>`;
   }
   if(type==='supplier'){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return '';
     return `
     <div class="modal-header"><h3>${s.name}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${supplierContactSection(s)}${supplierBillingSection(s)}</div>`;
+    <div class="modal-body">${supplierCompanySection(s)}${supplierContactSection(s)}${supplierBillingSection(s)}</div>`;
   }
   return '';
 }
@@ -7345,6 +7387,25 @@ const App = {
     refreshAccountInfoModalIfOpen('customer', id);
     route();
   },
+  updateCustomerCompanyDraft(id,field,val){
+    if(!STATE.ui.customerCompanyDrafts[id]) STATE.ui.customerCompanyDrafts[id] = {};
+    STATE.ui.customerCompanyDrafts[id][field] = val;
+  },
+  async saveCustomerCompanyInfo(id){
+    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
+    const d = STATE.ui.customerCompanyDrafts[id] || {};
+    // company is required (not-null in the DB) — an empty field means
+    // "didn't change it", not "blank it out".
+    const next = { company: (d.company||'').trim()||c.company, city: (d.city||'').trim() };
+    if(isRealAccountId(id)){
+      const { error } = await sb.from('customers').update({ company: next.company, city: next.city }).eq('user_id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    Object.assign(c, next);
+    showToast('Datos de la empresa guardados', 'success');
+    refreshAccountInfoModalIfOpen('customer', id);
+    route();
+  },
   updateCustomerContactDraft(id,field,val){
     if(!STATE.ui.customerContactDrafts[id]) STATE.ui.customerContactDrafts[id] = {};
     STATE.ui.customerContactDrafts[id][field] = val;
@@ -7376,6 +7437,25 @@ const App = {
     }
     Object.assign(s, next);
     showToast('Datos de facturación guardados', 'success');
+    refreshAccountInfoModalIfOpen('supplier', id);
+    route();
+  },
+  updateSupplierCompanyDraft(id,field,val){
+    if(!STATE.ui.supplierCompanyDrafts[id]) STATE.ui.supplierCompanyDrafts[id] = {};
+    STATE.ui.supplierCompanyDrafts[id][field] = val;
+  },
+  async saveSupplierCompanyInfo(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+    const d = STATE.ui.supplierCompanyDrafts[id] || {};
+    // name is required (not-null in the DB) — an empty field means
+    // "didn't change it", not "blank it out".
+    const next = { name: (d.name||'').trim()||s.name, city: (d.city||'').trim() };
+    if(isRealAccountId(id)){
+      const { error } = await sb.from('suppliers').update({ name: next.name, city: next.city }).eq('user_id', id);
+      if(error){ showToast(error.message); return; }
+    }
+    Object.assign(s, next);
+    showToast('Datos de la empresa guardados', 'success');
     refreshAccountInfoModalIfOpen('supplier', id);
     route();
   },
