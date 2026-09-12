@@ -1,0 +1,34 @@
+-- Los proveedores ya no pueden editar los datos de su propia cuenta —
+-- justo lo que se pedía: solo Innous decide qué dice la cuenta de un
+-- proveedor, para evitar que alguien se registre o edite su perfil con
+-- datos falsos. El portal ya deja de mostrarles el formulario de edición
+-- (ver accountModalHtml/App.saveAccount en index.html), pero eso por sí
+-- solo no es una barrera real — cualquiera que supiera llamar a la API de
+-- Supabase directamente podría seguir mandando un UPDATE. Esto lo cierra
+-- de verdad, quitándoles el permiso a nivel de base de datos.
+--
+-- INNOUS conserva su acceso total (política "INNOUS ve y edita todos los
+-- proveedores", ya existente) — solo se quita la política que dejaba al
+-- proveedor editar SU PROPIO registro.
+drop policy if exists "proveedor edita su propio registro" on suppliers;
+
+-- Nota importante sobre el registro público de proveedores:
+-- La pantalla de "Soy un Proveedor" ya se quitó del sitio (ver
+-- App.goToSignup en index.html) — ahora la única forma de crear una cuenta
+-- de proveedor es desde el panel de Innous (#/innous/new-supplier).
+--
+-- Esa pantalla de Innous funciona SIN necesitar la service_role key: crea
+-- al usuario nuevo con un cliente de Supabase aparte (sin afectar tu
+-- sesión), y ese usuario nuevo inserta su propio renglón en `profiles` y
+-- `suppliers` — exactamente las mismas políticas de "un usuario crea su
+-- propio registro" que ya existían para el registro público. Por eso NO
+-- se pueden quitar esas políticas de insert aquí sin romper la pantalla
+-- de Innous también.
+--
+-- Consecuencia honesta: alguien que supiera llamar directamente a la API
+-- de Supabase (no desde el sitio) todavía técnicamente podría crear una
+-- cuenta de proveedor por su cuenta, saltándose el sitio por completo.
+-- Cerrar esa puerta del todo requeriría una Edge Function con la
+-- service_role key (que nunca debe compartirse conmigo) — si más adelante
+-- quieres cerrarla por completo, es un cambio aparte que puedo ayudarte a
+-- preparar.

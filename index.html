@@ -1073,6 +1073,22 @@ let PROJECTS = [];
 const SUPABASE_URL = 'https://axbtkcfblzgyosxzxiud.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4YnRrY2ZibHpneW9zeHp4aXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDU2NDUsImV4cCI6MjEwNDU4MTY0NX0.7eXLIi2c-6dxVUAX0cbNe7B54KriVgDeH6Unq-UbUfc';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// A throwaway client, used only by App.createSupplierAccount (fix50) to run
+// auth.signUp() for a NEW supplier without disturbing Innous's own session
+// in `sb` above. supabase-js keeps each client's session in its own memory
+// (persistSession:false here even skips localStorage), so calling
+// .auth.signUp() on THIS instance authenticates only this instance as the
+// new user — `sb` (and whoever's looking at the screen) never notices.
+// This is what lets Innous create an account with a real password without
+// ever touching the Supabase service_role key or an Edge Function: the
+// brand-new user's own (temporary) session is what satisfies the same
+// "insert your own profile/supplier row" RLS policies self-signup already
+// relies on — see App.createSupplierAccount.
+function createIsolatedAuthClient(){
+  return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 /* Supabase rows use snake_case columns; the rest of this file expects the
@@ -1888,7 +1904,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -2920,6 +2936,7 @@ const NAV = {
     {id:'rfqs', label:'RFQs', icon:'file-text', path:'#/innous/rfqs'},
     {id:'customers', label:'Clientes', icon:'building-2', path:'#/innous/customers'},
     {id:'suppliers', label:'Proveedores', icon:'factory', path:'#/innous/suppliers'},
+    {id:'new-supplier', label:'Crear Cuenta de Proveedor', icon:'user-plus', path:'#/innous/new-supplier'},
     {id:'quotes', label:'Cotizaciones', icon:'file-diff', path:'#/innous/quotes'},
     {id:'orders', label:'Pedidos', icon:'package', path:'#/innous/orders'},
     {id:'production', label:'Producción', icon:'cog', path:'#/innous/production'},
@@ -3109,8 +3126,7 @@ function badgeForNav(id){
 function logoSvgMarkup(){ return document.querySelector('#app-shell .logo-svg')?.outerHTML || ''; }
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
-  if(STATE.authView==='role-pick') root.innerHTML = renderRoleSelect();
-  else if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
+  if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
   else if(STATE.authView==='login') root.innerHTML = renderLoginForm();
   else root.innerHTML = renderLanding();
   lucide.createIcons();
@@ -3156,35 +3172,12 @@ function renderLanding(){
     ${authFooterLinks()}
   </div>`;
 }
-function renderRoleSelect(){
-  return `
-  <div class="auth-shell">
-    <div class="auth-mesh"></div>
-    ${authTopbar()}
-    <div class="auth-main">
-      <div style="width:100%;max-width:620px;">
-        <div class="auth-back" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>Back</div>
-        <div class="auth-card-title" style="text-align:center;font-size:24px;">Create your account</div>
-        <div class="auth-card-sub" style="text-align:center;font-size:14px;margin-bottom:28px;">First, tell us who you are.</div>
-        <div class="role-pick-grid">
-          <button class="role-pick-card" onclick="App.pickSignupRole('CLIENT')">
-            <i data-lucide="arrow-right" class="role-pick-arrow"></i>
-            <div class="role-pick-icon"><i data-lucide="building-2"></i></div>
-            <div class="role-pick-title">I'm a Client</div>
-            <div class="role-pick-sub">I need parts or products manufactured and want to source verified partners in Mexico.</div>
-          </button>
-          <button class="role-pick-card" onclick="App.pickSignupRole('SUPPLIER')">
-            <i data-lucide="arrow-right" class="role-pick-arrow"></i>
-            <div class="role-pick-icon"><i data-lucide="factory"></i></div>
-            <div class="role-pick-title">Soy un Proveedor</div>
-            <div class="role-pick-sub">Fabrico piezas o productos y quiero recibir solicitudes de cotización de clientes en EE.UU.</div>
-          </button>
-        </div>
-      </div>
-    </div>
-    ${authFooterLinks()}
-  </div>`;
-}
+/* Removed (fix50): this used to let a visitor pick Client vs. Supplier
+   before signing up. Suppliers no longer self-register — see
+   App.goToSignup() / #/innous/new-supplier — so with only one role left
+   there's nothing left to pick; renderSignupForm() still branches on
+   STATE.signupRole internally (harmless, just never reached with
+   'SUPPLIER' from this UI anymore) but the picker screen itself is gone. */
 function renderSignupForm(){
   const role = STATE.signupRole;
   const es = role==='SUPPLIER';
@@ -3413,21 +3406,30 @@ const TOUR_STEPS = {
 function accountModalHtml(){
   const es = STATE.role!=='CLIENT';
   const d = STATE.ui.accountDraft;
-  const {nameLabel, companyLabel, showCompany, initialsText} = STATE.ui.accountModalMeta;
+  const {nameLabel, companyLabel, showCompany, initialsText, readOnlyProfile} = STATE.ui.accountModalMeta;
   const pwOpen = !!STATE.ui.accountShowPasswordSection;
   return `
   <div class="modal-header"><h3>${es?'Configuración de Cuenta':'Account Settings'}</h3><button class="modal-close" onclick="App.closeAccountModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
     <div class="account-photo-row">
       ${avatarHtml(d.photo, initialsText, 'var(--navy)', 64)}
+      ${readOnlyProfile ? '' : `
       <div>
         <input type="file" id="account-photo-input" accept="image/*" style="display:none;" onchange="App.onPhotoSelected(this)">
         <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('account-photo-input').click()"><i data-lucide="camera"></i>${es?'Cambiar foto':'Change photo'}</button>
         <div class="field-hint">${es?'Se recorta a 1:1 y se muestra en círculo.':'Cropped to 1:1 and shown in a circle.'}</div>
-      </div>
+      </div>`}
     </div>
+    ${readOnlyProfile ? `
+    <div class="info-grid" style="margin-bottom:16px;">
+      <div><div class="info-item-label">${nameLabel}</div><div class="info-item-val">${d.name||'—'}</div></div>
+      ${showCompany?`<div><div class="info-item-label">${companyLabel}</div><div class="info-item-val">${d.company||'—'}</div></div>`:''}
+    </div>
+    <div class="section-sub" style="margin-bottom:16px;">Solo Innous puede editar esta información — contáctalos para hacer cambios.</div>
+    ` : `
     <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
     ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+    `}
     ${STATE.authMode==='account'?`
     <div class="account-pw-toggle ${pwOpen?'open':''}" onclick="App.toggleAccountPasswordSection()">
       <div class="account-pw-toggle-icon"><i data-lucide="lock"></i></div>
@@ -4708,6 +4710,7 @@ ROUTES['innous/customer'] = function(id){
     <div class="breadcrumb"><a href="#/innous/customers">Clientes</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${c.company}</span></div>
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), null, 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Cliente desde ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
+        <button class="btn btn-secondary" onclick="App.editAccountFromDetail('customer','${c.id}')"><i data-lucide="pencil"></i>Editar</button>
         <button class="btn btn-primary" onclick="App.startChat('client','${c.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
         <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
@@ -4716,7 +4719,15 @@ ROUTES['innous/customer'] = function(id){
       ${kpiCard('Pedidos Activos', activeOrders, 'en producción o adjudicados', 'cog')}
       ${kpiCard('Pedidos Completados', completed, 'entregados a la fecha', 'check-circle')}
     </div>
-    ${customerContactSection(c)}
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Información de Contacto</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${c.contact||'—'}</div></div>
+        <div><div class="info-item-label">Puesto</div><div class="info-item-val">${c.position||'—'}</div></div>
+        <div><div class="info-item-label">Correo</div><div class="info-item-val">${c.email||'—'}</div></div>
+        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${c.phone||'—'}</div></div>
+      </div>
+    </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -4725,7 +4736,12 @@ ROUTES['innous/customer'] = function(id){
         <div><div class="info-item-label">Registrado</div><div class="info-item-val">${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div>
       </div>
     </div>
-    ${customerBillingSection(c)}
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Datos de Facturación</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Domicilio</div><div class="info-item-val">${c.address||'—'}</div></div>
+      </div>
+    </div>
     ${proj.length ? `
     <div class="card" style="margin-top:16px;"><div class="card-header"><div class="section-title" style="margin:0;">Historial de RFQs</div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Proyecto</th><th>Estatus</th><th>Creado</th></tr></thead><tbody>
       ${proj.map(p=>`<tr class="row-link" onclick="navigate('#/innous/rfq/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${statusBadge(p)}</td><td class="td-sub">${fmtDate(p.createdAt)}</td></tr>`).join('')}
@@ -4778,7 +4794,8 @@ function customerBillingSection(c){
 ROUTES['innous/suppliers'] = function(){
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Proveedores</div><div class="page-subtitle">${SUPPLIERS.length} socios de manufactura verificados en México</div></div></div>
+    <div class="page-header"><div><div class="page-title">Proveedores</div><div class="page-subtitle">${SUPPLIERS.length} socios de manufactura verificados en México</div></div>
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/innous/new-supplier')"><i data-lucide="user-plus"></i>Crear Cuenta de Proveedor</button></div></div>
     <div class="grid grid-3">
       ${SUPPLIERS.map(s=>{
         const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
@@ -4799,6 +4816,45 @@ ROUTES['innous/suppliers'] = function(){
   </div>`;
 };
 
+/* ---- INNOUS creates a supplier account (fix50) ----
+   Suppliers no longer self-register (see App.goToSignup / the removed
+   role-pick screen) — this is now the only door in, so Innous can vet who
+   gets an account instead of trusting whatever a public signup form was
+   handed. Minimal on purpose: just what's needed to get the account
+   working (login, who to contact, company name, a photo) — everything
+   else (RFC, Razón Social, Domicilio, capabilities, certs…) gets filled in
+   afterward from the supplier's own detail page, same as any other
+   supplier today. See App.createSupplierAccount for how this avoids
+   needing the Supabase service_role key. */
+ROUTES['innous/new-supplier'] = function(){
+  if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = { email:'', password:'', password2:'', contactName:'', company:'', photo:null };
+  const d = STATE.ui.newSupplierDraft;
+  const upd = (f)=>`STATE.ui.newSupplierDraft.${f}=this.value`;
+  return `
+  <div class="content-inner" style="max-width:560px;">
+    <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Crear Cuenta de Proveedor</span></div>
+    <div class="page-header"><div><div class="page-title">Crear Cuenta de Proveedor</div><div class="page-subtitle">Los proveedores ya no se registran solos — su cuenta la crea Innous.</div></div></div>
+    <div class="card card-pad">
+      <div class="account-photo-row">
+        ${avatarHtml(d.photo, initials(d.company||d.contactName||'PR'), 'var(--navy)', 64)}
+        <div>
+          <input type="file" id="new-supplier-photo-input" accept="image/*" style="display:none;" onchange="App.onNewSupplierPhotoSelected(this)">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('new-supplier-photo-input').click()"><i data-lucide="camera"></i>${d.photo?'Cambiar foto':'Subir foto'}</button>
+          <div class="field-hint">Se recorta a 1:1 y se muestra en círculo. Opcional.</div>
+        </div>
+      </div>
+      <div class="form-group"><label class="field-label">Empresa</label><input type="text" value="${escAttr(d.company)}" placeholder="Razón o nombre comercial" oninput="${upd('company')}"></div>
+      <div class="form-group"><label class="field-label">Nombre del Contacto</label><input type="text" value="${escAttr(d.contactName)}" oninput="${upd('contactName')}"></div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" placeholder="con el que iniciará sesión" oninput="${upd('email')}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">Contraseña</label><input type="password" value="${escAttr(d.password)}" placeholder="mínimo 6 caracteres" oninput="${upd('password')}"></div>
+        <div class="form-group"><label class="field-label">Confirmar Contraseña</label><input type="password" value="${escAttr(d.password2)}" oninput="${upd('password2')}"></div>
+      </div>
+      <div class="field-hint">El proveedor usará este correo y contraseña para entrar a su panel. Solo Innous podrá editar su información después — el proveedor no podrá cambiarla él mismo.</div>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button class="btn btn-primary" onclick="App.createSupplierAccount()"><i data-lucide="user-plus"></i>Crear Cuenta</button></div>
+    </div>
+  </div>`;
+};
 /* ---- INNOUS Supplier Detail ---- */
 ROUTES['innous/supplier'] = function(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Proveedor no encontrado','');
@@ -4809,6 +4865,7 @@ ROUTES['innous/supplier'] = function(id){
     <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), null, 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Socio desde ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
+        <button class="btn btn-secondary" onclick="App.editAccountFromDetail('supplier','${s.id}')"><i data-lucide="pencil"></i>Editar</button>
         <button class="btn btn-primary" onclick="App.startChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
         <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
@@ -4818,7 +4875,15 @@ ROUTES['innous/supplier'] = function(id){
       ${kpiCard('Calidad', s.quality+'%', 'tasa de aceptación', 'shield-check')}
       ${kpiCard('Proyectos Ganados', won, 'de '+proj.length+' invitados', 'trophy')}
     </div>
-    ${supplierContactSection(s)}
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Información de Contacto</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Nombre de Contacto</div><div class="info-item-val">${s.contactName||'—'}</div></div>
+        <div><div class="info-item-label">Puesto</div><div class="info-item-val">${s.position||'—'}</div></div>
+        <div><div class="info-item-label">Correo</div><div class="info-item-val">${s.email||'—'}</div></div>
+        <div><div class="info-item-label">Teléfono</div><div class="info-item-val">${s.phone||'—'}</div></div>
+      </div>
+    </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de la Empresa</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -4829,7 +4894,15 @@ ROUTES['innous/supplier'] = function(id){
         <div><div class="info-item-label">Capacidad</div><div class="info-item-val">${s.capacity||'—'}</div></div>
       </div>
     </div>
-    ${supplierBillingSection(s)}
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Datos de Facturación</div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Razón Social</div><div class="info-item-val">${s.legalName||s.name||'—'}</div></div>
+        <div><div class="info-item-label">RFC</div><div class="info-item-val">${s.rfc||'—'}</div></div>
+        <div><div class="info-item-label">Domicilio</div><div class="info-item-val">${s.address||'—'}</div></div>
+      </div>
+      ${s.csfFilePath?`<div style="margin-top:12px;"><button type="button" class="btn btn-ghost btn-sm" onclick="App.viewSupplierCsf('${s.id}')"><i data-lucide="file-text"></i>Ver Constancia de Situación Fiscal</button></div>`:''}
+    </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Servicios Ofrecidos</div>
       <div class="cap-list" style="margin-top:10px;">${s.capabilities.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
@@ -5966,7 +6039,11 @@ ROUTES['supplier/profile'] = function(){
 const App = {
   /* ---- Auth: landing / signup / login ---- */
   goToLogin(){ STATE.authView='login'; renderAuthRoot(); },
-  goToSignup(){ STATE.authView='role-pick'; renderAuthRoot(); },
+  // Suppliers no longer self-register (fix50) — Innous creates their
+  // accounts from #/innous/new-supplier, precisely to keep fake/unverified
+  // suppliers off the platform. With only one public role left, skip the
+  // now-pointless "who are you" picker and go straight to the Client form.
+  goToSignup(){ App.pickSignupRole('CLIENT'); },
   backToLanding(){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); },
   pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; STATE.ui.signupStep=0; renderAuthRoot(); },
   async submitSignup(e){
@@ -6012,6 +6089,50 @@ const App = {
       if(submitBtn) submitBtn.disabled = false;
     }
     return false;
+  },
+  // Innous creates a supplier's account (fix50) — see the comment on
+  // createIsolatedAuthClient() for why this is safe to run from Innous's
+  // own logged-in session without kicking Innous out of it. Everything
+  // beyond these five fields (RFC, Razón Social, Domicilio, capabilities,
+  // certs…) is filled in later from the new supplier's own detail page,
+  // exactly like any other supplier — this just gets a working login and
+  // the minimum to identify them.
+  async createSupplierAccount(){
+    const d = STATE.ui.newSupplierDraft;
+    const email = (d.email||'').trim().toLowerCase();
+    const password = d.password||'', password2 = d.password2||'';
+    const company = (d.company||'').trim(), contactName = (d.contactName||'').trim();
+    if(!email || !email.includes('@')){ showToast('Escribe un correo válido.'); return; }
+    if(password.length<6){ showToast('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if(password!==password2){ showToast('Las contraseñas no coinciden.'); return; }
+    if(!company){ showToast('Escribe el nombre de la empresa.'); return; }
+    if(!contactName){ showToast('Escribe el nombre del contacto.'); return; }
+    try{
+      const tempClient = createIsolatedAuthClient();
+      const { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup');
+      if(error || !data.user){ showToast(error?.message || 'No se pudo crear la cuenta.'); return; }
+      if(!data.session){
+        // Email confirmation is on for this project — the new user exists
+        // but isn't authenticated yet, so the self-insert calls below would
+        // fail RLS. Not expected (self-signup already relies on this being
+        // off), but fail loudly rather than leaving a half-created account.
+        showToast('La cuenta se creó pero requiere confirmación por correo — revisa la configuración de autenticación en Supabase.');
+        return;
+      }
+      const { error: profileErr } = await tempClient.from('profiles').insert({ user_id: data.user.id, role: 'SUPPLIER' });
+      if(profileErr){ showToast('Cuenta creada, pero falló el perfil: '+profileErr.message); return; }
+      const { error: supplierErr } = await tempClient.from('suppliers').insert({
+        user_id: data.user.id, name: company, contact_name: contactName, email, photo_url: d.photo||null,
+      });
+      if(supplierErr){ showToast('Cuenta creada, pero falló el registro de proveedor: '+supplierErr.message); return; }
+      await refreshRealCustomersAndSuppliers();
+      STATE.ui.newSupplierDraft = null;
+      showToast('Cuenta de proveedor creada', 'success');
+      navigate('#/innous/supplier/'+data.user.id);
+    }catch(err){
+      console.error('createSupplierAccount failed', err);
+      showToast('No se pudo conectar. Intenta de nuevo.');
+    }
   },
   async submitLogin(e){
     e.preventDefault();
@@ -6318,7 +6439,7 @@ const App = {
   },
   signupPrevStep(){
     const cur = STATE.ui.signupStep||0;
-    if(cur===0){ STATE.authView='role-pick'; renderAuthRoot(); return; }
+    if(cur===0){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); return; }
     const form = document.getElementById('signup-form');
     const steps = Array.from(form.querySelectorAll('.signup-step'));
     steps[cur].style.display = 'none';
@@ -6356,7 +6477,13 @@ const App = {
       initialsText = 'IN';
       if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null};
     }
-    STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, initialsText};
+    // fix50: suppliers can no longer edit their own name/company/photo —
+    // only Innous can (see supabase-fix50 dropping their self-UPDATE
+    // policy on `suppliers`). Password stays self-service below; that's a
+    // login-security concern, not the business-data integrity one this
+    // restriction exists for.
+    const readOnlyProfile = STATE.role==='SUPPLIER';
+    STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, initialsText, readOnlyProfile};
     openModal(accountModalHtml());
   },
   reopenAccountModal(){
@@ -6405,8 +6532,11 @@ const App = {
       const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo;
       if(STATE.authMode==='account'){ ({error: err} = await sb.from('customers').update({ contact: rec.contact, company: rec.company, photo_url: rec.photo }).eq('user_id', STATE.clientId)); }
     } else if(STATE.role==='SUPPLIER'){
-      const rec = currentSupplier(); rec.contactName = d.name.trim()||rec.contactName; rec.name = d.company.trim()||rec.name; rec.photo = d.photo;
-      if(STATE.authMode==='account'){ ({error: err} = await sb.from('suppliers').update({ contact_name: rec.contactName, name: rec.name, photo_url: rec.photo }).eq('user_id', STATE.supplierId)); }
+      // fix50: nothing to save here anymore — name/company/photo are
+      // read-only for the supplier themselves (see accountModalHtml's
+      // readOnlyProfile branch, and supabase-fix50 dropping their
+      // self-UPDATE policy on `suppliers`). Only the password change below
+      // still applies.
     } else {
       INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo;
       if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo }).eq('user_id', STATE.innousUserId)); }
@@ -6429,11 +6559,21 @@ const App = {
     reader.onload = ()=> App.openCropModal(reader.result);
     reader.readAsDataURL(file);
   },
+  // Same picker, for the new-supplier-account form (fix50) — target:'new-supplier'
+  // tells saveCrop/cancelCrop to write into STATE.ui.newSupplierDraft.photo
+  // and return to that page instead of the Account Settings modal.
+  onNewSupplierPhotoSelected(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=> App.openCropModal(reader.result, 'new-supplier');
+    reader.readAsDataURL(file);
+  },
 
   /* ---- 1:1 photo cropper (pure canvas, no dependencies) ---- */
-  openCropModal(dataUrl){
+  openCropModal(dataUrl, target){
     const es = STATE.role!=='CLIENT';
-    STATE.ui.cropState = {scale:1, x:0, y:0, coverW:0, coverH:0, dataUrl};
+    STATE.ui.cropState = {scale:1, x:0, y:0, coverW:0, coverH:0, dataUrl, target: target||'account'};
     openModal(`
       <div class="modal-header"><h3>${es?'Ajustar foto':'Adjust photo'}</h3><button class="modal-close" onclick="App.cancelCrop()"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
@@ -6514,9 +6654,10 @@ const App = {
     document.onmouseup = onUp; document.ontouchend = onUp;
   },
   cancelCrop(){
+    const target = STATE.ui.cropState?.target || 'account';
     STATE.ui.cropState = null;
     document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
-    App.openAccountModal();
+    if(target==='new-supplier') closeModal(); else App.openAccountModal();
   },
   saveCrop(){
     const c = STATE.ui.cropState;
@@ -6532,10 +6673,18 @@ const App = {
     ctx.drawImage(img, left, top, w, h);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
+    const target = c.target || 'account';
     STATE.ui.cropState = null;
-    if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:'', company:'', photo:null};
-    STATE.ui.accountDraft.photo = dataUrl;
-    App.openAccountModal();
+    if(target==='new-supplier'){
+      if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = { email:'', password:'', password2:'', contactName:'', company:'', photo:null };
+      STATE.ui.newSupplierDraft.photo = dataUrl;
+      closeModal();
+      route();
+    } else {
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:'', company:'', photo:null};
+      STATE.ui.accountDraft.photo = dataUrl;
+      App.openAccountModal();
+    }
   },
   switchRole(role){
     STATE.role = role; STATE.ui.activeChatKey = null;
@@ -7059,6 +7208,15 @@ const App = {
     STATE.ui.customerBillingDrafts[id][field] = val;
   },
   openAccountInfoModal(type, id){ STATE.ui.accountInfoModal = {type, id}; openModal(accountInfoModalHtml(), true); },
+  // The "Editar" button on a customer/supplier's own (now read-only)
+  // detail page — sends Innous to Ajustes and straight into that one
+  // account's edit modal, instead of leaving them to find it themselves
+  // in the Clientes y Proveedores list all over again.
+  editAccountFromDetail(type, id){
+    STATE.ui.settingsOpenSection = 'clientes-proveedores';
+    navigate('#/innous/settings');
+    App.openAccountInfoModal(type, id);
+  },
   toggleSettingsSection(key){ STATE.ui.settingsOpenSection = STATE.ui.settingsOpenSection===key ? null : key; route(); },
   async saveCustomerBillingInfo(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
