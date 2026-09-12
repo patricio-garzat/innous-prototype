@@ -4820,22 +4820,26 @@ ROUTES['innous/suppliers'] = function(){
    Suppliers no longer self-register (see App.goToSignup / the removed
    role-pick screen) — this is now the only door in, so Innous can vet who
    gets an account instead of trusting whatever a public signup form was
-   handed. Minimal on purpose: just what's needed to get the account
-   working (login, who to contact, company name, a photo) — everything
-   else (RFC, Razón Social, Domicilio, capabilities, certs…) gets filled in
-   afterward from the supplier's own detail page, same as any other
-   supplier today. See App.createSupplierAccount for how this avoids
-   needing the Supabase service_role key. */
+   handed. Covers everything the old self-signup form used to collect
+   (capabilities, certs, years operating) plus the CSF upload that already
+   lives on a supplier's own detail page (fix46) — filled in here up front
+   instead of as a second step, though nothing stops adding to it later
+   from that same detail page. See App.createSupplierAccount for how this
+   avoids needing the Supabase service_role key. */
 ROUTES['innous/new-supplier'] = function(){
-  if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = { email:'', password:'', password2:'', contactName:'', company:'', photo:null };
+  if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = {
+    email:'', password:'', password2:'', contactName:'', company:'', photo:null,
+    capabilities:[], certs:[], yearsOperating:'', legalName:'', rfc:'', address:'', csfFile:null,
+  };
   const d = STATE.ui.newSupplierDraft;
   const upd = (f)=>`STATE.ui.newSupplierDraft.${f}=this.value`;
   return `
   <div class="content-inner" style="max-width:560px;">
     <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Crear Cuenta de Proveedor</span></div>
     <div class="page-header"><div><div class="page-title">Crear Cuenta de Proveedor</div><div class="page-subtitle">Los proveedores ya no se registran solos — su cuenta la crea Innous.</div></div></div>
-    <div class="card card-pad">
-      <div class="account-photo-row">
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Cuenta</div>
+      <div class="account-photo-row" style="margin-top:12px;">
         ${avatarHtml(d.photo, initials(d.company||d.contactName||'PR'), 'var(--navy)', 64)}
         <div>
           <input type="file" id="new-supplier-photo-input" accept="image/*" style="display:none;" onchange="App.onNewSupplierPhotoSelected(this)">
@@ -4851,8 +4855,40 @@ ROUTES['innous/new-supplier'] = function(){
         <div class="form-group"><label class="field-label">Confirmar Contraseña</label><input type="password" value="${escAttr(d.password2)}" oninput="${upd('password2')}"></div>
       </div>
       <div class="field-hint">El proveedor usará este correo y contraseña para entrar a su panel. Solo Innous podrá editar su información después — el proveedor no podrá cambiarla él mismo.</div>
-      <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button class="btn btn-primary" onclick="App.createSupplierAccount()"><i data-lucide="user-plus"></i>Crear Cuenta</button></div>
     </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Servicios y Certificaciones</div>
+      <div class="form-group" style="margin-top:12px;">
+        <label class="field-label">Servicios que ofrece</label>
+        <div class="select-chip-grid">${PROCESSES.filter(p=>p!=='Other').map(p=>`
+          <label class="select-chip"><input type="checkbox" ${d.capabilities.includes(p)?'checked':''} onchange="App.toggleNewSupplierListField('capabilities','${p}',this.checked)">${procES(p)}</label>`).join('')}</div>
+      </div>
+      <div class="form-group">
+        <label class="field-label">Certificaciones con las que cuenta</label>
+        <div class="select-chip-grid">${CERTS.map(c=>`
+          <label class="select-chip"><input type="checkbox" ${d.certs.includes(c)?'checked':''} onchange="App.toggleNewSupplierListField('certs','${c}',this.checked)">${c}</label>`).join('')}</div>
+      </div>
+      <div class="form-group" style="margin-bottom:0;"><label class="field-label">Años Operando</label><input type="number" min="0" style="max-width:160px;" value="${escAttr(d.yearsOperating)}" oninput="${upd('yearsOperating')}"></div>
+    </div>
+    <div class="card card-pad">
+      <div class="section-title">Datos de Facturación</div>
+      <div class="section-sub">Lo que pide una Constancia de Situación Fiscal — súbela y se leen solos.</div>
+      <div class="form-group" style="margin-top:12px;">
+        <label class="field-label">Constancia de Situación Fiscal (PDF)</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input type="file" id="new-supplier-csf-input" accept=".pdf,application/pdf" style="display:none;" onchange="App.onNewSupplierCsfSelected(this)">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('new-supplier-csf-input').click()"><i data-lucide="upload"></i>Subir Constancia (PDF)</button>
+          ${d.csfFile?`<span class="td-sub">${escAttr(d.csfFile.name)}</span>`:''}
+        </div>
+        <div class="field-hint">Se leen automáticamente Razón Social, RFC y Domicilio — revísalos abajo. Opcional, se puede subir después.</div>
+      </div>
+      <div class="form-group"><label class="field-label">Razón Social</label><input type="text" value="${escAttr(d.legalName)}" oninput="${upd('legalName')}"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" placeholder="XXXX000000XX0" oninput="${upd('rfc')}"></div>
+        <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" oninput="${upd('address')}"></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button class="btn btn-primary" onclick="App.createSupplierAccount()"><i data-lucide="user-plus"></i>Crear Cuenta</button></div>
   </div>`;
 };
 /* ---- INNOUS Supplier Detail ---- */
@@ -5996,39 +6032,38 @@ ROUTES['supplier/performance'] = function(){
 };
 
 /* ---- Supplier Company Profile ---- */
+// Read-only (fix52) — suppliers can no longer edit any of this themselves
+// (see supabase-fix50 dropping their self-UPDATE policy on `suppliers`);
+// only Innous can, from Ajustes. This used to be a live edit form
+// (name/city/capacity inputs, toggleable capability tags, its own
+// App.saveSupplierProfile — none of which persisted to Supabase even
+// before this, since it only ever mutated the in-memory SUPPLIERS entry)
+// — now it's just a summary of what Innous has set up.
 ROUTES['supplier/profile'] = function(){
   const s = currentSupplier();
-  if(!STATE.ui.supplierProfileDraft || STATE.ui.supplierProfileDraft._id!==s.id){
-    STATE.ui.supplierProfileDraft = { _id:s.id, name:s.name, city:s.city, capacity:s.capacity };
-  }
-  const d = STATE.ui.supplierProfileDraft;
   return `
   <div class="content-inner" style="max-width:760px;">
-    <div class="page-header"><div><div class="page-title">Perfil de la Empresa</div><div class="page-subtitle">Mantenlo actualizado para recibir más solicitudes de cotización (RFQs)</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveSupplierProfile()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
+    <div class="page-header"><div><div class="page-title">Perfil de la Empresa</div><div class="page-subtitle">Esta información la administra Innous — contáctalos para actualizarla.</div></div></div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de la Empresa</div>
-      <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.supplierProfileDraft.name=this.value"></div>
-        <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" oninput="STATE.ui.supplierProfileDraft.city=this.value"></div>
+      <div class="info-grid" style="margin-top:12px;">
+        <div><div class="info-item-label">Nombre de la Empresa</div><div class="info-item-val">${s.name||'—'}</div></div>
+        <div><div class="info-item-label">Ubicación</div><div class="info-item-val">${s.city||'—'}</div></div>
+        <div><div class="info-item-label">Capacidad</div><div class="info-item-val">${s.capacity||'—'}</div></div>
+        <div><div class="info-item-label">Años Operando</div><div class="info-item-val">${s.yearsOperating||'—'}</div></div>
       </div>
-      <div class="form-group"><label class="field-label">Capacidad</label><input type="text" value="${escAttr(d.capacity)}" oninput="STATE.ui.supplierProfileDraft.capacity=this.value"></div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Servicios que Ofreces</div>
-      <div class="section-sub">Selecciona todos los que apliquen — puedes elegir más de uno.</div>
-      <div class="cap-list" style="margin-top:10px;">${PROCESSES.filter(p=>p!=='Other').map(p=>{
-        const on = s.capabilities.includes(p);
-        return `<button type="button" class="tag" style="cursor:pointer;border:none;${on?'background:var(--navy);color:#fff;':'background:var(--surface-alt);border:1px solid var(--border);color:var(--ink-secondary);'}" onclick="App.toggleSupplierCapability('${p}')">${on?'✓ ':''}${procES(p)}</button>`;
-      }).join('')}</div>
+      <div class="section-title">Servicios que Ofrece</div>
+      <div class="cap-list" style="margin-top:10px;">${s.capabilities.map(p=>`<span class="tag">${procES(p)}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Maquinaria y Equipo</div>
-      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('')}</div>
+      <div class="cap-list" style="margin-top:10px;">${s.machines.map(m=>`<span class="tag">${m}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
     <div class="card card-pad">
       <div class="section-title">Certificaciones</div>
-      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('')}</div>
+      <div class="cap-list" style="margin-top:10px;">${s.certs.map(c=>`<span class="tag">${c}</span>`).join('') || '<span class="td-sub">Sin registrar</span>'}</div>
     </div>
   </div>`;
 };
@@ -6107,6 +6142,7 @@ const App = {
     if(password!==password2){ showToast('Las contraseñas no coinciden.'); return; }
     if(!company){ showToast('Escribe el nombre de la empresa.'); return; }
     if(!contactName){ showToast('Escribe el nombre del contacto.'); return; }
+    if((d.capabilities||[]).length===0){ showToast('Selecciona al menos un servicio que ofrece.'); return; }
     try{
       const tempClient = createIsolatedAuthClient();
       const { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup');
@@ -6123,8 +6159,19 @@ const App = {
       if(profileErr){ showToast('Cuenta creada, pero falló el perfil: '+profileErr.message); return; }
       const { error: supplierErr } = await tempClient.from('suppliers').insert({
         user_id: data.user.id, name: company, contact_name: contactName, email, photo_url: d.photo||null,
+        capabilities: d.capabilities||[], certs: d.certs||[], years_operating: parseInt(d.yearsOperating,10)||0,
+        legal_name: (d.legalName||'').trim(), rfc: (d.rfc||'').trim(), address: (d.address||'').trim(),
       });
       if(supplierErr){ showToast('Cuenta creada, pero falló el registro de proveedor: '+supplierErr.message); return; }
+      // The CSF file itself (as opposed to the fields already parsed from
+      // it, sent above) can only be uploaded now that the account — and
+      // the user_id its storage path is keyed on — actually exists.
+      if(d.csfFile){
+        const path = `${data.user.id}/csf-${Date.now()}.pdf`;
+        const { error: upErr } = await tempClient.storage.from('account-docs').upload(path, d.csfFile, { contentType:'application/pdf' });
+        if(upErr) showToast('Cuenta creada, pero no se pudo guardar el PDF de la Constancia: '+upErr.message);
+        else await tempClient.from('suppliers').update({ csf_file_path: path }).eq('user_id', data.user.id);
+      }
       await refreshRealCustomersAndSuppliers();
       STATE.ui.newSupplierDraft = null;
       showToast('Cuenta de proveedor creada', 'success');
@@ -6568,6 +6615,51 @@ const App = {
     const reader = new FileReader();
     reader.onload = ()=> App.openCropModal(reader.result, 'new-supplier');
     reader.readAsDataURL(file);
+  },
+  // Toggles one value in/out of a checkbox-list field on the new-supplier
+  // draft (capabilities/certs) — same "array of selected values" shape
+  // App.submitSignup used to build from FormData.getAll().
+  toggleNewSupplierListField(field, value, checked){
+    if(!STATE.ui.newSupplierDraft) return;
+    const list = STATE.ui.newSupplierDraft[field];
+    const idx = list.indexOf(value);
+    if(checked && idx===-1) list.push(value);
+    else if(!checked && idx>-1) list.splice(idx,1);
+  },
+  // Parses the CSF right away (same parseCsfText/csfAddressLine as
+  // App.onSupplierCsfSelected) so Innous sees Razón Social/RFC/Domicilio
+  // filled in immediately — but there's no supplier user_id yet to upload
+  // the file under, so the raw File just sits in the draft (never
+  // persisted/serialized — see persistRealData, which only ever touches
+  // PROJECTS) until App.createSupplierAccount uploads it right after the
+  // account itself is created.
+  async onNewSupplierCsfSelected(input){
+    const file = input.files && input.files[0]; input.value = '';
+    if(!file) return;
+    if(!/pdf$/i.test(file.name) && file.type!=='application/pdf'){ showToast('Sube la Constancia de Situación Fiscal en PDF.'); return; }
+    if(!STATE.ui.newSupplierDraft) return;
+    showToast('Leyendo la Constancia…');
+    try{
+      if(!window.pdfjsLib) throw new Error('El lector de PDF no cargó.');
+      const buf = await file.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      const page = await pdfDoc.getPage(1);
+      const content = await page.getTextContent();
+      const text = content.items.map(it=>it.str).join(' ');
+      const fields = parseCsfText(text);
+      const razonSocial = fields['Denominación/Razón Social:'], rfc = fields['RFC:'];
+      const d = STATE.ui.newSupplierDraft;
+      d.csfFile = file;
+      if(razonSocial) d.legalName = razonSocial;
+      if(rfc) d.rfc = rfc;
+      const addr = csfAddressLine(fields);
+      if(addr) d.address = addr;
+      showToast(razonSocial||rfc ? 'Datos detectados de la Constancia — revisa y guarda.' : 'Se guardó el archivo, pero no se pudieron leer los datos — revísalos a mano.', razonSocial||rfc?'success':undefined);
+      route();
+    }catch(err){
+      console.error('CSF parse failed', err);
+      showToast('No se pudo leer el PDF. Verifica el archivo e intenta de nuevo.');
+    }
   },
 
   /* ---- 1:1 photo cropper (pure canvas, no dependencies) ---- */
@@ -7503,26 +7595,9 @@ const App = {
   },
 
   /* ---- Supplier quote submission ---- */
-  toggleSupplierCapability(proc){
-    const s = currentSupplier();
-    const idx = s.capabilities.indexOf(proc);
-    if(idx>-1){
-      if(s.capabilities.length===1){ showToast('Debes mantener al menos un servicio seleccionado'); return; }
-      s.capabilities.splice(idx,1);
-    } else {
-      s.capabilities.push(proc);
-    }
-    route();
-  },
-  saveSupplierProfile(){
-    const s = currentSupplier();
-    const d = STATE.ui.supplierProfileDraft;
-    s.name = d.name.trim()||s.name;
-    s.city = d.city.trim()||s.city;
-    s.capacity = d.capacity.trim()||s.capacity;
-    showToast('Perfil guardado', 'success');
-    route();
-  },
+  // toggleSupplierCapability / saveSupplierProfile removed (fix52) — the
+  // supplier's own "Perfil de la Empresa" page is read-only now, and
+  // nothing else called these.
   async submitSupplierQuote(e,pid){
     e.preventDefault();
     const f = new FormData(e.target);
