@@ -3176,12 +3176,35 @@ async function loadChatImagePreviews(){
   for(const el of els){
     el.setAttribute('data-loaded','1'); // claim it up front — this loop awaits per-item, and another call could otherwise start on the same element mid-fetch
     const path = el.getAttribute('data-attachment-path');
+    // route()'s own scroll-to-bottom already ran by the time this loads —
+    // synchronously, right after render, against the fixed-height loading
+    // placeholder. The real photo's height (width:100%, height:auto) is
+    // whatever its actual aspect ratio works out to, almost never the
+    // placeholder's 140px, so it reflows the thread a moment later and
+    // reads as the chat randomly nudging itself while just sitting there
+    // (fix72) — worse yet on every ~12s poll re-render, since route()
+    // rebuilds the whole thread fresh each time and this whole function
+    // runs again. Whether that reflow is worth correcting for depends on
+    // where the viewer already was: pin back to the bottom only if they
+    // were already there (or close enough — 40px) before it loaded;
+    // otherwise leave their scroll position alone, same as a new message
+    // arriving never yanks it either.
+    const applyImg = (url)=>{
+      const cm = el.closest('.chat-messages');
+      const wasAtBottom = !!cm && (cm.scrollHeight - cm.scrollTop - cm.clientHeight < 40);
+      const img = document.createElement('img');
+      img.alt = '';
+      img.onload = ()=>{ if(wasAtBottom) cm.scrollTop = cm.scrollHeight; };
+      img.src = url;
+      el.innerHTML = '';
+      el.appendChild(img);
+    };
     const cached = chatImageUrlCache.get(path);
-    if(cached && cached.expiresAt>Date.now()){ el.innerHTML = `<img src="${cached.url}" alt="">`; continue; }
+    if(cached && cached.expiresAt>Date.now()){ applyImg(cached.url); continue; }
     const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
     if(error || !data) continue;
     chatImageUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now()+280000 });
-    el.innerHTML = `<img src="${data.signedUrl}" alt="">`;
+    applyImg(data.signedUrl);
   }
 }
 
