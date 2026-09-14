@@ -5143,10 +5143,10 @@ function supplierBillingSection(s){
    supplier's own detail page, just reachable from Ajustes too. Click a
    row, a modal opens with that one account's sections, all under a single
    save button at the bottom (App.saveCustomerAccount/App.saveSupplierAccount)
-   instead of one per section — CSF upload/delete stay as their own
-   immediate actions since they touch Storage, not just draft fields. Saves
-   refresh the modal in place too (see refreshAccountInfoModalIfOpen) so
-   they show immediately without closing it.
+   instead of one per section — clicking it saves everything and closes the
+   modal (fix56). CSF upload/delete stay as their own immediate actions
+   since they touch Storage, not just draft fields — those keep the modal
+   open and just refresh it in place (see refreshAccountInfoModalIfOpen).
    Clientes and Proveedores are two separate, full-width cards (not a
    side-by-side grid — with real company names that ran long, the two
    narrow columns pushed their table wider than the column and spilled
@@ -7441,7 +7441,8 @@ const App = {
     }
     Object.assign(c, next);
     showToast('Cambios guardados', 'success');
-    refreshAccountInfoModalIfOpen('customer', id);
+    STATE.ui.accountInfoModal = null;
+    closeModal();
     route();
   },
   updateSupplierBillingDraft(id,field,val){
@@ -7497,7 +7498,8 @@ const App = {
     }
     Object.assign(s, next);
     showToast('Cambios guardados', 'success');
-    refreshAccountInfoModalIfOpen('supplier', id);
+    STATE.ui.accountInfoModal = null;
+    closeModal();
     route();
   },
   // Reads a supplier's uploaded Constancia de Situación Fiscal (a real PDF
