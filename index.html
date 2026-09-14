@@ -1089,6 +1089,49 @@ function fmtMXNPdf2(n){return fmtMXNPdf(n);}
 // this figure, not the pre-tax quoted amount, so it always matches the PO.
 const IVA_RATE = 0.16;
 function withIva(n){ return n*(1+IVA_RATE); }
+/* ---- "Importe con letra" (fix63) — the Orden de Compra's total spelled
+   out in words, e.g. "SESENTA Y SIETE MIL DOSCIENTOS OCHENTA PESOS 00/100
+   M.N." for $67,280.00, same convention as a Mexican invoice/cheque. The
+   "un"/"veintiun" forms below are deliberately the apocopated ones (not
+   "uno"/"veintiuno") since this is only ever used immediately before the
+   noun "PESO(S)" — e.g. "TREINTA Y UN PESOS", never "TREINTA Y UNO PESOS". */
+function numGrupoALetras(n){ // 0-999, no trailing "PESOS" — that's added by montoConLetraMXN
+  if(n===0) return '';
+  if(n===100) return 'CIEN';
+  const unidades = ['','UN','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE'];
+  const especiales = {10:'DIEZ',11:'ONCE',12:'DOCE',13:'TRECE',14:'CATORCE',15:'QUINCE',16:'DIECISÉIS',17:'DIECISIETE',18:'DIECIOCHO',19:'DIECINUEVE',20:'VEINTE',
+    21:'VEINTIUN',22:'VEINTIDÓS',23:'VEINTITRÉS',24:'VEINTICUATRO',25:'VEINTICINCO',26:'VEINTISÉIS',27:'VEINTISIETE',28:'VEINTIOCHO',29:'VEINTINUEVE'};
+  const decenas = ['','','','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'];
+  const centenas = ['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
+  const c = Math.floor(n/100), resto = n%100;
+  const parts = [];
+  if(c>0) parts.push(centenas[c]);
+  if(resto>0){
+    if(especiales[resto]) parts.push(especiales[resto]);
+    else if(resto<10) parts.push(unidades[resto]);
+    else {
+      const d = Math.floor(resto/10), u = resto%10;
+      parts.push(u===0 ? decenas[d] : decenas[d]+' Y '+unidades[u]);
+    }
+  }
+  return parts.join(' ');
+}
+function numeroALetras(n){ // integer >=0, up to 999,999,999
+  n = Math.floor(n);
+  if(n===0) return 'CERO';
+  if(n>=1e9) return n.toLocaleString('es-MX'); // absurdly large PO — bail out rather than garble it
+  const millones = Math.floor(n/1e6), miles = Math.floor((n%1e6)/1000), resto = n%1000;
+  const parts = [];
+  if(millones>0) parts.push(millones===1 ? 'UN MILLÓN' : numGrupoALetras(millones)+' MILLONES');
+  if(miles>0) parts.push(miles===1 ? 'MIL' : numGrupoALetras(miles)+' MIL');
+  if(resto>0) parts.push(numGrupoALetras(resto));
+  return parts.join(' ');
+}
+function montoConLetraMXN(amount){
+  const cents = Math.round((amount||0)*100); // avoid float drift (e.g. subtotal*1.16) before splitting pesos/centavos
+  const pesos = Math.floor(cents/100), centavos = cents%100;
+  return `${numeroALetras(pesos)} ${pesos===1?'PESO':'PESOS'} ${String(centavos).padStart(2,'0')}/100 M.N.`;
+}
 function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
 function daysFromNow(n){return addDays(new Date('2026-09-08'),n);}
 
@@ -2698,9 +2741,15 @@ function generatePurchaseOrderPdf(p){
   ty += 18;
   doc.setDrawColor(210,210,214); doc.rect(col2X, y, totW, ty-y, 'S');
   doc.setFont('Calibri','italic'); doc.setFontSize(7); doc.setTextColor(...inkSec);
-  doc.text('Importe con letra: ________________________________ 00/100 M.N.', col2X, ty+11);
+  // Spelled out from the actual total (montoConLetraMXN above) instead of
+  // a blank line to fill in by hand — wraps onto a second line by itself
+  // (splitTextToSize) for a total large enough to need it.
+  const letraLines = doc.splitTextToSize(`Importe con letra: ${montoConLetraMXN(totalConIva)}`, totW-4);
+  doc.text(letraLines, col2X, ty+11);
+  const letraLineH = 8.2;
+  const letraBottom = ty + 11 + (letraLines.length-1)*letraLineH;
 
-  y = Math.max(obsBottom, ty+11) + 16;
+  y = Math.max(obsBottom, letraBottom) + 16;
 
   // ---- Condiciones Generales de Compra ----
   doc.setFont('Calibri','bold'); doc.setFontSize(8); doc.setTextColor(...ink);
