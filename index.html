@@ -1575,7 +1575,7 @@ async function pollLiveUpdates(){
     if(STATE.role==='INNOUS') await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
-    if(STATE.role==='INNOUS') await refreshRealSettings();
+    await refreshRealSettings(); // fix64 — readable by every role, not just INNOUS; see enterAppAsUser
     await refreshNotifications();
   }catch(err){
     console.error('pollLiveUpdates failed', err); // stay silent to the user — a background refresh hiccup shouldn't interrupt whatever they're doing; it just tries again next tick
@@ -1636,8 +1636,17 @@ async function enterAppAsUser(user){
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
-    await refreshRealSettings();
   }
+  // Settings (fix64) — the `settings` row is readable by every role (see
+  // "todos pueden leer settings" in supabase-schema.sql), not just INNOUS,
+  // and it's exactly what a CLIENT's formal-quote PDF and a SUPPLIER's own
+  // PO both read Innous's legal name/RFC/address/phone/email from
+  // (generateQuotePdf/generatePurchaseOrderPdf). This used to only run in
+  // the INNOUS branch above, so a client/supplier's STATE.settings was
+  // never anything but loadSettings()'s DEFAULT_SETTINGS fallback — their
+  // downloaded PDF showed whatever was hardcoded in the app, never what
+  // Innous had actually customized in Ajustes.
+  await refreshRealSettings();
   await refreshNotifications();
   document.getElementById('auth-root').style.display = 'none';
   document.getElementById('app-shell').style.display = '';
