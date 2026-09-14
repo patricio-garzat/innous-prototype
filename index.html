@@ -585,6 +585,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   100%{transform:scale(1) translateY(0);opacity:1;}
 }
 .chat-bubble.bubble-pop-in{animation:bubblePopIn .32s cubic-bezier(.34,1.56,.64,1) both;transform-origin:bottom right;}
+.chat-bubble.in.bubble-pop-in{transform-origin:bottom left;}
 .chat-bg-swatch{border:2px solid var(--border);border-radius:var(--radius);padding:0;cursor:pointer;overflow:hidden;background:none;text-align:left;}
 .chat-bg-swatch.active{border-color:var(--accent);}
 .chat-bg-swatch-preview{height:52px;}
@@ -1592,6 +1593,48 @@ function startLiveUpdates(){
 function stopLiveUpdates(){
   if(liveUpdatesTimer){ clearInterval(liveUpdatesTimer); liveUpdatesTimer = null; }
 }
+/* ---- Realtime chat (fix66) — the note above explains why the rest of the
+   app deliberately polls instead of using Supabase Realtime: subscribing a
+   client/supplier directly to `orders`/`shortlist` would broadcast
+   supplier_cost/markup_pct/supplier_id straight into their browser, which
+   is exactly what the confidentiality model exists to prevent.
+   messages_general carries none of that — just who it's between, its
+   text, and an optional attachment/shared-card reference — so it's the
+   one table this app is fine subscribing to directly. RLS ("dueño ve/envía
+   su chat general" / "INNOUS ve todos los chats generales" in
+   supabase-schema.sql) is enforced by Postgres Changes exactly like any
+   other read, so a client's or supplier's channel only ever receives
+   events for their OWN rows no matter what — the .filter below just cuts
+   down on unnecessary traffic, it isn't the actual security boundary.
+   On every event this still doesn't trust the realtime payload directly —
+   it re-runs the same already-audited refreshRealMessages() fetch, then
+   re-renders only if a Messages page is actually open right now (and only
+   if the viewer isn't mid-typing, same guard pollLiveUpdates uses, so an
+   incoming reply never yanks focus out of the compose box). Requires
+   `messages_general` to be added to the `supabase_realtime` publication —
+   see supabase-fix66-realtime-chat.sql — without that step this silently
+   never fires and chat just falls back to the 12s poll above, same as
+   before this fix. */
+let chatRealtimeChannel = null;
+function startChatRealtime(){
+  stopChatRealtime();
+  const filter = STATE.role==='CLIENT' ? `owner_id=eq.${STATE.clientId}`
+    : STATE.role==='SUPPLIER' ? `owner_id=eq.${STATE.supplierId}`
+    : undefined; // INNOUS sees every conversation — no filter
+  chatRealtimeChannel = sb.channel('messages_general_'+(STATE.innousUserId||STATE.clientId||STATE.supplierId))
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async ()=>{
+      await refreshRealMessages();
+      const onMessagesPage = /^#\/(client|innous|supplier)\/messages/.test(location.hash);
+      const active = document.activeElement;
+      const isTyping = active && ['INPUT','TEXTAREA'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
+      if(onMessagesPage && !isTyping){ STATE.ui.chatJustReceived = true; route(); }
+      refreshNotifications();
+    })
+    .subscribe();
+}
+function stopChatRealtime(){
+  if(chatRealtimeChannel){ sb.removeChannel(chatRealtimeChannel); chatRealtimeChannel = null; }
+}
 async function pollLiveUpdates(){
   if(document.hidden || liveUpdatesInFlight) return; // background tab, or previous poll still running (slow network) — skip this tick rather than pile up
   liveUpdatesInFlight = true;
@@ -1686,6 +1729,7 @@ async function enterAppAsUser(user){
   // meaningful hash yet, so it falls back to home exactly as before.
   route();
   startLiveUpdates();
+  startChatRealtime();
 }
 function buildProjects(){
   PROJECTS = [];
@@ -2027,7 +2071,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4126,13 +4170,17 @@ ROUTES['client/order'] = function(id){
    clickable to open (via a signed URL — see App.openChatFile) once it's a
    real uploaded file; a demo/local-only one just shows the filename. ---- */
 function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
-  // One-shot "I just sent this" flag (fix65) — set by App.sendChatMessage/
-  // sendChatCard right before the render that first shows the new bubble,
-  // and consumed (cleared) right here, so only THAT render animates it —
-  // switching threads or the 12s live-update poll re-rendering the exact
-  // same messages later never replays the send animation.
+  // One-shot "just sent"/"just received" flags (fix65, extended by fix66
+  // for realtime) — set right before the one render that should show the
+  // new bubble animating in (App.sendChatMessage/sendChatCard for "sent";
+  // startChatRealtime's event handler for "received"), and consumed
+  // (cleared) right here, so only THAT render animates it — switching
+  // threads or the 12s live-update poll re-rendering the exact same
+  // messages later never replays it.
   const justSent = STATE.ui.chatJustSent;
+  const justReceived = STATE.ui.chatJustReceived;
   STATE.ui.chatJustSent = false;
+  STATE.ui.chatJustReceived = false;
   const rows = msgs.map((m,i)=>{
     const mine = m.from===mineFrom;
     const label = mine ? 'You' : (m.from==='innous' ? 'INNOUS' : youLabel);
@@ -4144,7 +4192,8 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
       attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
     }
     const cardHtml = m.cardType ? chatCardHtml(m) : '';
-    const animate = justSent && mine && i===msgs.length-1;
+    const isLast = i===msgs.length-1;
+    const animate = isLast && ((justSent && mine) || (justReceived && !mine));
     return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
@@ -6502,6 +6551,7 @@ const App = {
   },
   async logOut(){
     stopLiveUpdates();
+    stopChatRealtime();
     await sb.auth.signOut();
     STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
     // Clear the hash so a different person logging in afterward on this same
@@ -7084,6 +7134,7 @@ const App = {
     document.getElementById('role-menu').classList.remove('open');
     const home = role==='CLIENT'?'#/client/dashboard':role==='SUPPLIER'?'#/supplier/dashboard':'#/innous/overview';
     navigate(home);
+    startChatRealtime(); // re-scope the live chat subscription's filter to whichever role this now is
     showToast(role==='SUPPLIER' ? 'Viendo como Proveedor' : `Viewing as ${ROLE_META[role].label}`);
   },
 
