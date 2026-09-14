@@ -30,7 +30,11 @@
   --border-strong:#D4D4D8;
   --ink:#18181B;
   --ink-secondary:#52525B;
-  --ink-tertiary:#A1A1AA;
+  /* fix90: darkened from #A1A1AA — that was under WCAG AA contrast (~2.5:1)
+     against white for the muted/secondary text it's used on everywhere
+     (table sub-labels, KPI captions, timestamps); #71717A clears AA (~4.6:1)
+     and reads noticeably crisper without losing the "quiet/secondary" feel. */
+  --ink-tertiary:#71717A;
   /* INNOUS brand — official colors from the brand's approved logo files */
   --accent:#00A3E0;
   --accent-ink:#0A7CA6;
@@ -217,6 +221,13 @@ svg{display:block;}
 
 /* ============ BUTTONS ============ */
 .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;border:1px solid transparent;white-space:nowrap;transition:background .15s,border-color .12s,box-shadow .15s,transform .15s;}
+/* fix90: a disabled secondary/danger/ghost button used to look fully
+   "live" — only .btn-primary:disabled had its own dimmed treatment, every
+   other variant just sat there at full color with a disabled attribute
+   doing nothing visible. This covers all of them at once; .btn-primary's
+   own :disabled rule (further down) still wins on the properties it sets
+   itself (background/color/cursor), same as before. */
+.btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none;}
 .btn svg{width:15px;height:15px;}
 .btn-primary{background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
 .btn-primary:hover{background:linear-gradient(100deg,var(--navy-deep),var(--accent-ink));box-shadow:0 6px 18px -6px rgba(0,56,101,0.5);transform:translateY(-1px);}
@@ -236,7 +247,12 @@ svg{display:block;}
 .icon-btn:hover{background:var(--surface-alt);}
 
 /* ============ CARDS / GRID ============ */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+/* fix90: flat by default — a hairline border reads cleanly against the
+   page's own light-gray wash without needing a shadow to separate the two;
+   --shadow-sm stays defined for the few places that still want a genuine
+   hover lift (kpi-card below, match-card) rather than baking it into every
+   card at rest. */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:none;}
 .card-pad{padding:20px;}
 .card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
 .card-header h3{font-size:14.5px;font-weight:700;}
@@ -249,7 +265,7 @@ svg{display:block;}
 @media(max-width:640px){.grid-2,.grid-3,.grid-4,.grid-5{grid-template-columns:1fr;}}
 
 /* ============ KPI ============ */
-.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);transition:border-color .15s,box-shadow .15s,transform .15s;}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:none;transition:border-color .15s,box-shadow .15s,transform .15s;}
 .kpi-card:hover{border-color:var(--border-strong);box-shadow:var(--shadow-md);transform:translateY(-1px);}
 .kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .kpi-label{font-size:12px;color:var(--ink-tertiary);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
@@ -478,7 +494,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 /* ============ MODAL / TOAST ============ */
 .modal-overlay{position:fixed;inset:0;background:rgba(24,24,27,0.45);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity .15s;padding:20px;}
 .modal-overlay.open{opacity:1;pointer-events:auto;}
-.modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);transform:translateY(8px);transition:transform .15s;}
+/* fix90: ink-tinted and tighter than the old pure-black 0.25-opacity
+   shadow — same elevation cue, reads softer/more refined instead of harsh. */
+.modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px -12px rgba(24,24,27,0.22);transform:translateY(8px);transition:transform .15s;}
 .modal-overlay.open .modal{transform:translateY(0);}
 .modal.modal-wide{max-width:900px;}
 /* modal-xwide (fix61/62) is a fixed-height flex column instead of the
