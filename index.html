@@ -639,11 +639,44 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-card-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding-top:6px;border-top:1px solid var(--border);}
 .chat-card-field-label{font-size:9.5px;color:var(--ink-tertiary);text-transform:uppercase;letter-spacing:.02em;font-weight:700;margin-bottom:1px;}
 .chat-card-field-val{font-size:12px;font-weight:600;color:var(--ink-secondary);}
+/* Back chevron shown in .chat-thread-header only on the phone-width,
+   one-pane-at-a-time layout below — desktop always shows both panes side
+   by side, so there's nothing to "go back" to. */
+.chat-back-btn{display:none;background:none;border:none;cursor:pointer;color:var(--ink);padding:2px;flex:0 0 auto;}
+.chat-back-btn i{width:22px;height:22px;}
 @media(max-width:768px){
-  .messages-shell{height:auto;display:block;}
-  .chat-panel{flex-direction:column;flex:none;height:auto;}
-  .chat-list{width:100%;max-height:180px;border-right:none;border-bottom:1px solid var(--border);}
-  .chat-thread{min-height:360px;}
+  /* fix77: WhatsApp-style phone layout — one pane visible at a time instead
+     of both squeezed into a fixed-height stack. The old rule here
+     (height:auto/display:block, plus a fixed 180px chat-list and 360px
+     chat-thread) is exactly what broke this: it dropped the flex/height
+     chain .messages-shell → .chat-panel → .chat-thread → .chat-messages
+     relies on to give .chat-messages a bounded box to scroll WITHIN (same
+     "height:100% needs a definite ancestor height" chain the comment above
+     .messages-shell already explains for desktop). Without a bounded
+     height, .chat-messages just grew as tall as its content and the whole
+     PAGE scrolled instead — the compose box could end up far below the
+     fold, and a long conversation had no fixed window to scroll inside.
+     Keeping the same flex/height chain as desktop (just stacked instead of
+     side-by-side, and one pane hidden at a time) fixes both: the chat list
+     is its own scroll region, the open thread fills the screen with its
+     header and compose box pinned and only the messages between them
+     scrolling, and switching which pane shows is a plain display toggle
+     driven by whether the URL currently names a specific thread (see the
+     ROUTES['.../messages'] functions — chat-list-item taps and "New Chat"
+     always navigate to a URL with a thread name, which is what flips the
+     "mobile-detail-open" class below). */
+  .chat-panel{flex-direction:column;border-radius:0;border-left:none;border-right:none;}
+  .chat-list{width:100%;flex:1;min-height:0;border-right:none;}
+  .chat-thread{display:none;min-height:0;}
+  .chat-panel.mobile-detail-open .chat-list{display:none;}
+  .chat-panel.mobile-detail-open .chat-thread{display:flex;flex:1;min-height:0;}
+  .chat-back-btn{display:inline-flex;align-items:center;}
+  /* An open thread should read as "the whole screen is now this chat", like
+     any real chat app — the page's own "Messages" title/subtitle + "New
+     Chat" button above it are dead weight once you're already inside one
+     conversation (the back arrow is what gets you back to that list), and
+     hiding them hands that space straight to the conversation itself. */
+  .messages-shell.mobile-detail-open .page-header{display:none;}
 }
 
 .pricing-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
@@ -4652,11 +4685,11 @@ ROUTES['client/messages'] = function(threadNameRaw){
   const msgs = activeName ? chatThread(c, activeName) : [];
   if(activeName){ ensureTypingChannel(key); markThreadRead(msgs, 'client'); }
   return `
-  <div class="content-inner messages-shell">
+  <div class="content-inner messages-shell ${threadNameRaw?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>New Chat</button>
     </div>
-    <div class="chat-panel">
+    <div class="chat-panel ${threadNameRaw?'mobile-detail-open':''}">
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/client/messages/${encodeURIComponent(t.name)}')">
           <div class="avatar" style="background:var(--accent);">IN</div>
@@ -4665,8 +4698,11 @@ ROUTES['client/messages'] = function(threadNameRaw){
       </div>
       <div class="chat-thread">
         ${activeName ? `
-        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <div><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+            <button class="chat-back-btn" onclick="navigate('#/client/messages')" title="Back" aria-label="Back"><i data-lucide="chevron-left"></i></button>
+            <div style="min-width:0;"><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
+          </div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
         </div>
         <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'No messages yet. Say hello!')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
@@ -6160,11 +6196,11 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
   const msgs = active ? chatThread(owner, active.threadName) : [];
   if(active){ ensureTypingChannel(active.key); markThreadRead(msgs, 'innous'); }
   return `
-  <div class="content-inner messages-shell">
+  <div class="content-inner messages-shell ${(type&&id)?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Conversaciones directas con clientes y proveedores.</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>Nuevo Chat</button>
     </div>
-    <div class="chat-panel">
+    <div class="chat-panel ${(type&&id)?'mobile-detail-open':''}">
       <div class="chat-list">
         ${rows.map(r=>`<div class="chat-list-item ${active&&active.key===r.key?'active':''}" onclick="App.openInnousChatThread('${r.key}')">
           ${avatarHtml(r.photo, initials(r.personName), r.type==='client'?'var(--accent)':'var(--ink)', 34)}
@@ -6175,6 +6211,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
         ${active? `
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <button class="chat-back-btn" onclick="navigate('#/innous/messages')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
             ${avatarHtml(owner.photo, initials(active.personName), active.type==='client'?'var(--accent)':'var(--ink)', 40)}
             <div style="min-width:0;">
               <div style="font-weight:700;">${escAttr(active.personName)} <span class="td-sub" style="font-weight:400;">· ${escAttr(active.threadName)}</span></div>
@@ -6667,11 +6704,11 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
   const msgs = activeName ? chatThread(s, activeName) : [];
   if(activeName){ ensureTypingChannel(key); markThreadRead(msgs, 'supplier'); }
   return `
-  <div class="content-inner messages-shell">
+  <div class="content-inner messages-shell ${threadNameRaw?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div>
       <button class="btn btn-primary" onclick="App.openNewChatModal()"><i data-lucide="message-square-plus"></i>Nuevo Chat</button>
     </div>
-    <div class="chat-panel">
+    <div class="chat-panel ${threadNameRaw?'mobile-detail-open':''}">
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/supplier/messages/${encodeURIComponent(t.name)}')">
           <div class="avatar" style="background:var(--ink);">IN</div>
@@ -6680,8 +6717,11 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
       </div>
       <div class="chat-thread">
         ${activeName ? `
-        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <div><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+            <button class="chat-back-btn" onclick="navigate('#/supplier/messages')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            <div style="min-width:0;"><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
+          </div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
         </div>
         <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'Aún no hay mensajes.')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
