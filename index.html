@@ -1301,7 +1301,7 @@ function customerRowToJs(row){
 }
 function supplierRowToJs(row){
   return {
-    id: row.user_id, name: row.name, contactName: row.contact_name||'', email: row.email||'', phone: row.phone||'',
+    id: row.user_id, name: row.name, contactName: row.contact_name||'', email: row.email||'', username: row.username||'', phone: row.phone||'',
     // Puesto (fix46) — the registered contact's job title, same idea as
     // customers.position, editable via supplierContactSection.
     position: row.position||'',
@@ -3745,7 +3745,7 @@ function renderLoginForm(){
           <div class="auth-card-title">Log in</div>
           <div class="auth-card-sub">Welcome back to INNOUS.</div>
           <form onsubmit="return App.submitLogin(event)">
-            <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required autocomplete="email"></div>
+            <div class="form-group"><label class="field-label">Username or Email</label><input type="text" name="login" required autocomplete="username"></div>
             <div class="form-group password-field"><label class="field-label">Password</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}</div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>Log In</button>
           </form>
@@ -5399,7 +5399,7 @@ ROUTES['innous/suppliers'] = function(){
    avoids needing the Supabase service_role key. */
 ROUTES['innous/new-supplier'] = function(){
   if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = {
-    email:'', password:'', password2:'', contactName:'', company:'', photo:null,
+    username:'', email:'', password:'', password2:'', contactName:'', company:'', photo:null,
     capabilities:[], certs:[], yearsOperating:'', legalName:'', rfc:'', address:'', csfFile:null,
   };
   const d = STATE.ui.newSupplierDraft;
@@ -5420,12 +5420,13 @@ ROUTES['innous/new-supplier'] = function(){
       </div>
       <div class="form-group"><label class="field-label">Empresa</label><input type="text" value="${escAttr(d.company)}" placeholder="Razón o nombre comercial" oninput="${upd('company')}"></div>
       <div class="form-group"><label class="field-label">Nombre del Contacto</label><input type="text" value="${escAttr(d.contactName)}" oninput="${upd('contactName')}"></div>
-      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" placeholder="con el que iniciará sesión" oninput="${upd('email')}"></div>
+      <div class="form-group"><label class="field-label">Nombre de Usuario</label><input type="text" value="${escAttr(d.username)}" placeholder="con el que iniciará sesión, sin espacios" oninput="${upd('username')}"></div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" placeholder="solo para contacto, no inicia sesión" oninput="${upd('email')}"></div>
       <div class="form-row">
         <div class="form-group password-field"><label class="field-label">Contraseña</label>${pwFieldHtml('new-supplier-password', `value="${escAttr(d.password)}" placeholder="mínimo 6 caracteres" oninput="${upd('password')}"`)}</div>
         <div class="form-group password-field"><label class="field-label">Confirmar Contraseña</label>${pwFieldHtml('new-supplier-password2', `value="${escAttr(d.password2)}" oninput="${upd('password2')}"`)}</div>
       </div>
-      <div class="field-hint">El proveedor usará este correo y contraseña para entrar a su panel. Solo Innous podrá editar su información después — el proveedor no podrá cambiarla él mismo.</div>
+      <div class="field-hint">El proveedor usará su nombre de usuario y esta contraseña para entrar a su panel — el correo se queda solo para contacto (aparece en su Orden de Compra, por ejemplo). Solo Innous podrá editar esta información después — el proveedor no podrá cambiarla él mismo.</div>
     </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Servicios y Certificaciones</div>
@@ -5608,20 +5609,21 @@ function supplierCompanySection(s){
    (see generatePurchaseOrderPdf) — editable here since Puesto isn't asked
    for at signup. */
 function supplierContactSection(s){
-  if(!STATE.ui.supplierContactDrafts[s.id]) STATE.ui.supplierContactDrafts[s.id] = { contactName: s.contactName||'', position: s.position||'', phone: s.phone||'', email: s.email||'' };
+  if(!STATE.ui.supplierContactDrafts[s.id]) STATE.ui.supplierContactDrafts[s.id] = { contactName: s.contactName||'', position: s.position||'', phone: s.phone||'', email: s.email||'', username: s.username||'' };
   const d = STATE.ui.supplierContactDrafts[s.id];
   const upd = (field)=>`App.updateSupplierContactDraft('${s.id}','${field}',this.value)`;
   return `
   <div class="card card-pad" style="margin-bottom:16px;">
     <div class="section-title">Datos de Contacto</div>
     <div class="section-sub">El contacto dado de alta en la plataforma — aparece en la Orden de Compra de este proveedor. Llénalo una vez y aplica a todos sus futuros pedidos.</div>
-    <div class="form-row" style="margin-top:12px;">
+    <div class="form-group" style="margin-top:12px;"><label class="field-label">Nombre de Usuario</label><input type="text" value="${escAttr(d.username)}" placeholder="con el que este proveedor inicia sesión" oninput="${upd('username')}"></div>
+    <div class="form-row">
       <div class="form-group"><label class="field-label">Nombre y Apellido</label><input type="text" value="${escAttr(d.contactName)}" oninput="${upd('contactName')}"></div>
       <div class="form-group"><label class="field-label">Puesto</label><input type="text" value="${escAttr(d.position)}" placeholder="ej. Gerente de Ventas" oninput="${upd('position')}"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="field-label">Número</label><input type="text" value="${escAttr(d.phone)}" oninput="${upd('phone')}"></div>
-      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="${upd('email')}"></div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" placeholder="solo para contacto, no inicia sesión" oninput="${upd('email')}"></div>
     </div>
   </div>`;
 }
@@ -6788,9 +6790,12 @@ const App = {
   // the minimum to identify them.
   async createSupplierAccount(){
     const d = STATE.ui.newSupplierDraft;
+    const username = (d.username||'').trim().toLowerCase();
     const email = (d.email||'').trim().toLowerCase();
     const password = d.password||'', password2 = d.password2||'';
     const company = (d.company||'').trim(), contactName = (d.contactName||'').trim();
+    if(!username){ showToast('Escribe un nombre de usuario.'); return; }
+    if(!/^[a-z0-9._-]{3,32}$/.test(username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
     if(!email || !email.includes('@')){ showToast('Escribe un correo válido.'); return; }
     if(password.length<6){ showToast('La contraseña debe tener al menos 6 caracteres.'); return; }
     if(password!==password2){ showToast('Las contraseñas no coinciden.'); return; }
@@ -6812,11 +6817,18 @@ const App = {
       const { error: profileErr } = await tempClient.from('profiles').insert({ user_id: data.user.id, role: 'SUPPLIER' });
       if(profileErr){ showToast('Cuenta creada, pero falló el perfil: '+profileErr.message); return; }
       const { error: supplierErr } = await tempClient.from('suppliers').insert({
-        user_id: data.user.id, name: company, contact_name: contactName, email, photo_url: d.photo||null,
+        user_id: data.user.id, name: company, contact_name: contactName, email, username, photo_url: d.photo||null,
         capabilities: d.capabilities||[], certs: d.certs||[], years_operating: parseInt(d.yearsOperating,10)||0,
         legal_name: (d.legalName||'').trim(), rfc: (d.rfc||'').trim(), address: (d.address||'').trim(),
       });
-      if(supplierErr){ showToast('Cuenta creada, pero falló el registro de proveedor: '+supplierErr.message); return; }
+      if(supplierErr){
+        // The account in auth.users already exists at this point even though
+        // the suppliers row failed — most likely because this username was
+        // already taken (unique index). Say so plainly rather than the raw
+        // Postgres "duplicate key" message.
+        const msg = /duplicate key|unique constraint/i.test(supplierErr.message) ? 'Ese nombre de usuario ya está en uso — elige otro.' : supplierErr.message;
+        showToast('Cuenta creada, pero falló el registro de proveedor: '+msg); return;
+      }
       // The CSF file itself (as opposed to the fields already parsed from
       // it, sent above) can only be uploaded now that the account — and
       // the user_id its storage path is keyed on — actually exists.
@@ -6835,15 +6847,51 @@ const App = {
       showToast('No se pudo conectar. Intenta de nuevo.');
     }
   },
+  // fix75: clients and Innous still log in with their email, exactly as
+  // before, but suppliers now log in with a username instead — their email
+  // stays on file for contact only (it still shows on the PO, etc.), it
+  // just no longer works to sign in. Supabase Auth itself only ever knows
+  // email+password, so under the hood this still resolves to an email: if
+  // what was typed looks like an email we use it directly, otherwise we
+  // treat it as a username and ask resolve_supplier_login_email() (a
+  // SECURITY DEFINER function anyone can call, even logged out, but which
+  // only ever returns a single email — never the rest of the supplier's
+  // row) which real email it maps to. Either way Supabase Auth ends up
+  // checking a real email+password pair, so nothing about how accounts are
+  // stored had to change.
   async submitLogin(e){
     e.preventDefault();
     const f = new FormData(e.target);
-    const email = f.get('email').trim().toLowerCase();
+    const raw = f.get('login').trim();
     const password = f.get('password');
+    const viaEmail = raw.includes('@');
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     try{
+      let email;
+      if(viaEmail){
+        email = raw.toLowerCase();
+      } else {
+        const { data: resolved, error: rpcErr } = await withTimeout(sb.rpc('resolve_supplier_login_email', { p_username: raw.toLowerCase() }), 12000, 'resolve-username');
+        if(rpcErr || !resolved){ showToast('Usuario o contraseña incorrectos'); if(submitBtn) submitBtn.disabled=false; return false; }
+        email = resolved;
+      }
       const { data, error } = await withTimeout(sb.auth.signInWithPassword({ email, password }), 12000, 'login');
-      if(error || !data.user){ showToast('Correo o contraseña incorrectos'); if(submitBtn) submitBtn.disabled=false; return false; }
+      if(error || !data.user){ showToast(viaEmail?'Correo o contraseña incorrectos':'Usuario o contraseña incorrectos'); if(submitBtn) submitBtn.disabled=false; return false; }
+      // A supplier who types their real email instead of their username
+      // would otherwise still get in through the viaEmail path above —
+      // Supabase Auth has no idea a "username-only" rule exists. Catch it
+      // here instead: if this account turns out to be a supplier and we
+      // got here via email, undo the sign-in and send them back for their
+      // username.
+      if(viaEmail){
+        const { data: prof } = await sb.from('profiles').select('role').eq('user_id', data.user.id).maybeSingle();
+        if(prof?.role==='SUPPLIER'){
+          await sb.auth.signOut();
+          showToast('Los proveedores inician sesión con su nombre de usuario, no con su correo.');
+          if(submitBtn) submitBtn.disabled=false;
+          return false;
+        }
+      }
       await withTimeout(enterAppAsUser(data.user), 15000, 'enterApp');
       showToast('Welcome back', 'success');
     }catch(err){
@@ -8162,21 +8210,29 @@ const App = {
     const bd = STATE.ui.supplierBillingDrafts[id] || {};
     // name is required (not-null in the DB) — an empty field means
     // "didn't change it", not "blank it out".
+    // username is unique across suppliers (DB-enforced) — like name, an
+    // empty field means "didn't change it", not "blank it out", so a
+    // supplier already logging in fine never silently loses their username.
     const next = {
       name: (cd.name||'').trim()||s.name, city: (cd.city||'').trim(),
       contactName: (kd.contactName||'').trim(), position: (kd.position||'').trim(), phone: (kd.phone||'').trim(), email: (kd.email||'').trim(),
+      username: (kd.username||'').trim().toLowerCase()||s.username||'',
       capabilities: pd.capabilities!==undefined ? pd.capabilities : (s.capabilities||[]),
       certs: pd.certs!==undefined ? pd.certs : (s.certs||[]),
       machines: pd.machines!==undefined ? pd.machines.split(',').map(x=>x.trim()).filter(Boolean) : (s.machines||[]),
       legalName: (bd.legalName||'').trim(), rfc: (bd.rfc||'').trim(), address: (bd.address||'').trim(),
     };
+    if(next.username && !/^[a-z0-9._-]{3,32}$/.test(next.username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
     if(isRealAccountId(id)){
       const { error } = await sb.from('suppliers').update({
         name: next.name, city: next.city, contact_name: next.contactName, position: next.position,
-        phone: next.phone, email: next.email, capabilities: next.capabilities, certs: next.certs,
+        phone: next.phone, email: next.email, username: next.username||null, capabilities: next.capabilities, certs: next.certs,
         machines: next.machines, legal_name: next.legalName, rfc: next.rfc, address: next.address,
       }).eq('user_id', id);
-      if(error){ showToast(error.message); return; }
+      if(error){
+        const msg = /duplicate key|unique constraint/i.test(error.message) ? 'Ese nombre de usuario ya está en uso por otro proveedor.' : error.message;
+        showToast(msg); return;
+      }
     }
     Object.assign(s, next);
     showToast('Cambios guardados', 'success');
