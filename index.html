@@ -2316,6 +2316,12 @@ const DEFAULT_SETTINGS = {
   // this one editable field instead).
   rfc:'INN200101AB1', phone:'+52 (81) 8123 4567', email:'compras@innous.com.mx',
   region:'United States ↔ Mexico', defaultMarkupPct:15,
+  // The INNOUS logo shown to clients/suppliers wherever they'd otherwise
+  // just see a plain "IN" bubble — the chat list, chat thread header, etc.
+  // (fix80). Distinct from any one staff member's own personal profile
+  // photo (INNOUS_USER.photo) — this is the shared platform identity every
+  // client/supplier sees, regardless of which Innous person is logged in.
+  logoUrl:null,
   // Suppliers (Mexican) quote in MXN; the client (US) always sees USD. This is
   // the starting exchange rate INNOUS sees when comparing quotes — always
   // adjustable per RFQ right there (see quoteComparisonSection), since the
@@ -2331,6 +2337,7 @@ function settingsRowToJs(row){
     legalName: row.legal_name, address: row.address || DEFAULT_SETTINGS.address, region: row.region, defaultMarkupPct: row.default_markup_pct,
     rfc: row.rfc || DEFAULT_SETTINGS.rfc, phone: row.phone || DEFAULT_SETTINGS.phone, email: row.email || DEFAULT_SETTINGS.email,
     defaultExchangeRate: row.default_exchange_rate || DEFAULT_SETTINGS.defaultExchangeRate,
+    logoUrl: row.logo_url || null,
     notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
   };
 }
@@ -4694,7 +4701,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
     <div class="chat-panel ${threadNameRaw?'mobile-detail-open':''}">
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/client/messages/${encodeURIComponent(t.name)}')">
-          <div class="avatar" style="background:var(--accent);">IN</div>
+          ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--accent)', 34)}
           <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
         </div>`).join('') || emptyState('message-square','No conversations yet','')}
       </div>
@@ -4703,6 +4710,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:6px;min-width:0;">
             <button class="chat-back-btn" onclick="navigate('#/client/messages')" title="Back" aria-label="Back"><i data-lucide="chevron-left"></i></button>
+            ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--accent)', 34)}
             <div style="min-width:0;"><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
@@ -6256,7 +6264,7 @@ function settingsSection(key, icon, title, sub, bodyHtml, danger){
   ${open?`<div class="settings-panel"${panelStyle}>${bodyHtml}</div>`:''}`;
 }
 ROUTES['innous/settings'] = function(){
-  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, email:STATE.settings.email, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, email:STATE.settings.email, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, logoUrl:STATE.settings.logoUrl, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
@@ -6264,6 +6272,14 @@ ROUTES['innous/settings'] = function(){
       <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
     ${settingsSection('empresa','building-2','Empresa','Razón social, domicilio y datos fiscales de Innous', `
       <div class="section-sub">Se usa en la cotización formal en PDF que el cliente puede descargar al elegir un proveedor, y en el membrete de la Orden de Compra del proveedor.</div>
+      <div class="account-photo-row" style="margin-top:12px;">
+        ${avatarHtml(d.logoUrl, 'IN', 'var(--accent)', 64)}
+        <div>
+          <input type="file" id="settings-logo-input" accept="image/*" style="display:none;" onchange="App.onSettingsLogoSelected(this)">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('settings-logo-input').click()"><i data-lucide="camera"></i>${d.logoUrl?'Cambiar logo':'Subir logo'}</button>
+          <div class="field-hint">El logo que ven clientes y proveedores en vez del círculo "IN" — en el chat, etc. Se recorta a 1:1 y se muestra en círculo.</div>
+        </div>
+      </div>
       <div class="form-row" style="margin-top:12px;">
         <div class="form-group"><label class="field-label">Razón Social</label><input type="text" value="${escAttr(d.legalName)}" oninput="STATE.ui.settingsDraft.legalName=this.value"></div>
         <div class="form-group"><label class="field-label">Región</label><input type="text" value="${escAttr(d.region)}" oninput="STATE.ui.settingsDraft.region=this.value"></div>
@@ -6713,7 +6729,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
     <div class="chat-panel ${threadNameRaw?'mobile-detail-open':''}">
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/supplier/messages/${encodeURIComponent(t.name)}')">
-          <div class="avatar" style="background:var(--ink);">IN</div>
+          ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--ink)', 34)}
           <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
         </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
@@ -6722,6 +6738,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:6px;min-width:0;">
             <button class="chat-back-btn" onclick="navigate('#/supplier/messages')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--ink)', 34)}
             <div style="min-width:0;"><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
@@ -7020,10 +7037,10 @@ const App = {
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
-    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, rfc:STATE.ui.settingsDraft.rfc.trim()||DEFAULT_SETTINGS.rfc, phone:STATE.ui.settingsDraft.phone.trim()||DEFAULT_SETTINGS.phone, email:STATE.ui.settingsDraft.email.trim()||DEFAULT_SETTINGS.email, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, rfc:STATE.ui.settingsDraft.rfc.trim()||DEFAULT_SETTINGS.rfc, phone:STATE.ui.settingsDraft.phone.trim()||DEFAULT_SETTINGS.phone, email:STATE.ui.settingsDraft.email.trim()||DEFAULT_SETTINGS.email, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, logoUrl:STATE.ui.settingsDraft.logoUrl||null, notif:{...STATE.ui.settingsDraft.notif} };
     const { error } = await sb.from('settings').update({
       legal_name: next.legalName, address: next.address, rfc: next.rfc, phone: next.phone, email: next.email, region: next.region, default_markup_pct: next.defaultMarkupPct,
-      default_exchange_rate: next.defaultExchangeRate,
+      default_exchange_rate: next.defaultExchangeRate, logo_url: next.logoUrl,
       notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
       notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
     }).eq('id',1);
@@ -7412,6 +7429,18 @@ const App = {
     reader.onload = ()=> App.openCropModal(reader.result, 'new-supplier');
     reader.readAsDataURL(file);
   },
+  // fix80: same picker, for the INNOUS logo shown to clients/suppliers
+  // instead of a plain "IN" circle — target:'innous-logo' tells
+  // saveCrop/cancelCrop to write into STATE.ui.settingsDraft.logoUrl and
+  // just re-render the (non-modal) Settings page instead of reopening a
+  // modal, since Ajustes isn't one.
+  onSettingsLogoSelected(input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=> App.openCropModal(reader.result, 'innous-logo');
+    reader.readAsDataURL(file);
+  },
   // Toggles one value in/out of a checkbox-list field on the new-supplier
   // draft (capabilities/certs) — same "array of selected values" shape
   // App.submitSignup used to build from FormData.getAll().
@@ -7545,7 +7574,7 @@ const App = {
     const target = STATE.ui.cropState?.target || 'account';
     STATE.ui.cropState = null;
     document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
-    if(target==='new-supplier') closeModal(); else App.openAccountModal();
+    if(target==='new-supplier' || target==='innous-logo') closeModal(); else App.openAccountModal();
   },
   saveCrop(){
     const c = STATE.ui.cropState;
@@ -7566,6 +7595,11 @@ const App = {
     if(target==='new-supplier'){
       if(!STATE.ui.newSupplierDraft) STATE.ui.newSupplierDraft = { email:'', password:'', password2:'', contactName:'', company:'', photo:null };
       STATE.ui.newSupplierDraft.photo = dataUrl;
+      closeModal();
+      route();
+    } else if(target==='innous-logo'){
+      if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { ...STATE.settings };
+      STATE.ui.settingsDraft.logoUrl = dataUrl;
       closeModal();
       route();
     } else {
