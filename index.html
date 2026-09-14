@@ -1550,7 +1550,7 @@ function orderRowToJs(row){
     // order; orders_client_view never has these columns.
     poNumber: row.po_number || null,
     poBuyerName: row.po_buyer_name || null, poDeliveryLocation: row.po_delivery_location || null,
-    poReceptionHours: row.po_reception_hours || null, poIncoterm: row.po_incoterm || null,
+    poIncoterm: row.po_incoterm || null,
     poPaymentTerms: row.po_payment_terms || null, poPaymentMethod: row.po_payment_method || null,
     poNotes: row.po_notes || null,
     paymentStatus: row.payment_status || 'Awaiting Deposit',
@@ -3027,7 +3027,6 @@ function generatePurchaseOrderPdf(p){
   ];
   const entregaRows = [
     ['Entregar en', deliveryPlace],
-    ['Horario recepción', o.poReceptionHours],
     ['Fecha requerida', fmtDate(p.deliveryDate)],
     ['Incoterm / Flete', o.poIncoterm],
     ['Condiciones de pago', o.poPaymentTerms],
@@ -5382,8 +5381,11 @@ function purchaseOrderDetailsSection(p){
       supplierAddress: supplier.address || '',
       buyerName: p.order?.poBuyerName || p.quoteSalespersonName || INNOUS_QUOTE_SIGNATURE.name,
       deliveryLocation: p.order?.poDeliveryLocation || (isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'')),
-      receptionHours: p.order?.poReceptionHours || 'Lun–Vie, 9:00 a 18:00 h',
-      incoterm: p.order?.poIncoterm || 'DAP',
+      // Incoterm has no standard-text default (fix84) — same reasoning as
+      // Garantía/Herramental in quoteDetailsSection (fix83): it genuinely
+      // varies deal to deal, so it's better to force a conscious choice
+      // than to silently ship "DAP" on an order it might not apply to.
+      incoterm: p.order?.poIncoterm || '',
       paymentTerms: p.order?.poPaymentTerms || '30 días netos contra factura',
       paymentMethod: p.order?.poPaymentMethod || 'Transferencia electrónica',
       notes: p.order?.poNotes || '',
@@ -5408,13 +5410,10 @@ function purchaseOrderDetailsSection(p){
       <div class="form-group"><label class="field-label">Entregar en</label><input type="text" value="${escAttr(d.deliveryLocation)}" oninput="${upd('deliveryLocation')}"></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="field-label">Horario de Recepción</label><input type="text" value="${escAttr(d.receptionHours)}" oninput="${upd('receptionHours')}"></div>
       <div class="form-group"><label class="field-label">Incoterm / Flete</label><input type="text" value="${escAttr(d.incoterm)}" oninput="${upd('incoterm')}"></div>
-    </div>
-    <div class="form-row">
       <div class="form-group"><label class="field-label">Condiciones de Pago</label><input type="text" value="${escAttr(d.paymentTerms)}" oninput="${upd('paymentTerms')}"></div>
-      <div class="form-group"><label class="field-label">Forma de Pago</label><input type="text" value="${escAttr(d.paymentMethod)}" oninput="${upd('paymentMethod')}"></div>
     </div>
+    <div class="form-group" style="max-width:calc(50% - 8px);"><label class="field-label">Forma de Pago</label><input type="text" value="${escAttr(d.paymentMethod)}" oninput="${upd('paymentMethod')}"></div>
     <div class="form-group"><label class="field-label">Observaciones / Instrucciones Especiales</label><textarea oninput="${upd('notes')}">${escAttr(d.notes)}</textarea></div>
     <hr class="divider">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -8409,7 +8408,6 @@ const App = {
       supplierRfc: (d.supplierRfc||'').trim(), supplierAddress: (d.supplierAddress||'').trim(),
       poBuyerName: (d.buyerName||'').trim() || INNOUS_QUOTE_SIGNATURE.name,
       poDeliveryLocation: (d.deliveryLocation||'').trim(),
-      poReceptionHours: (d.receptionHours||'').trim(),
       poIncoterm: (d.incoterm||'').trim(),
       poPaymentTerms: (d.paymentTerms||'').trim(),
       poPaymentMethod: (d.paymentMethod||'').trim(),
@@ -8423,13 +8421,13 @@ const App = {
         if(e1){ showToast(e1.message); return; }
       }
       const { error: e2 } = await sb.from('orders').update({
-        po_buyer_name: next.poBuyerName, po_delivery_location: next.poDeliveryLocation, po_reception_hours: next.poReceptionHours,
+        po_buyer_name: next.poBuyerName, po_delivery_location: next.poDeliveryLocation,
         po_incoterm: next.poIncoterm, po_payment_terms: next.poPaymentTerms, po_payment_method: next.poPaymentMethod, po_notes: next.poNotes,
       }).eq('project_id', pid);
       if(e2){ showToast(e2.message); return; }
     }
     if(supplier){ supplier.rfc = next.supplierRfc; supplier.address = next.supplierAddress; }
-    Object.assign(p.order, { poBuyerName: next.poBuyerName, poDeliveryLocation: next.poDeliveryLocation, poReceptionHours: next.poReceptionHours,
+    Object.assign(p.order, { poBuyerName: next.poBuyerName, poDeliveryLocation: next.poDeliveryLocation,
       poIncoterm: next.poIncoterm, poPaymentTerms: next.poPaymentTerms, poPaymentMethod: next.poPaymentMethod, poNotes: next.poNotes });
     showToast('Detalles de la Orden de Compra guardados', 'success');
     route();
