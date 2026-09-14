@@ -561,10 +561,34 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-thread{flex:1;display:flex;flex-direction:column;min-width:0;}
 .chat-thread-header{padding:14px 18px;border-bottom:1px solid var(--border);}
 .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;}
+/* Three chat-wallpaper choices (fix65) — App.setChatBg/chatBgClass below;
+   the default ("white") needs its own class rather than just the absence
+   of one so App.openChatBgModal can highlight whichever is active. */
+.chat-messages.chat-bg-white{background:var(--surface);}
+.chat-messages.chat-bg-gray{background:var(--bg);}
+.chat-messages.chat-bg-pattern{background-color:var(--surface-alt);background-image:radial-gradient(var(--border-strong) 1px, transparent 1px);background-size:16px 16px;}
 .chat-bubble{max-width:70%;padding:10px 13px;border-radius:12px;font-size:13px;line-height:1.45;}
-.chat-bubble.out{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:3px;}
+/* Sent bubbles use the same navy->accent gradient as .btn-primary (fix65)
+   — they used to be plain var(--ink)/black, which read as a different,
+   unrelated color from the rest of the app's buttons. */
+.chat-bubble.out{align-self:flex-end;background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;border-bottom-right-radius:3px;}
 .chat-bubble.in{align-self:flex-start;background:var(--surface-alt);border:1px solid var(--border);border-bottom-left-radius:3px;}
 .chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;}
+/* Plays once on the bubble a message you just sent renders as (fix65) —
+   see chatMessagesHtml's one-shot "justSent" flag and App.sendChatMessage/
+   sendChatCard, which are the only things that ever set it. A plain CSS
+   re-render (switching threads, the 12s live-update poll) never replays
+   this since the flag is consumed the first time it's read. */
+@keyframes bubblePopIn{
+  0%{transform:scale(0.55) translateY(10px);opacity:0;}
+  65%{transform:scale(1.04) translateY(-2px);opacity:1;}
+  100%{transform:scale(1) translateY(0);opacity:1;}
+}
+.chat-bubble.bubble-pop-in{animation:bubblePopIn .32s cubic-bezier(.34,1.56,.64,1) both;transform-origin:bottom right;}
+.chat-bg-swatch{border:2px solid var(--border);border-radius:var(--radius);padding:0;cursor:pointer;overflow:hidden;background:none;text-align:left;}
+.chat-bg-swatch.active{border-color:var(--accent);}
+.chat-bg-swatch-preview{height:52px;}
+.chat-bg-swatch-label{padding:8px 10px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:6px;}
 .chat-input-row{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border);}
 .chat-input-row input{flex:1;}
 .chat-staged-file{display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:12px;color:var(--ink-secondary);background:var(--surface-alt);border-top:1px solid var(--border);}
@@ -2003,7 +2027,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4102,7 +4126,14 @@ ROUTES['client/order'] = function(id){
    clickable to open (via a signed URL — see App.openChatFile) once it's a
    real uploaded file; a demo/local-only one just shows the filename. ---- */
 function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
-  const rows = msgs.map(m=>{
+  // One-shot "I just sent this" flag (fix65) — set by App.sendChatMessage/
+  // sendChatCard right before the render that first shows the new bubble,
+  // and consumed (cleared) right here, so only THAT render animates it —
+  // switching threads or the 12s live-update poll re-rendering the exact
+  // same messages later never replays the send animation.
+  const justSent = STATE.ui.chatJustSent;
+  STATE.ui.chatJustSent = false;
+  const rows = msgs.map((m,i)=>{
     const mine = m.from===mineFrom;
     const label = mine ? 'You' : (m.from==='innous' ? 'INNOUS' : youLabel);
     let attachmentHtml = '';
@@ -4113,9 +4144,37 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
       attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
     }
     const cardHtml = m.cardType ? chatCardHtml(m) : '';
-    return `<div class="chat-bubble ${mine?'out':'in'}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
+    const animate = justSent && mine && i===msgs.length-1;
+    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
+}
+/* ---- Chat wallpaper (fix65) — a per-viewer cosmetic preference, so
+   localStorage is the right place for it (never Supabase): three presets,
+   applied as a class on whichever .chat-messages the page renders next.
+   No "customizer" state object — just read/write the one key directly. */
+const CHAT_BG_OPTIONS = [
+  { id:'white', label:'Blanco', swatch:'background:var(--surface);' },
+  { id:'gray', label:'Gris claro', swatch:'background:var(--bg);' },
+  { id:'pattern', label:'Patrón discreto', swatch:'background-color:var(--surface-alt);background-image:radial-gradient(var(--border-strong) 1px, transparent 1px);background-size:12px 12px;' },
+];
+function chatBgClass(){ return 'chat-bg-'+(localStorage.getItem('innous_chat_bg')||'white'); }
+function chatBgModalHtml(){
+  const current = localStorage.getItem('innous_chat_bg')||'white';
+  const es = STATE.role!=='CLIENT'; // the client portal's own chat strings are English (see client/messages) — everyone else's is Spanish
+  const labels = es ? CHAT_BG_OPTIONS : [{id:'white',label:'White'},{id:'gray',label:'Light Gray'},{id:'pattern',label:'Subtle Pattern'}];
+  return `
+  <div class="modal-header"><h3>${es?'Personalizar Chat':'Customize Chat'}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="field-hint" style="margin-bottom:12px;">${es?'Elige el fondo de tus conversaciones — solo afecta lo que tú ves.':'Pick a background for your conversations — only you see this.'}</div>
+    <div class="grid grid-3">
+      ${CHAT_BG_OPTIONS.map((o,i)=>`
+      <button type="button" class="chat-bg-swatch ${current===o.id?'active':''}" onclick="App.setChatBg('${o.id}')">
+        <div class="chat-bg-swatch-preview" style="${o.swatch}"></div>
+        <div class="chat-bg-swatch-label">${current===o.id?'<i data-lucide=\'check\' style=\'width:14px;height:14px;color:var(--accent);\'></i>':''}${labels[i].label}</div>
+      </button>`).join('')}
+    </div>
+  </div>`;
 }
 /* ---- Shared card preview — a quick look at an RFQ, Formal Quote, or
    Purchase Order, shared straight into a chat (App.sendChatCard). Renders
@@ -4229,8 +4288,11 @@ ROUTES['client/messages'] = function(threadNameRaw){
       </div>
       <div class="chat-thread">
         ${activeName ? `
-        <div class="chat-thread-header"><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
-        <div class="chat-messages" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}</div>
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <div><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
+          <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
+        </div>
+        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}</div>
         ${chatComposeRowHtml(key, 'client-chat-input', 'client-chat-file-input', 'Message INNOUS...')}
         ` : emptyState('message-square','No conversations yet','Start one with "New Chat" above.')}
       </div>
@@ -5733,11 +5795,12 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
             </div>
           </div>
           <div style="display:flex;gap:6px;flex:0 0 auto;">
+            <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
             <button class="btn btn-secondary btn-sm" onclick="navigate('#/innous/${active.type==='client'?'customer':'supplier'}/${active.id}')" title="Ver perfil"><i data-lucide="user"></i></button>
             <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
           </div>
         </div>
-        <div class="chat-messages">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}</div>
         ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
         ` : emptyState('message-square','Aún no hay conversaciones','')}
       </div>
@@ -6229,8 +6292,11 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
       </div>
       <div class="chat-thread">
         ${activeName ? `
-        <div class="chat-thread-header"><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
-        <div class="chat-messages">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}</div>
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <div><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
+          <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
+        </div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}</div>
         ${chatComposeRowHtml(key, 'supplier-chat-input', 'supplier-chat-file-input', 'Mensaje a INNOUS...')}
         ` : emptyState('message-square','Aún no hay conversaciones','Inicia una con "Nuevo Chat" arriba.')}
       </div>
@@ -8271,6 +8337,12 @@ const App = {
       : '#/supplier/messages/'+encodeURIComponent(threadName);
     navigate(path);
   },
+  openChatBgModal(){ openModal(chatBgModalHtml()); },
+  setChatBg(id){
+    try{ localStorage.setItem('innous_chat_bg', id); }catch(e){}
+    closeModal();
+    route();
+  },
   // "+ New Chat" — for INNOUS, picks who (customer or supplier) and names
   // it; for a client/supplier, it's always with INNOUS, just naming it.
   openNewChatModal(){
@@ -8359,9 +8431,11 @@ const App = {
       const ownerName = ownerType==='client' ? owner.company : owner.name;
       await notifyOtherSideOfChat(fromRole, ownerType, ownerId, ownerName, threadName, bodyPreview);
       await refreshRealMessages();
+      STATE.ui.chatJustSent = true; // see chatMessagesHtml — animates only the bubble this send just added
       route();
     } else {
       chatThread(owner, threadName).push({from:fromRole, text, attachmentPath:null, attachmentName: file?file.name:null, ts:new Date()});
+      STATE.ui.chatJustSent = true;
       route();
       if(fromRole!=='innous'){
         const reply = fromRole==='client' ? 'Thanks for the note — our team is on it and will follow up shortly.' : 'Entendido, gracias por la actualización.';
@@ -8421,9 +8495,11 @@ const App = {
       const ownerName = ownerType==='client' ? owner.company : owner.name;
       await notifyOtherSideOfChat(fromRole, ownerType, ownerId, ownerName, threadName, `📋 Shared ${label} ${projectId}`);
       await refreshRealMessages();
+      STATE.ui.chatJustSent = true;
       route();
     } else {
       chatThread(owner, threadName).push({from:fromRole, text:'', cardType, cardProjectId:projectId, ts:new Date()});
+      STATE.ui.chatJustSent = true;
       route();
     }
   },
