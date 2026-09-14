@@ -3135,6 +3135,21 @@ function timeAgo(d){
   if(diff<30) return diff+' days ago';
   return fmtDate(new Date(d));
 }
+// Chat bubbles show the actual clock time a message was sent (fix70),
+// not just "today"/"2 days ago" like the activity-feed uses of timeAgo()
+// above — "3:45 PM" is what tells you WHEN today it happened, which
+// "today" alone doesn't. Compared against the real current time (not the
+// fixed demo "today" timeAgo() above uses) since this reads real message
+// timestamps, not seeded demo activity.
+function chatTimeLabel(ts){
+  const d = new Date(ts);
+  const timeStr = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  const now = new Date();
+  if(d.toDateString()===now.toDateString()) return timeStr;
+  const yesterday = new Date(now); yesterday.setDate(now.getDate()-1);
+  if(d.toDateString()===yesterday.toDateString()) return 'Yesterday '+timeStr;
+  return fmtDate(d)+' '+timeStr;
+}
 
 /* ---------- Plain-language "what's happening right now" banners ----------
    Every audience (client / innous / supplier) sees the same underlying status,
@@ -4317,7 +4332,7 @@ function chatMessagesHtml(msgs, mineFrom, emptyText){
     // (no real backend row) never gets deliveredAt/readAt, so it just
     // always reads as "sent" — there's no real "other side" to receive it.
     const statusHtml = mine ? chatStatusIconHtml(m) : '';
-    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${timeAgo(m.ts)}${statusHtml}</div></div>`;
+    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${chatTimeLabel(m.ts)}${statusHtml}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
 }
