@@ -1933,8 +1933,11 @@ const INNOUS_USER = { name:'Ops Team', photo:null };
    actually stick, and so the default markup really is used across the app. ---------- */
 const DEFAULT_SETTINGS = {
   legalName:'Grupo Industrial Innous S. de R.L. de C.V.', address:'Palma Real No. 115, Fracc. Industrial Las Palmas Santa Catarina, N.L. 66368',
-  // RFC/phone print on the Orden de Compra's own letterhead block.
-  rfc:'INN200101AB1', phone:'+52 (81) 8123 4567',
+  // RFC/phone/email print on the quote's and Orden de Compra's own
+  // letterhead blocks (fix60 — email used to be hardcoded per-document:
+  // "sales@..." on the quote, "compras@..." on the OC — now both read
+  // this one editable field instead).
+  rfc:'INN200101AB1', phone:'+52 (81) 8123 4567', email:'compras@innous.com.mx',
   region:'United States ↔ Mexico', defaultMarkupPct:15,
   // Suppliers (Mexican) quote in MXN; the client (US) always sees USD. This is
   // the starting exchange rate INNOUS sees when comparing quotes — always
@@ -1949,7 +1952,7 @@ function saveSettings(s){ try{ localStorage.setItem('innous_settings', JSON.stri
 function settingsRowToJs(row){
   return {
     legalName: row.legal_name, address: row.address || DEFAULT_SETTINGS.address, region: row.region, defaultMarkupPct: row.default_markup_pct,
-    rfc: row.rfc || DEFAULT_SETTINGS.rfc, phone: row.phone || DEFAULT_SETTINGS.phone,
+    rfc: row.rfc || DEFAULT_SETTINGS.rfc, phone: row.phone || DEFAULT_SETTINGS.phone, email: row.email || DEFAULT_SETTINGS.email,
     defaultExchangeRate: row.default_exchange_rate || DEFAULT_SETTINGS.defaultExchangeRate,
     notif:{ newRfq:row.notif_new_rfq, quoteReceived:row.notif_quote_received, customerSelects:row.notif_customer_selects, weeklySummary:row.notif_weekly_summary },
   };
@@ -2208,6 +2211,7 @@ function generateQuotePdf(p){
   const legalName = STATE.settings.legalName||DEFAULT_SETTINGS.legalName;
   const legalAddress = STATE.settings.address||DEFAULT_SETTINGS.address;
   const innousPhone = STATE.settings.phone||DEFAULT_SETTINGS.phone;
+  const innousEmail = STATE.settings.email||DEFAULT_SETTINGS.email;
   const quoteNumber = (p.order&&p.order.quoteNumber) || 'IN-'+new Date().getFullYear()+'-0000';
   const validityDays = p.quoteValidityDays || QUOTE_TERMS_DEFAULTS.validityDays;
   const issueDate = new Date();
@@ -2251,7 +2255,7 @@ function generateQuotePdf(p){
   doc.setFont('Calibri','normal'); doc.setFontSize(7); doc.setTextColor(...inkSec);
   doc.text(doc.splitTextToSize(legalAddress, 300), marginL, ly);
   ly += 20;
-  doc.text(`Tel. ${innousPhone} · sales@innous.com.mx · www.innous.com.mx`, marginL, ly);
+  doc.text(`Tel. ${innousPhone} · ${innousEmail} · www.innous.com.mx`, marginL, ly);
 
   doc.setFont('Calibri','bold'); doc.setFontSize(18); doc.setTextColor(...navy);
   doc.text('QUOTATION', marginR, 52, {align:'right'});
@@ -2518,9 +2522,10 @@ function generatePurchaseOrderPdf(p){
   ly += 11;
   doc.setFont('Calibri','normal'); doc.setFontSize(7); doc.setTextColor(...inkSec);
   const innousRfc = STATE.settings.rfc||DEFAULT_SETTINGS.rfc, innousPhone = STATE.settings.phone||DEFAULT_SETTINGS.phone;
+  const innousEmail = STATE.settings.email||DEFAULT_SETTINGS.email;
   doc.text(doc.splitTextToSize(`RFC: ${innousRfc} · ${legalAddress}`, 265), marginL, ly);
   ly += 20;
-  doc.text(`Tel. ${innousPhone} · compras@innous.com.mx · www.innous.com.mx`, marginL, ly);
+  doc.text(`Tel. ${innousPhone} · ${innousEmail} · www.innous.com.mx`, marginL, ly);
 
   const ocBoxX = 322, ocBoxW = marginR-ocBoxX;
   doc.setFillColor(...navy); doc.rect(ocBoxX, 40, ocBoxW, 20, 'F');
@@ -5654,7 +5659,7 @@ function settingsSection(key, icon, title, sub, bodyHtml, danger){
   ${open?`<div class="settings-panel"${panelStyle}>${bodyHtml}</div>`:''}`;
 }
 ROUTES['innous/settings'] = function(){
-  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
+  if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, email:STATE.settings.email, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
   return `
   <div class="content-inner" style="max-width:680px;">
@@ -5671,6 +5676,7 @@ ROUTES['innous/settings'] = function(){
         <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" oninput="STATE.ui.settingsDraft.rfc=this.value"></div>
         <div class="form-group"><label class="field-label">Teléfono</label><input type="text" value="${escAttr(d.phone)}" oninput="STATE.ui.settingsDraft.phone=this.value"></div>
       </div>
+      <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="STATE.ui.settingsDraft.email=this.value"></div>
     `)}
     ${settingsSection('clientes-proveedores','users','Clientes y Proveedores','Editar datos de contacto y facturación', settingsBillingInfoSection())}
     ${settingsSection('precios','percent','Precios por Defecto','Markup y tipo de cambio inicial', `
@@ -6355,9 +6361,9 @@ const App = {
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
-    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, rfc:STATE.ui.settingsDraft.rfc.trim()||DEFAULT_SETTINGS.rfc, phone:STATE.ui.settingsDraft.phone.trim()||DEFAULT_SETTINGS.phone, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
+    const next = { legalName:STATE.ui.settingsDraft.legalName.trim()||DEFAULT_SETTINGS.legalName, address:STATE.ui.settingsDraft.address.trim()||DEFAULT_SETTINGS.address, rfc:STATE.ui.settingsDraft.rfc.trim()||DEFAULT_SETTINGS.rfc, phone:STATE.ui.settingsDraft.phone.trim()||DEFAULT_SETTINGS.phone, email:STATE.ui.settingsDraft.email.trim()||DEFAULT_SETTINGS.email, region:STATE.ui.settingsDraft.region.trim()||DEFAULT_SETTINGS.region, defaultMarkupPct:STATE.ui.settingsDraft.defaultMarkupPct, defaultExchangeRate:STATE.ui.settingsDraft.defaultExchangeRate||DEFAULT_SETTINGS.defaultExchangeRate, notif:{...STATE.ui.settingsDraft.notif} };
     const { error } = await sb.from('settings').update({
-      legal_name: next.legalName, address: next.address, rfc: next.rfc, phone: next.phone, region: next.region, default_markup_pct: next.defaultMarkupPct,
+      legal_name: next.legalName, address: next.address, rfc: next.rfc, phone: next.phone, email: next.email, region: next.region, default_markup_pct: next.defaultMarkupPct,
       default_exchange_rate: next.defaultExchangeRate,
       notif_new_rfq: next.notif.newRfq, notif_quote_received: next.notif.quoteReceived,
       notif_customer_selects: next.notif.customerSelects, notif_weekly_summary: next.notif.weeklySummary,
