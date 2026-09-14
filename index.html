@@ -412,8 +412,18 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 
 .file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);cursor:pointer;transition:border-color .15s,background .15s;}
 .file-drop:hover,.file-drop.drag-over{border-color:var(--accent);background:var(--accent-soft);}
-.redact-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:60vh;background:var(--surface-alt);text-align:center;}
-.redact-canvas-wrap canvas{max-width:100%;cursor:crosshair;display:block;margin:0 auto;}
+/* The whole drawing has to fit here with no scrollbar in either direction
+   (fix61) — the canvas is sized once to "fit" this box (see loadRedactPage)
+   and then only ever resized visually via a CSS transform (App.redactWheel/
+   redactZoomBy/applyRedactTransform), never by growing past the box, so
+   overflow:hidden here never actually clips anything at the default zoom. */
+.redact-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;height:64vh;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;touch-action:none;}
+.redact-canvas-wrap canvas{cursor:crosshair;display:block;}
+.redact-zoom-bar{display:flex;align-items:center;justify-content:center;gap:2px;margin-bottom:10px;}
+.redact-zoom-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-secondary);border-radius:var(--radius-sm);}
+.redact-zoom-btn:hover{background:var(--surface-alt);}
+.redact-zoom-btn svg{width:15px;height:15px;}
+.redact-zoom-pct{width:52px;text-align:center;font-size:12.5px;font-weight:600;color:var(--ink-secondary);}
 .file-drop svg{width:26px;height:26px;stroke:var(--ink-tertiary);margin:0 auto 10px;}
 .file-drop-title{font-size:13.5px;font-weight:600;}
 .file-drop-sub{font-size:12px;color:var(--ink-tertiary);margin-top:3px;}
@@ -443,6 +453,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);transform:translateY(8px);transition:transform .15s;}
 .modal-overlay.open .modal{transform:translateY(0);}
 .modal.modal-wide{max-width:900px;}
+.modal.modal-xwide{max-width:1400px;}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--border);}
 .modal-header h3{font-size:16px;font-weight:700;}
 .modal-body{padding:22px;}
@@ -2066,9 +2077,14 @@ function showToast(msg, kind){
 }
 
 /* ---------- Modal ---------- */
-function openModal(innerHtml, wide){
+// `size` is usually just a boolean (true → .modal-wide, the original two
+// sizes) — the redact tool below is the one modal that actually needs
+// real screen space to be usable, so it passes the string 'xwide' instead
+// for the larger .modal-xwide class.
+function openModal(innerHtml, size){
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="modal-overlay" id="modal-overlay"><div class="modal ${wide?'modal-wide':''}">${innerHtml}</div></div>`;
+  const sizeClass = size==='xwide' ? 'modal-xwide' : (size ? 'modal-wide' : '');
+  root.innerHTML = `<div class="modal-overlay" id="modal-overlay"><div class="modal ${sizeClass}">${innerHtml}</div></div>`;
   const overlay = document.getElementById('modal-overlay');
   requestAnimationFrame(()=>{ if(overlay && overlay.isConnected) overlay.classList.add('open'); });
   overlay.addEventListener('click',(e)=>{ if(e.target.id==='modal-overlay') closeModal(); });
@@ -2775,14 +2791,20 @@ function redactModalHtml(){
   return `
   <div class="modal-header"><h3>Redactar Plano</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
-    <div class="field-hint" style="margin-bottom:10px;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
+    <div class="field-hint" style="margin-bottom:10px;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. Usa el trackpad para moverte (dos dedos) y hacer zoom (pellizcar), o los botones de abajo. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
     ${st.numPages>1?`
     <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;">
       <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Anterior</button>
       <div class="td-strong" id="redact-page-indicator">Página ${st.pageNum} de ${st.numPages}</div>
       <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum>=st.numPages?'disabled':''} onclick="App.loadRedactPage(${st.pageNum+1})">Siguiente<i data-lucide="chevron-right"></i></button>
     </div>` : ''}
-    <div class="redact-canvas-wrap">
+    <div class="redact-zoom-bar">
+      <button type="button" class="redact-zoom-btn" title="Alejar" onclick="App.redactZoomBy(1/1.25)"><i data-lucide="minus"></i></button>
+      <div class="redact-zoom-pct" id="redact-zoom-pct">${Math.round((st.zoom||1)*100)}%</div>
+      <button type="button" class="redact-zoom-btn" title="Acercar" onclick="App.redactZoomBy(1.25)"><i data-lucide="plus"></i></button>
+      <button type="button" class="redact-zoom-btn" title="Ajustar a la pantalla" style="width:auto;padding:0 10px;margin-left:6px;" onclick="App.redactZoomReset()"><i data-lucide="maximize"></i></button>
+    </div>
+    <div class="redact-canvas-wrap" onwheel="App.redactWheel(event)">
       <canvas id="redact-canvas" onmousedown="App.redactMouseDown(event)" onmousemove="App.redactMouseMove(event)" onmouseup="App.redactMouseUp(event)" onmouseleave="App.redactMouseUp(event)"></canvas>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
@@ -2818,6 +2840,19 @@ function redrawRedactCanvas(){
     ctx.strokeStyle = '#00A3E0'; ctx.lineWidth = Math.max(1, canvas.width/500);
     ctx.strokeRect(st.drawing.x, st.drawing.y, st.drawing.w, st.drawing.h);
   }
+}
+// Applies the current zoom/pan (fix61) as a CSS transform on top of the
+// canvas's fixed "fit" size set in App.loadRedactPage — translate happens
+// in plain screen pixels, scale on top of that, which is what lets
+// App.redactWheel add trackpad pan deltas straight onto panX/panY without
+// having to account for the current zoom level itself.
+function applyRedactTransform(){
+  const st = STATE.ui.redactState;
+  const canvas = document.getElementById('redact-canvas');
+  if(!st || !canvas) return;
+  canvas.style.transform = `translate(${st.panX||0}px, ${st.panY||0}px) scale(${st.zoom||1})`;
+  const pct = document.getElementById('redact-zoom-pct');
+  if(pct) pct.textContent = Math.round((st.zoom||1)*100)+'%';
 }
 function timelineComp(steps, currentIdx){
   // A step is "done" (checkmark) once we've moved past it — or, once the
@@ -7020,8 +7055,8 @@ const App = {
     if(!f.path){ showToast('This file has no original to open.'); return; }
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(f.path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
-    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, numPages:1, pageNum:1, boxesByPage:{}, drawing:null, sources:{}, pdfDoc:null, loading:true };
-    openModal(redactModalHtml(), true);
+    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, numPages:1, pageNum:1, boxesByPage:{}, drawing:null, sources:{}, pdfDoc:null, loading:true, zoom:1, panX:0, panY:0 };
+    openModal(redactModalHtml(), 'xwide');
     try{
       if(f.type==='pdf'){
         if(!window.pdfjsLib) throw new Error('PDF viewer failed to load');
@@ -7073,9 +7108,60 @@ const App = {
     document.querySelector('.modal').innerHTML = redactModalHtml();
     lucide.createIcons();
     const canvas = document.getElementById('redact-canvas');
-    canvas.width = source.width || source.naturalWidth;
-    canvas.height = source.height || source.naturalHeight;
+    const nativeW = source.width || source.naturalWidth, nativeH = source.height || source.naturalHeight;
+    canvas.width = nativeW; canvas.height = nativeH;
+    // Size the canvas (in CSS pixels) to fit entirely inside the wrap with
+    // no scrollbar in either direction — never upscaled past 1:1 by
+    // default (min(...,1)) so a small drawing doesn't start out blurry.
+    // Zooming from here on is purely the CSS transform in
+    // applyRedactTransform, never a change to this base size.
+    const wrap = document.querySelector('.redact-canvas-wrap');
+    const fitScale = Math.min(wrap.clientWidth/nativeW, wrap.clientHeight/nativeH, 1);
+    canvas.style.width = (nativeW*fitScale)+'px';
+    canvas.style.height = (nativeH*fitScale)+'px';
+    st.zoom = 1; st.panX = 0; st.panY = 0;
+    applyRedactTransform();
     redrawRedactCanvas();
+  },
+  // Trackpad support (fix61) — a Mac trackpad reports a two-finger pinch
+  // as a wheel event with ctrlKey set (same as ctrl+scroll-wheel on a
+  // regular mouse), and a two-finger swipe as a plain wheel event with
+  // deltaX/deltaY — so both gestures are already just "wheel" as far as
+  // the browser's concerned, no separate gesture API needed. Zooming
+  // keeps whatever point is under the cursor fixed on screen, same as
+  // Google Maps/Figma; panning just adds the raw delta since translate()
+  // is applied before scale() in applyRedactTransform, so panX/panY are
+  // always plain screen pixels regardless of zoom level.
+  redactWheel(e){
+    const st = STATE.ui.redactState; if(!st) return;
+    e.preventDefault();
+    if(e.ctrlKey){
+      const rect = e.currentTarget.getBoundingClientRect();
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const dx = (e.clientX-cx) - (st.panX||0), dy = (e.clientY-cy) - (st.panY||0);
+      const factor = Math.exp(-e.deltaY*0.01);
+      const newZoom = Math.min(6, Math.max(0.5, (st.zoom||1)*factor));
+      const ratio = newZoom/(st.zoom||1);
+      st.panX = (st.panX||0) + dx*(1-ratio);
+      st.panY = (st.panY||0) + dy*(1-ratio);
+      st.zoom = newZoom;
+    } else {
+      st.panX = (st.panX||0) - e.deltaX;
+      st.panY = (st.panY||0) - e.deltaY;
+    }
+    applyRedactTransform();
+  },
+  // The +/- buttons — same zoom math as the trackpad pinch above, just
+  // centered on the canvas's own center instead of a cursor position.
+  redactZoomBy(factor){
+    const st = STATE.ui.redactState; if(!st) return;
+    st.zoom = Math.min(6, Math.max(0.5, (st.zoom||1)*factor));
+    applyRedactTransform();
+  },
+  redactZoomReset(){
+    const st = STATE.ui.redactState; if(!st) return;
+    st.zoom = 1; st.panX = 0; st.panY = 0;
+    applyRedactTransform();
   },
   redactMouseDown(e){
     const st = STATE.ui.redactState; if(!st) return;
