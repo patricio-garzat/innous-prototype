@@ -1930,6 +1930,7 @@ async function enterAppAsUser(user){
     STATE.innousUserId = user.id;
     INNOUS_USER.name = profile.display_name || user.email;
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
+    INNOUS_USER.username = profile.username || '';
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
@@ -2303,7 +2304,7 @@ const STATE = {
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
   ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{} },
 };
-const INNOUS_USER = { name:'Ops Team', photo:null };
+const INNOUS_USER = { name:'Ops Team', photo:null, username:'' };
 
 /* ---------- Platform settings (INNOUS Settings page) — persisted so changes
    actually stick, and so the default markup really is used across the app. ---------- */
@@ -3912,7 +3913,7 @@ const TOUR_STEPS = {
 function accountModalHtml(){
   const es = STATE.role!=='CLIENT';
   const d = STATE.ui.accountDraft;
-  const {nameLabel, companyLabel, showCompany, initialsText, readOnlyProfile} = STATE.ui.accountModalMeta;
+  const {nameLabel, companyLabel, showCompany, showUsername, initialsText, readOnlyProfile} = STATE.ui.accountModalMeta;
   const pwOpen = !!STATE.ui.accountShowPasswordSection;
   return `
   <div class="modal-header"><h3>${es?'Configuración de Cuenta':'Account Settings'}</h3><button class="modal-close" onclick="App.closeAccountModal()"><i data-lucide="x"></i></button></div>
@@ -3935,6 +3936,7 @@ function accountModalHtml(){
     ` : `
     <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
     ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+    ${showUsername?`<div class="form-group"><label class="field-label">Username</label><input type="text" value="${escAttr(d.username)}" placeholder="para poder entrar con username en vez de correo" oninput="STATE.ui.accountDraft.username=this.value"><div class="field-hint">Opcional — si lo pones, puedes iniciar sesión con este username o con tu correo, lo que prefieras.</div></div>`:''}
     `}
     ${STATE.authMode==='account'?`
     <div class="account-pw-toggle ${pwOpen?'open':''}" onclick="App.toggleAccountPasswordSection()">
@@ -6920,18 +6922,21 @@ const App = {
       showToast('No se pudo conectar. Intenta de nuevo.');
     }
   },
-  // fix75: clients and Innous still log in with their email, exactly as
-  // before, but suppliers now log in with a username instead — their email
-  // stays on file for contact only (it still shows on the PO, etc.), it
-  // just no longer works to sign in. Supabase Auth itself only ever knows
-  // email+password, so under the hood this still resolves to an email: if
-  // what was typed looks like an email we use it directly, otherwise we
-  // treat it as a username and ask resolve_supplier_login_email() (a
-  // SECURITY DEFINER function anyone can call, even logged out, but which
-  // only ever returns a single email — never the rest of the supplier's
-  // row) which real email it maps to. Either way Supabase Auth ends up
-  // checking a real email+password pair, so nothing about how accounts are
-  // stored had to change.
+  // fix75: clients still log in with email only, but suppliers now log in
+  // with a username instead — their email stays on file for contact only
+  // (it still shows on the PO, etc.), it just no longer works to sign in.
+  // fix78 gives Innous a username too, but as an EXTRA way in, not a
+  // replacement — their email keeps working exactly as before, unlike a
+  // supplier's. Supabase Auth itself only ever knows email+password, so
+  // under the hood this still resolves to an email: if what was typed
+  // looks like an email we use it directly, otherwise we treat it as a
+  // username and ask resolve_supplier_login_email()/resolve_innous_login_email()
+  // (SECURITY DEFINER functions anyone can call, even logged out, but which
+  // only ever return a single email — never the rest of that account's own
+  // data) which real email it maps to, trying the supplier one first since
+  // that's the common case. Either way Supabase Auth ends up checking a
+  // real email+password pair, so nothing about how accounts are stored had
+  // to change.
   async submitLogin(e){
     e.preventDefault();
     const f = new FormData(e.target);
@@ -6944,7 +6949,11 @@ const App = {
       if(viaEmail){
         email = raw.toLowerCase();
       } else {
-        const { data: resolved, error: rpcErr } = await withTimeout(sb.rpc('resolve_supplier_login_email', { p_username: raw.toLowerCase() }), 12000, 'resolve-username');
+        const username = raw.toLowerCase();
+        let { data: resolved, error: rpcErr } = await withTimeout(sb.rpc('resolve_supplier_login_email', { p_username: username }), 12000, 'resolve-username');
+        if(!rpcErr && !resolved){
+          ({ data: resolved, error: rpcErr } = await withTimeout(sb.rpc('resolve_innous_login_email', { p_username: username }), 12000, 'resolve-username-innous'));
+        }
         if(rpcErr || !resolved){ showToast('Usuario o contraseña incorrectos'); if(submitBtn) submitBtn.disabled=false; return false; }
         email = resolved;
       }
@@ -7299,7 +7308,7 @@ const App = {
       rec = INNOUS_USER;
       nameLabel = 'Name'; companyLabel = ''; showCompany = false;
       initialsText = 'IN';
-      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null};
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null, username:rec.username||''};
     }
     // fix50: suppliers can no longer edit their own name/company/photo —
     // only Innous can (see supabase-fix50 dropping their self-UPDATE
@@ -7307,7 +7316,12 @@ const App = {
     // login-security concern, not the business-data integrity one this
     // restriction exists for.
     const readOnlyProfile = STATE.role==='SUPPLIER';
-    STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, initialsText, readOnlyProfile};
+    // fix78: only Innous gets a username here — clients keep logging in
+    // with email only, and a supplier's username is set by Innous from the
+    // supplier's own profile page (App.saveSupplierAccount), not by the
+    // supplier themselves (readOnlyProfile above already blocks that).
+    const showUsername = STATE.role==='INNOUS';
+    STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, showUsername, initialsText, readOnlyProfile};
     openModal(accountModalHtml());
   },
   reopenAccountModal(){
@@ -7362,10 +7376,15 @@ const App = {
       // self-UPDATE policy on `suppliers`). Only the password change below
       // still applies.
     } else {
-      INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo;
-      if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo }).eq('user_id', STATE.innousUserId)); }
+      const username = (d.username||'').trim().toLowerCase();
+      if(username && !/^[a-z0-9._-]{3,32}$/.test(username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
+      INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo; INNOUS_USER.username = username;
+      if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo, username: username||null }).eq('user_id', STATE.innousUserId)); }
     }
-    if(err){ showToast(err.message); return; }
+    if(err){
+      const msg = /duplicate key|unique constraint/i.test(err.message) ? 'Ese nombre de usuario ya está en uso.' : err.message;
+      showToast(msg); return;
+    }
     if((pw1||pw2) && STATE.authMode==='account'){
       const { error } = await sb.auth.updateUser({ password: pw1 });
       if(error){ showToast(error.message); return; }
