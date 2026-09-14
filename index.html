@@ -2469,10 +2469,9 @@ function clearRealData(){
   localStorage.removeItem('innous_real_projects');
 }
 
-// Fall back to an empty placeholder record rather than throwing — the app starts with
-// no example data loaded by default (see App.loadExampleData), so the old demo
-// persona ids (c1/s1) don't exist until either example data is loaded or a real
-// account is signed up.
+// Fall back to an empty placeholder record rather than throwing — the app
+// starts genuinely empty (fix87), so the old demo persona ids (c1/s1) never
+// exist until a real account is signed up.
 function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', phone:'', city:'', industry:'', position:'', address:'', registeredAt:null, chats:{}, photo:null}; }
 function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, chats:{}, rating:0, onTime:0, quality:0, projects:0, photo:null}; }
 // A customer/supplier can have several NAMED chats with INNOUS at once
@@ -6510,17 +6509,6 @@ ROUTES['innous/settings'] = function(){
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.customerSelects?'checked':''} onchange="STATE.ui.settingsDraft.notif.customerSelects=this.checked"><span>El cliente elige una cotización</span></div></div>
       <div class="checklist-item"><div class="checkbox-row"><input type="checkbox" ${d.notif.weeklySummary?'checked':''} onchange="STATE.ui.settingsDraft.notif.weeklySummary=this.checked"><span>Resumen semanal de analítica</span></div></div>
     `)}
-    ${settingsSection('datos-ejemplo','database','Datos de Ejemplo','Cargar o borrar cuentas de prueba', `
-      <div class="section-sub">${localStorage.getItem('innous_demo_loaded')==='1'
-        ? 'Actualmente hay clientes, proveedores y RFQs de ejemplo cargados, para explorar toda la riqueza de la plataforma.'
-        : 'La plataforma está corriendo solo con cuentas reales — no hay datos de ejemplo cargados. Puedes cargar un set de clientes, proveedores y RFQs de ejemplo para explorar la plataforma completa.'}</div>
-      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
-        ${localStorage.getItem('innous_demo_loaded')==='1'
-          ? `<button class="btn btn-danger" onclick="App.clearExampleData()"><i data-lucide="trash-2"></i>Borrar Datos de Ejemplo</button>`
-          : `<button class="btn btn-secondary" onclick="App.loadExampleData()"><i data-lucide="database"></i>Cargar Datos de Ejemplo</button>`}
-      </div>
-      <div class="field-hint" style="margin-top:10px;">Cualquiera de las dos acciones también borra las cuentas de prueba reales registradas en este navegador (tu acceso de INNOUS se vuelve a crear automáticamente).</div>
-    `, true)}
   </div>`;
 };
 
@@ -7220,24 +7208,6 @@ const App = {
     document.getElementById('app-shell').style.display='none';
     document.getElementById('auth-root').style.display='';
     renderAuthRoot();
-  },
-  clearExampleData(){
-    if(!confirm('This permanently clears every example customer, supplier and RFQ, plus any test accounts created on this browser. The platform will run on real accounts only. Continue?')) return;
-    localStorage.removeItem('innous_demo_loaded');
-    localStorage.removeItem('innous_accounts');
-    localStorage.removeItem('innous_session');
-    localStorage.removeItem('innous_deleted_demo');
-    clearRealData();
-    location.reload();
-  },
-  loadExampleData(){
-    if(!confirm('Load a set of example customers, suppliers and RFQs? This also clears any real test accounts created on this browser.')) return;
-    localStorage.setItem('innous_demo_loaded','1');
-    localStorage.removeItem('innous_accounts');
-    localStorage.removeItem('innous_session');
-    localStorage.removeItem('innous_deleted_demo');
-    clearRealData();
-    location.reload();
   },
   setDraftMarkup(pct){ STATE.ui.settingsDraft.defaultMarkupPct = pct; route(); },
   async saveInnousSettings(){
@@ -9426,17 +9396,14 @@ document.addEventListener('click', ()=>{
 });
 
 /* ---------- Init ---------- */
-// This is a real portal, not a demo: it starts genuinely empty (no pre-seeded
-// customers/suppliers/RFQs). INNOUS can optionally load a set of example data
-// to explore the platform's full richness — see App.loadExampleData on the
-// Settings page — which persists via this flag until explicitly cleared.
-if(localStorage.getItem('innous_demo_loaded')==='1'){
-  buildProjects();
-} else {
-  CUSTOMERS.length = 0;
-  SUPPLIERS.length = 0;
-  PROJECTS = [];
-}
+// This is a real portal, not a demo: it starts genuinely empty (no
+// pre-seeded customers/suppliers/RFQs) — the old "load example data" toggle
+// on the Settings page (App.loadExampleData/clearExampleData) is gone now
+// that real suppliers are actually being onboarded (fix87); real accounts
+// always come from loadRealData()/refreshRealCustomersAndSuppliers() below.
+CUSTOMERS.length = 0;
+SUPPLIERS.length = 0;
+PROJECTS = [];
 // Real accounts, their customer/supplier records, and their RFQs/orders always
 // persist on top of whichever base above — this is what makes them survive a
 // refresh instead of only the currently-logged-in account's own record.
