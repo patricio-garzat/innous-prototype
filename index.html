@@ -573,7 +573,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
    unrelated color from the rest of the app's buttons. */
 .chat-bubble.out{align-self:flex-end;background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;border-bottom-right-radius:3px;}
 .chat-bubble.in{align-self:flex-start;background:var(--surface-alt);border:1px solid var(--border);border-bottom-left-radius:3px;}
-.chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;display:inline-flex;align-items:center;gap:3px;}
+.chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;display:flex;align-items:center;gap:3px;}
 /* Sent/delivered/read status (fix67) — see chatStatusIconHtml. Sits right
    in .chat-bubble-meta, which is already dimmed to 60% opacity — the
    default icon inherits that; "read" opts back up to full, bright cyan so
