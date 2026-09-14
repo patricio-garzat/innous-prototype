@@ -5166,14 +5166,15 @@ function supplierBillingSection(s){
    page on every keystroke — that would also drop focus out of the search
    box after each character. */
 function settingsBillingInfoSection(){
-  // Each row gets a colored avatar (same avatarColorFor palette as the
-  // Proveedores grid / chat list — see avatarHtml) so names don't just
-  // blend into a flat white table anymore, plus a chevron to make clear
-  // it opens something. See .account-row below for the accent-blue hover.
-  const accountRow = (id, label, sub, onclick)=>{
+  // Each row shows the account's own uploaded photo when it has one —
+  // same as everywhere else in the app (Proveedores grid, chat list,
+  // page headers) — falling back to a colored avatarColorFor initial
+  // circle only when there's no photo, so names don't just blend into a
+  // flat white table. See .account-row below for the accent-blue hover.
+  const accountRow = (id, photo, label, sub, onclick)=>{
     const searchText = escAttr(`${label} ${sub||''}`.toLowerCase());
     return `<div class="account-row" data-search="${searchText}" onclick="${onclick}">
-      ${avatarHtml(null, initials(label), avatarColorFor(id), 36)}
+      ${avatarHtml(photo, initials(label), avatarColorFor(id), 36)}
       <div class="account-row-info"><div class="account-row-name">${escAttr(label)}</div><div class="td-sub">${sub?escAttr(sub):'—'}</div></div>
       <i data-lucide="chevron-right" class="account-row-chevron"></i>
     </div>`;
@@ -5188,7 +5189,7 @@ function settingsBillingInfoSection(){
       <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-customer-search" placeholder="Buscar cliente..." onkeyup="App.filterAccountsList('customer')"></div>
     </div>
     <div class="account-list" id="settings-customers-table" style="margin-top:10px;">
-      ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.id, c.company, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin clientes registrados</div>`}
+      ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.id, c.photo, c.company, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin clientes registrados</div>`}
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
@@ -5200,7 +5201,7 @@ function settingsBillingInfoSection(){
       <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-supplier-search" placeholder="Buscar proveedor..." onkeyup="App.filterAccountsList('supplier')"></div>
     </div>
     <div class="account-list" id="settings-suppliers-table" style="margin-top:10px;">
-      ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.id, s.name, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin proveedores registrados</div>`}
+      ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.id, s.photo, s.name, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin proveedores registrados</div>`}
     </div>
   </div>`;
 }
