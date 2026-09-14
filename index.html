@@ -1101,7 +1101,7 @@ function customerRowToJs(row){
     // Fixed billing data for the formal quote's "QUOTATION TO" box — not
     // part of self-service signup, filled in once by INNOUS from the
     // customer's own detail page and auto-filled on every quote after
-    // that. See generateQuotePdf() / App.saveCustomerBillingInfo.
+    // that. See generateQuotePdf() / App.saveCustomerAccount.
     position: row.position||'', address: row.address||'',
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
     photo: row.photo_url || null, chats: {},
@@ -1904,7 +1904,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4766,7 +4766,6 @@ function customerCompanySection(c){
       <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.company)}" oninput="${upd('company')}"></div>
       <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" placeholder="Ciudad, estado" oninput="${upd('city')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerCompanyInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de la Empresa</button></div>
   </div>`;
 }
 /* ---- Contact Info — the contact this customer registered on the
@@ -4791,7 +4790,6 @@ function customerContactSection(c){
       <div class="form-group"><label class="field-label">Número</label><input type="text" value="${escAttr(d.phone)}" oninput="${upd('phone')}"></div>
       <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="${upd('email')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerContactInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de Contacto</button></div>
   </div>`;
 }
 /* ---- Billing Info — the customer's registered address, the last piece
@@ -4807,7 +4805,6 @@ function customerBillingSection(c){
     <div class="section-title">Datos de Facturación — para Cotizaciones</div>
     <div class="section-sub">Llena automáticamente el renglón "Address" del cuadro "Quotation To" en el PDF de cotización formal de este cliente.</div>
     <div class="form-group" style="margin-top:12px;"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, ciudad, estado, país, C.P." oninput="${upd('address')}"></div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerBillingInfo('${c.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
 
@@ -5050,7 +5047,6 @@ function supplierCompanySection(s){
       <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.name)}" oninput="${upd('name')}"></div>
       <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" placeholder="Ciudad, estado" oninput="${upd('city')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierCompanyInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de la Empresa</button></div>
   </div>`;
 }
 /* ---- Contact Info — the contact this supplier registered on the
@@ -5074,7 +5070,35 @@ function supplierContactSection(s){
       <div class="form-group"><label class="field-label">Número</label><input type="text" value="${escAttr(d.phone)}" oninput="${upd('phone')}"></div>
       <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="${upd('email')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierContactInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Contacto</button></div>
+  </div>`;
+}
+/* ---- Services, Machinery & Certifications (fix55) — editable version of
+   the read-only Servicios Ofrecidos / Maquinaria y Equipo / Certificaciones
+   cards on the supplier's own detail page (see ROUTES['innous/supplier']) —
+   previously only settable once, at account creation. Capabilities/certs
+   reuse the same fixed PROCESSES/CERTS vocabularies as the new-supplier
+   form's checkboxes; machines has no fixed vocabulary in this app (it's
+   free text per supplier), so it's a comma-separated field instead, split
+   the same way an RFQ's process list already is (see rfqProcesses). */
+function supplierCapabilitiesSection(s){
+  if(!STATE.ui.supplierCapabilitiesDrafts[s.id]) STATE.ui.supplierCapabilitiesDrafts[s.id] = {
+    capabilities: [...(s.capabilities||[])], certs: [...(s.certs||[])], machines: (s.machines||[]).join(', '),
+  };
+  const d = STATE.ui.supplierCapabilitiesDrafts[s.id];
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;">
+    <div class="section-title">Servicios, Maquinaria y Certificaciones</div>
+    <div class="form-group" style="margin-top:12px;">
+      <label class="field-label">Servicios Ofrecidos</label>
+      <div class="select-chip-grid">${PROCESSES.filter(p=>p!=='Other').map(p=>`
+        <label class="select-chip"><input type="checkbox" ${d.capabilities.includes(p)?'checked':''} onchange="App.toggleSupplierCapabilitiesDraftField('${s.id}','capabilities','${p}',this.checked)">${procES(p)}</label>`).join('')}</div>
+    </div>
+    <div class="form-group"><label class="field-label">Maquinaria y Equipo</label><input type="text" value="${escAttr(d.machines)}" placeholder="Separada por comas — ej. 5-axis CNC, Laser Cutting" oninput="App.updateSupplierCapabilitiesDraft('${s.id}','machines',this.value)"></div>
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="field-label">Certificaciones</label>
+      <div class="select-chip-grid">${CERTS.map(c=>`
+        <label class="select-chip"><input type="checkbox" ${d.certs.includes(c)?'checked':''} onchange="App.toggleSupplierCapabilitiesDraftField('${s.id}','certs','${c}',this.checked)">${c}</label>`).join('')}</div>
+    </div>
   </div>`;
 }
 /* ---- Billing Info — exactly what a Constancia de Situación Fiscal (CSF)
@@ -5109,18 +5133,20 @@ function supplierBillingSection(s){
       <div class="form-group"><label class="field-label">RFC</label><input type="text" value="${escAttr(d.rfc)}" placeholder="XXXX000000XX0" oninput="${upd('rfc')}"></div>
       <div class="form-group"><label class="field-label">Domicilio</label><input type="text" value="${escAttr(d.address)}" placeholder="Calle, número, colonia, C.P., ciudad, estado" oninput="${upd('address')}"></div>
     </div>
-    <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierBillingInfo('${s.id}')"><i data-lucide="save"></i>Guardar Datos de Facturación</button></div>
   </div>`;
 }
 /* ---- Settings shortcut to the sections above (fix43, extended by fix46
    for contact info, redesigned by fix47, split into two searchable lists
-   by fix53) — the same customerContactSection()/customerBillingSection()/
-   supplierContactSection()/supplierBillingSection() cards that already
-   live on each customer/supplier's own detail page, just reachable from
-   Ajustes too. Click a row, a modal opens with that one account's contact
-   + billing forms. Saves through the exact same App.save* methods, which
-   now also refresh the modal in place (see refreshAccountInfoModalIfOpen)
-   so a save/CSF-upload shows immediately without closing it.
+   by fix53, one combined "Guardar Cambios" button by fix55) — the same
+   customerContactSection()/customerBillingSection()/supplierContactSection()/
+   supplierBillingSection() cards that already live on each customer/
+   supplier's own detail page, just reachable from Ajustes too. Click a
+   row, a modal opens with that one account's sections, all under a single
+   save button at the bottom (App.saveCustomerAccount/App.saveSupplierAccount)
+   instead of one per section — CSF upload/delete stay as their own
+   immediate actions since they touch Storage, not just draft fields. Saves
+   refresh the modal in place too (see refreshAccountInfoModalIfOpen) so
+   they show immediately without closing it.
    Clientes and Proveedores are two separate, full-width cards (not a
    side-by-side grid — with real company names that ran long, the two
    narrow columns pushed their table wider than the column and spilled
@@ -5167,13 +5193,17 @@ function accountInfoModalHtml(){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return '';
     return `
     <div class="modal-header"><h3>${c.company}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${customerCompanySection(c)}${customerContactSection(c)}${customerBillingSection(c)}</div>`;
+    <div class="modal-body">${customerCompanySection(c)}${customerContactSection(c)}${customerBillingSection(c)}
+      <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerAccount('${c.id}')"><i data-lucide="save"></i>Guardar Cambios</button></div>
+    </div>`;
   }
   if(type==='supplier'){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return '';
     return `
     <div class="modal-header"><h3>${s.name}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${supplierCompanySection(s)}${supplierContactSection(s)}${supplierBillingSection(s)}</div>`;
+    <div class="modal-body">${supplierCompanySection(s)}${supplierContactSection(s)}${supplierCapabilitiesSection(s)}${supplierBillingSection(s)}
+      <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierAccount('${s.id}')"><i data-lucide="save"></i>Guardar Cambios</button></div>
+    </div>`;
   }
   return '';
 }
@@ -7374,52 +7404,43 @@ const App = {
     App.openAccountInfoModal(type, id);
   },
   toggleSettingsSection(key){ STATE.ui.settingsOpenSection = STATE.ui.settingsOpenSection===key ? null : key; route(); },
-  async saveCustomerBillingInfo(id){
-    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
-    const d = STATE.ui.customerBillingDrafts[id] || {};
-    const next = { address: (d.address||'').trim() };
-    if(isRealAccountId(id)){
-      const { error } = await sb.from('customers').update({ address: next.address }).eq('user_id', id);
-      if(error){ showToast(error.message); return; }
-    }
-    Object.assign(c, next);
-    showToast('Datos de facturación guardados', 'success');
-    refreshAccountInfoModalIfOpen('customer', id);
-    route();
+  updateCustomerBillingDraft(id,field,val){
+    if(!STATE.ui.customerBillingDrafts[id]) STATE.ui.customerBillingDrafts[id] = {};
+    STATE.ui.customerBillingDrafts[id][field] = val;
   },
   updateCustomerCompanyDraft(id,field,val){
     if(!STATE.ui.customerCompanyDrafts[id]) STATE.ui.customerCompanyDrafts[id] = {};
     STATE.ui.customerCompanyDrafts[id][field] = val;
   },
-  async saveCustomerCompanyInfo(id){
-    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
-    const d = STATE.ui.customerCompanyDrafts[id] || {};
-    // company is required (not-null in the DB) — an empty field means
-    // "didn't change it", not "blank it out".
-    const next = { company: (d.company||'').trim()||c.company, city: (d.city||'').trim() };
-    if(isRealAccountId(id)){
-      const { error } = await sb.from('customers').update({ company: next.company, city: next.city }).eq('user_id', id);
-      if(error){ showToast(error.message); return; }
-    }
-    Object.assign(c, next);
-    showToast('Datos de la empresa guardados', 'success');
-    refreshAccountInfoModalIfOpen('customer', id);
-    route();
-  },
   updateCustomerContactDraft(id,field,val){
     if(!STATE.ui.customerContactDrafts[id]) STATE.ui.customerContactDrafts[id] = {};
     STATE.ui.customerContactDrafts[id][field] = val;
   },
-  async saveCustomerContactInfo(id){
+  // One save for the whole customer edit modal (fix55) — Datos de la
+  // Empresa/Contacto/Facturación used to each have their own "Guardar"
+  // button; now there's a single "Guardar Cambios" at the bottom that
+  // writes all three drafts to `customers` in one update.
+  async saveCustomerAccount(id){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
-    const d = STATE.ui.customerContactDrafts[id] || {};
-    const next = { contact:(d.contact||'').trim(), position:(d.position||'').trim(), phone:(d.phone||'').trim(), email:(d.email||'').trim() };
+    const cd = STATE.ui.customerCompanyDrafts[id] || {};
+    const kd = STATE.ui.customerContactDrafts[id] || {};
+    const bd = STATE.ui.customerBillingDrafts[id] || {};
+    // company is required (not-null in the DB) — an empty field means
+    // "didn't change it", not "blank it out".
+    const next = {
+      company: (cd.company||'').trim()||c.company, city: (cd.city||'').trim(),
+      contact: (kd.contact||'').trim(), position: (kd.position||'').trim(), phone: (kd.phone||'').trim(), email: (kd.email||'').trim(),
+      address: (bd.address||'').trim(),
+    };
     if(isRealAccountId(id)){
-      const { error } = await sb.from('customers').update({ contact: next.contact, position: next.position, phone: next.phone, email: next.email }).eq('user_id', id);
+      const { error } = await sb.from('customers').update({
+        company: next.company, city: next.city, contact: next.contact, position: next.position,
+        phone: next.phone, email: next.email, address: next.address,
+      }).eq('user_id', id);
       if(error){ showToast(error.message); return; }
     }
     Object.assign(c, next);
-    showToast('Datos de contacto guardados', 'success');
+    showToast('Cambios guardados', 'success');
     refreshAccountInfoModalIfOpen('customer', id);
     route();
   },
@@ -7427,52 +7448,55 @@ const App = {
     if(!STATE.ui.supplierBillingDrafts[id]) STATE.ui.supplierBillingDrafts[id] = {};
     STATE.ui.supplierBillingDrafts[id][field] = val;
   },
-  async saveSupplierBillingInfo(id){
-    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
-    const d = STATE.ui.supplierBillingDrafts[id] || {};
-    const next = { legalName:(d.legalName||'').trim(), rfc: (d.rfc||'').trim(), address: (d.address||'').trim() };
-    if(isRealAccountId(id)){
-      const { error } = await sb.from('suppliers').update({ legal_name: next.legalName, rfc: next.rfc, address: next.address }).eq('user_id', id);
-      if(error){ showToast(error.message); return; }
-    }
-    Object.assign(s, next);
-    showToast('Datos de facturación guardados', 'success');
-    refreshAccountInfoModalIfOpen('supplier', id);
-    route();
-  },
   updateSupplierCompanyDraft(id,field,val){
     if(!STATE.ui.supplierCompanyDrafts[id]) STATE.ui.supplierCompanyDrafts[id] = {};
     STATE.ui.supplierCompanyDrafts[id][field] = val;
-  },
-  async saveSupplierCompanyInfo(id){
-    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
-    const d = STATE.ui.supplierCompanyDrafts[id] || {};
-    // name is required (not-null in the DB) — an empty field means
-    // "didn't change it", not "blank it out".
-    const next = { name: (d.name||'').trim()||s.name, city: (d.city||'').trim() };
-    if(isRealAccountId(id)){
-      const { error } = await sb.from('suppliers').update({ name: next.name, city: next.city }).eq('user_id', id);
-      if(error){ showToast(error.message); return; }
-    }
-    Object.assign(s, next);
-    showToast('Datos de la empresa guardados', 'success');
-    refreshAccountInfoModalIfOpen('supplier', id);
-    route();
   },
   updateSupplierContactDraft(id,field,val){
     if(!STATE.ui.supplierContactDrafts[id]) STATE.ui.supplierContactDrafts[id] = {};
     STATE.ui.supplierContactDrafts[id][field] = val;
   },
-  async saveSupplierContactInfo(id){
+  updateSupplierCapabilitiesDraft(id,field,val){
+    if(!STATE.ui.supplierCapabilitiesDrafts[id]) STATE.ui.supplierCapabilitiesDrafts[id] = { capabilities:[], certs:[], machines:'' };
+    STATE.ui.supplierCapabilitiesDrafts[id][field] = val;
+  },
+  toggleSupplierCapabilitiesDraftField(id, field, value, checked){
+    if(!STATE.ui.supplierCapabilitiesDrafts[id]) STATE.ui.supplierCapabilitiesDrafts[id] = { capabilities:[], certs:[], machines:'' };
+    const list = STATE.ui.supplierCapabilitiesDrafts[id][field] || [];
+    STATE.ui.supplierCapabilitiesDrafts[id][field] = checked ? [...list, value] : list.filter(v=>v!==value);
+  },
+  // One save for the whole supplier edit modal (fix55) — same idea as
+  // saveCustomerAccount above, now also covering the Servicios/Maquinaria/
+  // Certificaciones fields that used to only be settable once, when Innous
+  // first created the account (see App.createSupplierAccount). CSF upload/
+  // delete stay separate (App.onSupplierCsfSelected/deleteSupplierCsf) —
+  // those touch Storage immediately, not just a draft field.
+  async saveSupplierAccount(id){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
-    const d = STATE.ui.supplierContactDrafts[id] || {};
-    const next = { contactName:(d.contactName||'').trim(), position:(d.position||'').trim(), phone:(d.phone||'').trim(), email:(d.email||'').trim() };
+    const cd = STATE.ui.supplierCompanyDrafts[id] || {};
+    const kd = STATE.ui.supplierContactDrafts[id] || {};
+    const pd = STATE.ui.supplierCapabilitiesDrafts[id] || {};
+    const bd = STATE.ui.supplierBillingDrafts[id] || {};
+    // name is required (not-null in the DB) — an empty field means
+    // "didn't change it", not "blank it out".
+    const next = {
+      name: (cd.name||'').trim()||s.name, city: (cd.city||'').trim(),
+      contactName: (kd.contactName||'').trim(), position: (kd.position||'').trim(), phone: (kd.phone||'').trim(), email: (kd.email||'').trim(),
+      capabilities: pd.capabilities!==undefined ? pd.capabilities : (s.capabilities||[]),
+      certs: pd.certs!==undefined ? pd.certs : (s.certs||[]),
+      machines: pd.machines!==undefined ? pd.machines.split(',').map(x=>x.trim()).filter(Boolean) : (s.machines||[]),
+      legalName: (bd.legalName||'').trim(), rfc: (bd.rfc||'').trim(), address: (bd.address||'').trim(),
+    };
     if(isRealAccountId(id)){
-      const { error } = await sb.from('suppliers').update({ contact_name: next.contactName, position: next.position, phone: next.phone, email: next.email }).eq('user_id', id);
+      const { error } = await sb.from('suppliers').update({
+        name: next.name, city: next.city, contact_name: next.contactName, position: next.position,
+        phone: next.phone, email: next.email, capabilities: next.capabilities, certs: next.certs,
+        machines: next.machines, legal_name: next.legalName, rfc: next.rfc, address: next.address,
+      }).eq('user_id', id);
       if(error){ showToast(error.message); return; }
     }
     Object.assign(s, next);
-    showToast('Datos de contacto guardados', 'success');
+    showToast('Cambios guardados', 'success');
     refreshAccountInfoModalIfOpen('supplier', id);
     route();
   },
