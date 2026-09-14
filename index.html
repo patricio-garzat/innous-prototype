@@ -4276,14 +4276,18 @@ ROUTES['client/order'] = function(id){
 
 /* ---- Shared chat rendering — one direct conversation per person, see
    refreshRealMessages. `mineFrom` is which from_role reads as "sent by me"
-   for this viewer (bubble on the right); `youLabel` is what a message from
-   the OTHER side is captioned with when it isn't from INNOUS. Text is
-   escaped — a chat message is exactly the kind of user-typed string a
-   viewer (in a different account) later renders, so it's never trusted as
-   HTML. A message with an attachment shows it as a small file chip,
-   clickable to open (via a signed URL — see App.openChatFile) once it's a
-   real uploaded file; a demo/local-only one just shows the filename. ---- */
-function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
+   for this viewer (bubble on the right). No sender name/label on a bubble
+   (fix68) — you already know who you're talking to from the header above
+   the thread, and "out"/"in" alignment already makes clear which side is
+   which, so a redundant "You"/name on every single bubble was just noise.
+   Only the relative time (and, on your own bubbles, the status icon —
+   see chatStatusIconHtml) stays. Text is escaped — a chat message is
+   exactly the kind of user-typed string a viewer (in a different account)
+   later renders, so it's never trusted as HTML. A message with an
+   attachment shows it as a small file chip, clickable to open (via a
+   signed URL — see App.openChatFile) once it's a real uploaded file; a
+   demo/local-only one just shows the filename. ---- */
+function chatMessagesHtml(msgs, mineFrom, emptyText){
   // One-shot "just sent"/"just received" flags (fix65, extended by fix66
   // for realtime) — set right before the one render that should show the
   // new bubble animating in (App.sendChatMessage/sendChatCard for "sent";
@@ -4297,7 +4301,6 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
   STATE.ui.chatJustReceived = false;
   const rows = msgs.map((m,i)=>{
     const mine = m.from===mineFrom;
-    const label = mine ? 'You' : (m.from==='innous' ? 'INNOUS' : youLabel);
     let attachmentHtml = '';
     if(m.attachmentName){
       const ext = (m.attachmentName.split('.').pop()||'').toLowerCase();
@@ -4314,7 +4317,7 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
     // (no real backend row) never gets deliveredAt/readAt, so it just
     // always reads as "sent" — there's no real "other side" to receive it.
     const statusHtml = mine ? chatStatusIconHtml(m) : '';
-    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}${statusHtml}</div></div>`;
+    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${timeAgo(m.ts)}${statusHtml}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
 }
@@ -4484,7 +4487,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}${chatTypingBubbleHtml(key)}</div>
+        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'No messages yet. Say hello!')}${chatTypingBubbleHtml(key)}</div>
         ${chatComposeRowHtml(key, 'client-chat-input', 'client-chat-file-input', 'Message INNOUS...')}
         ` : emptyState('message-square','No conversations yet','Start one with "New Chat" above.')}
       </div>
@@ -5993,7 +5996,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
             <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
           </div>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}${chatTypingBubbleHtml(active.key)}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', 'Aún no hay mensajes — di hola.')}${chatTypingBubbleHtml(active.key)}</div>
         ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
         ` : emptyState('message-square','Aún no hay conversaciones','')}
       </div>
@@ -6490,7 +6493,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}${chatTypingBubbleHtml(key)}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'Aún no hay mensajes.')}${chatTypingBubbleHtml(key)}</div>
         ${chatComposeRowHtml(key, 'supplier-chat-input', 'supplier-chat-file-input', 'Mensaje a INNOUS...')}
         ` : emptyState('message-square','Aún no hay conversaciones','Inicia una con "Nuevo Chat" arriba.')}
       </div>
