@@ -1781,6 +1781,28 @@ function stopChatRealtime(){
    thread) and just broadcast/listen on it; {self:false} keeps a sender
    from receiving its own ping back. */
 let typingChannel = null, typingChannelKey = null, typingChannelReady = false, typingSendThrottleAt = 0;
+// Patches just the "•••" typing bubble in place instead of going through a
+// full route() (fix76). A peer's typing ping can land as often as every
+// ~2s while they're mid-message — running that through route() (a full
+// #app-content rebuild) was both needlessly heavy (the whole message list,
+// icons, etc. all get torn down and rebuilt just to show three dots) AND,
+// since the compose <input> is a plain uncontrolled element with no
+// STATE-backed value, it silently wiped out whatever the LOCAL person had
+// already typed — exactly when two people were typing to each other at the
+// same time. This only ever touches the one small bubble node, so it can
+// never step on the compose box, scroll position, or anything else on the
+// page — same wasAtBottom pattern as loadChatImagePreviews (fix72), so the
+// bubble appearing/disappearing while already scrolled to the bottom keeps
+// you pinned there instead of leaving it hidden below the fold.
+function updateTypingBubbleDom(key){
+  if(STATE.ui.activeChatKey!==key) return; // not looking at this thread right now — nothing on screen to patch
+  const el = document.getElementById('chat-typing-bubble');
+  if(!el) return; // not currently on a rendered messages page
+  const cm = el.closest('.chat-messages');
+  const wasAtBottom = !!cm && (cm.scrollHeight - cm.scrollTop - cm.clientHeight < 40);
+  el.innerHTML = chatTypingBubbleHtml(key);
+  if(wasAtBottom && cm) cm.scrollTop = cm.scrollHeight;
+}
 function ensureTypingChannel(key){
   if(typingChannelKey===key) return; // already joined to (or joining) this exact conversation
   stopTypingChannel();
@@ -1791,13 +1813,12 @@ function ensureTypingChannel(key){
       STATE.ui.typingPeers[key] = Date.now();
       clearTimeout(STATE.ui.typingTimers[key]);
       // No further pings for ~3s reads as "stopped typing" — same timeout
-      // most chat apps use. Only re-renders if still looking at this same
-      // thread; otherwise the flag alone quietly expires unseen.
+      // most chat apps use.
       STATE.ui.typingTimers[key] = setTimeout(()=>{
         delete STATE.ui.typingPeers[key];
-        if(STATE.ui.activeChatKey===key) route();
+        updateTypingBubbleDom(key);
       }, 3000);
-      if(STATE.ui.activeChatKey===key) route();
+      updateTypingBubbleDom(key);
     })
     // Only mark it usable once the join has actually been confirmed
     // (status 'SUBSCRIBED') — App.notifyTyping checks this flag before
@@ -3959,6 +3980,15 @@ function route(){
   const el = document.getElementById('app-content');
   const samePage = (hash === lastRoutedHash);
   const prevScroll = el.scrollTop;
+  const isChatKey = (key==='innous/messages' || key==='client/messages' || key==='supplier/messages');
+  // Captured BEFORE the innerHTML swap below destroys this node — route()
+  // reruns on every 12s poll tick and every realtime message event, not
+  // just on send/switch, so without this a person who'd scrolled up to
+  // read older messages got yanked back to the bottom every single tick
+  // (fix76 — this is most of what read as "laggy" chat).
+  const oldChatMessages = isChatKey ? el.querySelector('.chat-messages') : null;
+  const chatWasAtBottom = !oldChatMessages || (oldChatMessages.scrollHeight - oldChatMessages.scrollTop - oldChatMessages.clientHeight < 40);
+  const chatPrevScroll = oldChatMessages ? oldChatMessages.scrollTop : 0;
   try{
     if(ROUTES[key]){ el.innerHTML = ROUTES[key](...parts.slice(2)); }
     else { el.innerHTML = emptyState('compass','Page not found','This section is not part of the demo yet.'); }
@@ -3967,15 +3997,18 @@ function route(){
     el.innerHTML = emptyState('alert-triangle','Something went wrong','Please navigate back and try again.');
   }
   el.scrollTop = samePage ? prevScroll : 0;
-  // A chat page rebuilds its whole DOM on every send/switch (see
-  // App.sendChatMessage / openInnousChatThread) — a fresh .chat-messages
-  // div always starts scrolled to its top, which read as "broken"/laggy
-  // since the newest message (what you actually want to see) was the one
-  // scrolled out of view. Always land on the bottom instead, same as any
-  // real chat app opening a conversation.
-  if(key==='innous/messages' || key==='client/messages' || key==='supplier/messages'){
+  // A chat page rebuilds its whole DOM on every re-render — a fresh
+  // .chat-messages div always starts scrolled to its top. Landing on the
+  // bottom is right the first time a thread opens (or when switching to a
+  // different one) or whenever the person was already caught up at the
+  // bottom, same as any real chat app — but NOT on a background refresh
+  // while they're mid-scroll reading history, where it should stay put.
+  if(isChatKey){
     const cm = el.querySelector('.chat-messages');
-    if(cm) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
+    if(cm){
+      if(!samePage || chatWasAtBottom) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
+      else cm.scrollTop = chatPrevScroll;
+    }
     loadChatImagePreviews();
   }
   lastRoutedHash = hash;
@@ -4636,7 +4669,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'No messages yet. Say hello!')}${chatTypingBubbleHtml(key)}</div>
+        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'No messages yet. Say hello!')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
         ${chatComposeRowHtml(key, 'client-chat-input', 'client-chat-file-input', 'Message INNOUS...')}
         ` : emptyState('message-square','No conversations yet','Start one with "New Chat" above.')}
       </div>
@@ -6154,7 +6187,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
             <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
           </div>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', 'Aún no hay mensajes — di hola.')}${chatTypingBubbleHtml(active.key)}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', 'Aún no hay mensajes — di hola.')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(active.key)}</div></div>
         ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
         ` : emptyState('message-square','Aún no hay conversaciones','')}
       </div>
@@ -6651,7 +6684,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'Aún no hay mensajes.')}${chatTypingBubbleHtml(key)}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'Aún no hay mensajes.')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
         ${chatComposeRowHtml(key, 'supplier-chat-input', 'supplier-chat-file-input', 'Mensaje a INNOUS...')}
         ` : emptyState('message-square','Aún no hay conversaciones','Inicia una con "Nuevo Chat" arriba.')}
       </div>
