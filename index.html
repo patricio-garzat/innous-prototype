@@ -573,7 +573,22 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
    unrelated color from the rest of the app's buttons. */
 .chat-bubble.out{align-self:flex-end;background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;border-bottom-right-radius:3px;}
 .chat-bubble.in{align-self:flex-start;background:var(--surface-alt);border:1px solid var(--border);border-bottom-left-radius:3px;}
-.chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;}
+.chat-bubble-meta{font-size:10px;opacity:0.6;margin-top:4px;display:inline-flex;align-items:center;gap:3px;}
+/* Sent/delivered/read status (fix67) — see chatStatusIconHtml. Sits right
+   in .chat-bubble-meta, which is already dimmed to 60% opacity — the
+   default icon inherits that; "read" opts back up to full, bright cyan so
+   it visibly pops against an otherwise uniform meta line. */
+.chat-status-icon{width:12px;height:12px;vertical-align:-1px;}
+.chat-status-icon.read{opacity:1;color:#8FE1FF;}
+/* "So-and-so is typing" bubble (fix67) — a plain .chat-bubble.in with
+   three dots instead of text, shown/hidden by App.notifyTyping's
+   broadcast peer (see startTypingChannel) rather than being a real
+   message in the thread. */
+.typing-dots{display:flex;gap:4px;align-items:center;padding:2px 2px;}
+.typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--ink-tertiary);animation:typingBounce 1.2s infinite ease-in-out both;}
+.typing-dots span:nth-child(2){animation-delay:.15s;}
+.typing-dots span:nth-child(3){animation-delay:.3s;}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4;}30%{transform:translateY(-4px);opacity:1;}}
 /* Plays once on the bubble a message you just sent renders as (fix65) —
    see chatMessagesHtml's one-shot "justSent" flag and App.sendChatMessage/
    sendChatCard, which are the only things that ever set it. A plain CSS
@@ -1498,21 +1513,66 @@ async function refreshRealProjects(){
 function messageRowToJs(row){
   return { id: row.id, from: row.from_role, text: row.text, ts: new Date(row.ts),
     attachmentPath: row.attachment_path||null, attachmentName: row.attachment_name||null,
-    cardType: row.card_type||null, cardProjectId: row.card_project_id||null };
+    cardType: row.card_type||null, cardProjectId: row.card_project_id||null,
+    // Delivered/read (fix67) — see markDelivered/markThreadRead below for
+    // who sets these and when; deliveredAt/readAt only ever get set on a
+    // message someone ELSE sent, never your own.
+    deliveredAt: row.delivered_at ? new Date(row.delivered_at) : null,
+    readAt: row.read_at ? new Date(row.read_at) : null };
 }
 // Merges fetched rows into an existing chat thread array by id, so a
 // repeated poll (see pollLiveUpdates) never duplicates a message already
 // sitting there from an earlier fetch or from this same tab's own optimistic
 // send. Keeps the thread in chronological order regardless of what order the
 // rows came back in (both sides can insert at any moment).
+// An already-known message can still change server-side after the fact —
+// delivered_at/read_at (fix67) get set well after the row was first merged
+// in, so a re-fetch has to patch those onto the existing local object too,
+// not just skip anything it's already seen.
 function mergeMessages(thread, rows){
   let changed = false;
   rows.forEach(row=>{
-    if(thread.some(m=>m.id===row.id)) return;
+    const existing = thread.find(m=>m.id===row.id);
+    if(existing){
+      const next = messageRowToJs(row);
+      if(+existing.deliveredAt!==+next.deliveredAt || +existing.readAt!==+next.readAt){
+        existing.deliveredAt = next.deliveredAt; existing.readAt = next.readAt; changed = true;
+      }
+      return;
+    }
     thread.push(messageRowToJs(row));
     changed = true;
   });
   if(changed) thread.sort((a,b)=>a.ts-b.ts);
+}
+// A message someone ELSE sent counts as "delivered" the moment THIS
+// client actually fetches it — which, thanks to fix66's realtime
+// subscription, is normally within a second of it being sent, whether or
+// not the recipient has the Messages page open at all. Mutates `rows` in
+// place (setting delivered_at) so the mergeThreadedMessages call right
+// after this in refreshRealMessages sees the update immediately, without
+// a second round trip.
+async function markDelivered(rows, mineFrom){
+  const toMark = rows.filter(r=>r.from_role!==mineFrom && !r.delivered_at);
+  if(!toMark.length) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await sb.from('messages_general').update({ delivered_at: nowIso }).in('id', toMark.map(r=>r.id));
+  if(!error) toMark.forEach(r=>{ r.delivered_at = nowIso; });
+}
+// A message someone ELSE sent counts as "read" once it's actually
+// rendered on screen in the thread you have open — called from each
+// role's own ROUTES['.../messages'] right where it already knows which
+// thread (if any) is the one currently visible. Read implies delivered,
+// so this backfills delivered_at too on the off chance markDelivered
+// hasn't gotten to it yet (e.g. read racing ahead of its own delivery
+// update). Fire-and-forget — a ROUTES function has to return its HTML
+// synchronously, so this can't be awaited from there.
+async function markThreadRead(msgs, mineFrom){
+  const toMark = msgs.filter(m=>m.from!==mineFrom && !m.readAt);
+  if(!toMark.length) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await sb.from('messages_general').update({ read_at: nowIso, delivered_at: nowIso }).in('id', toMark.map(m=>m.id));
+  if(!error) toMark.forEach(m=>{ m.readAt = new Date(nowIso); if(!m.deliveredAt) m.deliveredAt = new Date(nowIso); });
 }
 /* ---- Real messages — several NAMED chats per person, not one continuous
    stream: every row in messages_general belongs to (owner_type, owner_id,
@@ -1530,12 +1590,13 @@ function mergeThreadedMessages(entity, rows){
 async function refreshRealMessages(){
   if(STATE.role==='CLIENT'){
     const { data:g } = await sb.from('messages_general').select('*').eq('owner_type','client').eq('owner_id', STATE.clientId);
-    if(g) mergeThreadedMessages(currentClient(), g);
+    if(g){ await markDelivered(g, 'client'); mergeThreadedMessages(currentClient(), g); }
   } else if(STATE.role==='SUPPLIER'){
     const { data:g } = await sb.from('messages_general').select('*').eq('owner_type','supplier').eq('owner_id', STATE.supplierId);
-    if(g) mergeThreadedMessages(currentSupplier(), g);
+    if(g){ await markDelivered(g, 'supplier'); mergeThreadedMessages(currentSupplier(), g); }
   } else if(STATE.role==='INNOUS'){
     const { data:g } = await sb.from('messages_general').select('*');
+    if(g) await markDelivered(g, 'innous');
     const byOwner = {};
     (g||[]).forEach(row=>{ const k=row.owner_type+':'+row.owner_id; (byOwner[k]=byOwner[k]||[]).push(row); });
     Object.keys(byOwner).forEach(k=>{
@@ -1621,19 +1682,72 @@ function startChatRealtime(){
   const filter = STATE.role==='CLIENT' ? `owner_id=eq.${STATE.clientId}`
     : STATE.role==='SUPPLIER' ? `owner_id=eq.${STATE.supplierId}`
     : undefined; // INNOUS sees every conversation — no filter
+  const isOnMessagesPageNotTyping = ()=>{
+    const onMessagesPage = /^#\/(client|innous|supplier)\/messages/.test(location.hash);
+    const active = document.activeElement;
+    const isTyping = active && ['INPUT','TEXTAREA'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
+    return onMessagesPage && !isTyping;
+  };
   chatRealtimeChannel = sb.channel('messages_general_'+(STATE.innousUserId||STATE.clientId||STATE.supplierId))
-    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async ()=>{
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async (payload)=>{
+      const row = payload.new;
+      // A real message just landed for this exact conversation — no need
+      // to keep showing "typing…" for it a moment longer.
+      if(row) delete STATE.ui.typingPeers[row.owner_type+':'+row.owner_id+':'+(row.thread_name||'General')];
       await refreshRealMessages();
-      const onMessagesPage = /^#\/(client|innous|supplier)\/messages/.test(location.hash);
-      const active = document.activeElement;
-      const isTyping = active && ['INPUT','TEXTAREA'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
-      if(onMessagesPage && !isTyping){ STATE.ui.chatJustReceived = true; route(); }
+      if(isOnMessagesPageNotTyping()){ STATE.ui.chatJustReceived = true; route(); }
       refreshNotifications();
+    })
+    // delivered_at/read_at (fix67) only ever change via UPDATE, never the
+    // message text/attachment itself — same refetch, just no "new bubble"
+    // animation flag, so a status change alone never replays that.
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async ()=>{
+      await refreshRealMessages();
+      if(isOnMessagesPageNotTyping()) route();
     })
     .subscribe();
 }
 function stopChatRealtime(){
   if(chatRealtimeChannel){ sb.removeChannel(chatRealtimeChannel); chatRealtimeChannel = null; }
+}
+/* ---- "So-and-so is typing…" (fix67) — Supabase Realtime Broadcast, not a
+   database table: a typing ping is exactly the kind of thing that should
+   never be persisted or trusted the way a real message is, so this is
+   deliberately separate from chatRealtimeChannel above. Both sides of one
+   conversation join the same channel topic (named after the exact same
+   `key` — type:ownerId:threadName — both ends already compute for that
+   thread) and just broadcast/listen on it; {self:false} keeps a sender
+   from receiving its own ping back. */
+let typingChannel = null, typingChannelKey = null, typingChannelReady = false, typingSendThrottleAt = 0;
+function ensureTypingChannel(key){
+  if(typingChannelKey===key) return; // already joined to (or joining) this exact conversation
+  stopTypingChannel();
+  typingChannelKey = key;
+  typingChannelReady = false;
+  typingChannel = sb.channel('typing_'+key, { config:{ broadcast:{ self:false } } })
+    .on('broadcast', { event:'typing' }, ()=>{
+      STATE.ui.typingPeers[key] = Date.now();
+      clearTimeout(STATE.ui.typingTimers[key]);
+      // No further pings for ~3s reads as "stopped typing" — same timeout
+      // most chat apps use. Only re-renders if still looking at this same
+      // thread; otherwise the flag alone quietly expires unseen.
+      STATE.ui.typingTimers[key] = setTimeout(()=>{
+        delete STATE.ui.typingPeers[key];
+        if(STATE.ui.activeChatKey===key) route();
+      }, 3000);
+      if(STATE.ui.activeChatKey===key) route();
+    })
+    // Only mark it usable once the join has actually been confirmed
+    // (status 'SUBSCRIBED') — App.notifyTyping checks this flag before
+    // sending, matching Supabase's own documented broadcast pattern,
+    // rather than assuming a channel is ready the instant .subscribe()
+    // returns (that call itself is synchronous; the join isn't).
+    .subscribe((status)=>{ if(typingChannelKey===key) typingChannelReady = (status==='SUBSCRIBED'); });
+}
+function stopTypingChannel(){
+  if(typingChannel){ sb.removeChannel(typingChannel); typingChannel = null; }
+  typingChannelKey = null;
+  typingChannelReady = false;
 }
 async function pollLiveUpdates(){
   if(document.hidden || liveUpdatesInFlight) return; // background tab, or previous poll still running (slow network) — skip this tick rather than pile up
@@ -2071,7 +2185,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null };
 
@@ -4194,9 +4308,37 @@ function chatMessagesHtml(msgs, mineFrom, youLabel, emptyText){
     const cardHtml = m.cardType ? chatCardHtml(m) : '';
     const isLast = i===msgs.length-1;
     const animate = isLast && ((justSent && mine) || (justReceived && !mine));
-    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}</div></div>`;
+    // Sent/delivered/read (fix67) — only ever shown on your OWN bubbles,
+    // same as any chat app: the other side doesn't need a status icon on
+    // messages you can already see arrived. A local-only demo message
+    // (no real backend row) never gets deliveredAt/readAt, so it just
+    // always reads as "sent" — there's no real "other side" to receive it.
+    const statusHtml = mine ? chatStatusIconHtml(m) : '';
+    return `<div class="chat-bubble ${mine?'out':'in'}${animate?' bubble-pop-in':''}">${m.text?escAttr(m.text):''}${cardHtml?`<div style="${m.text?'margin-top:6px;':''}">${cardHtml}</div>`:''}${attachmentHtml?`<div style="margin-top:6px;">${attachmentHtml}</div>`:''}<div class="chat-bubble-meta">${label} · ${timeAgo(m.ts)}${statusHtml}</div></div>`;
   }).join('');
   return rows || `<div class="td-sub" style="margin:auto;">${emptyText}</div>`;
+}
+// One check = sent (the row exists, whether or not the other side has it
+// yet); two dim checks = delivered (their app has fetched it — near-
+// instant now thanks to fix66's realtime, whether or not they're actually
+// looking at Messages); two bright checks = read (they've had this exact
+// thread open on screen — see markThreadRead). Mirrors the classic
+// WhatsApp-style progression, just recolored for a bubble that's already
+// blue instead of green (see fix65) — "read" gets a bright cyan tint
+// instead of switching to blue, since blue-on-blue wouldn't read as
+// anything different from the dim default.
+function chatStatusIconHtml(m){
+  if(m.readAt) return ` <i data-lucide="check-check" class="chat-status-icon read"></i>`;
+  if(m.deliveredAt) return ` <i data-lucide="check-check" class="chat-status-icon"></i>`;
+  return ` <i data-lucide="check" class="chat-status-icon"></i>`;
+}
+// "So-and-so is typing" bubble (fix67) — appended after the real messages,
+// inside the same .chat-messages div (so it scrolls into view with
+// everything else) whenever App.ensureTypingChannel's peer has broadcast
+// a typing ping in roughly the last 3s. Not a real message — never
+// touches `msgs`/Supabase, just this one render.
+function chatTypingBubbleHtml(key){
+  return STATE.ui.typingPeers[key] ? `<div class="chat-bubble in"><div class="typing-dots"><span></span><span></span><span></span></div></div>` : '';
 }
 /* ---- Chat wallpaper (fix65) — a per-viewer cosmetic preference, so
    localStorage is the right place for it (never Supabase): three presets,
@@ -4301,7 +4443,7 @@ function chatComposeRowHtml(key, inputId, fileInputId, placeholder){
       <input type="file" id="${fileInputId}" style="display:none;" onchange="App.stageChatFile('${key}', this)">
       <button type="button" class="btn btn-secondary" onclick="App.openShareCardModal('${key}')" title="Share an RFQ, Quote, or Purchase Order"><i data-lucide="plus"></i></button>
       <button type="button" class="btn btn-secondary" onclick="App.pickChatFile('${key}')" title="Attach a file"><i data-lucide="paperclip"></i></button>
-      <input type="text" id="${inputId}" placeholder="${placeholder}" onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')">
+      <input type="text" id="${inputId}" placeholder="${placeholder}" oninput="App.notifyTyping('${key}')" onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')">
       <button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button>
     </div>`;
 }
@@ -4323,6 +4465,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
   const activeName = STATE.ui.activeChatKey ? STATE.ui.activeChatKey.split(':').slice(2).join(':') : (threads[0]||{}).name;
   const key = 'client:'+STATE.clientId+':'+activeName;
   const msgs = activeName ? chatThread(c, activeName) : [];
+  if(activeName){ ensureTypingChannel(key); markThreadRead(msgs, 'client'); }
   return `
   <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Messages</div><div class="page-subtitle">Direct line to your INNOUS project team</div></div>
@@ -4341,7 +4484,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Customize chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}</div>
+        <div class="chat-messages ${chatBgClass()}" id="chat-messages">${chatMessagesHtml(msgs, 'client', 'INNOUS', 'No messages yet. Say hello!')}${chatTypingBubbleHtml(key)}</div>
         ${chatComposeRowHtml(key, 'client-chat-input', 'client-chat-file-input', 'Message INNOUS...')}
         ` : emptyState('message-square','No conversations yet','Start one with "New Chat" above.')}
       </div>
@@ -5821,6 +5964,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
   const active = rows.find(r=>r.key===STATE.ui.activeChatKey) || rows[0];
   const owner = active ? (active.type==='client' ? CUSTOMERS.find(c=>c.id===active.id) : SUPPLIERS.find(s=>s.id===active.id)) : null;
   const msgs = active ? chatThread(owner, active.threadName) : [];
+  if(active){ ensureTypingChannel(active.key); markThreadRead(msgs, 'innous'); }
   return `
   <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Conversaciones directas con clientes y proveedores.</div></div>
@@ -5849,7 +5993,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
             <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('${active.type}','${active.id}','${escAttr(active.threadName)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
           </div>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', active.personName, 'Aún no hay mensajes — di hola.')}${chatTypingBubbleHtml(active.key)}</div>
         ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
         ` : emptyState('message-square','Aún no hay conversaciones','')}
       </div>
@@ -6327,6 +6471,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
   const activeName = STATE.ui.activeChatKey ? STATE.ui.activeChatKey.split(':').slice(2).join(':') : (threads[0]||{}).name;
   const key = 'supplier:'+STATE.supplierId+':'+activeName;
   const msgs = activeName ? chatThread(s, activeName) : [];
+  if(activeName){ ensureTypingChannel(key); markThreadRead(msgs, 'supplier'); }
   return `
   <div class="content-inner messages-shell">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Línea directa con tu ejecutivo de sourcing en INNOUS</div></div>
@@ -6345,7 +6490,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
           <div><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
           <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}</div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'supplier', 'INNOUS', 'Aún no hay mensajes.')}${chatTypingBubbleHtml(key)}</div>
         ${chatComposeRowHtml(key, 'supplier-chat-input', 'supplier-chat-file-input', 'Mensaje a INNOUS...')}
         ` : emptyState('message-square','Aún no hay conversaciones','Inicia una con "Nuevo Chat" arriba.')}
       </div>
@@ -6552,6 +6697,7 @@ const App = {
   async logOut(){
     stopLiveUpdates();
     stopChatRealtime();
+    stopTypingChannel();
     await sb.auth.signOut();
     STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
     // Clear the hash so a different person logging in afterward on this same
@@ -8387,6 +8533,20 @@ const App = {
       : STATE.role==='CLIENT' ? '#/client/messages/'+encodeURIComponent(threadName)
       : '#/supplier/messages/'+encodeURIComponent(threadName);
     navigate(path);
+  },
+  // Fired on every keystroke in a compose box (fix67) — throttled to at
+  // most one broadcast every 2s while actively typing, since the peer's
+  // own 3s "stopped typing" timeout means it doesn't need one per
+  // keystroke to stay looking "live". Silently does nothing if the typing
+  // channel for this exact thread hasn't been joined yet (ensureTypingChannel
+  // runs once per render of an open thread, so this is normally already
+  // there by the time anyone's typed anything).
+  notifyTyping(key){
+    if(!typingChannel || typingChannelKey!==key || !typingChannelReady) return;
+    const now = Date.now();
+    if(now - typingSendThrottleAt < 2000) return;
+    typingSendThrottleAt = now;
+    typingChannel.send({ type:'broadcast', event:'typing', payload:{} });
   },
   openChatBgModal(){ openModal(chatBgModalHtml()); },
   setChatBg(id){
