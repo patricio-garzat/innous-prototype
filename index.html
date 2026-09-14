@@ -289,7 +289,12 @@ svg{display:block;}
 /* ============ TABLE ============ */
 .table-wrap{overflow-x:auto;}
 table.data-table{width:100%;border-collapse:collapse;font-size:13px;}
-table.data-table th{text-align:left;padding:11px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-tertiary);border-bottom:1px solid var(--border);white-space:nowrap;}
+/* fix86: the header row used to be the same white as every data row below
+   it — only the small uppercase gray text told them apart, easy to miss at
+   a glance on a long list. A light background (the same warm gray the page
+   itself sits on, one shade off the card's white) makes "this is the
+   title row" obvious immediately, the way most table UIs do it. */
+table.data-table th{text-align:left;padding:11px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-tertiary);background:var(--bg);border-bottom:1px solid var(--border-strong);white-space:nowrap;}
 table.data-table td{padding:13px 16px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap;}
 /* Fixed-width variant (see the <colgroup> that goes with it) — every column
    gets a real share of the table's own 100% width instead of growing to
