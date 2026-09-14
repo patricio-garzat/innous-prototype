@@ -16,6 +16,9 @@
 <!-- Generates the formal, downloadable quote PDF a client gets once they
      select a supplier — see generateQuotePdf() / App.downloadQuotePdf(). -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
+<!-- Builds the real .xlsx files behind every "Exportar Excel" button — see
+     exportRowsToExcel() / App.export* (fix73). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 /* ============ RESET & TOKENS ============ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -1134,6 +1137,25 @@ function fmtMoneyPdf(n){return '$'+n.toLocaleString('en-US',{minimumFractionDigi
 function fmtMoneyPdf2(n){return fmtMoneyPdf(n);}
 function fmtMXNPdf(n){return 'MX$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtMXNPdf2(n){return fmtMXNPdf(n);}
+/* ---- Excel export (fix73) — every "Exportar Excel" button (RFQs,
+   Pedidos, Cotizaciones, Clientes, Proveedores) funnels through this one
+   function: SheetJS (window.XLSX, loaded via CDN) turns a plain array of
+   rows into a real, downloadable .xlsx — not a CSV pretending to be one.
+   Money/quantity columns are passed as actual numbers (not formatted
+   strings), so a total/average in Excel works without the user having to
+   retype anything. */
+function exportDateStamp(){ return new Date().toISOString().slice(0,10); }
+function exportRowsToExcel(filename, sheetName, headers, rows){
+  if(!window.XLSX){ showToast('El exportador no cargó — recarga la página e intenta de nuevo.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  // Column widths sized off the header text so a fresh export doesn't open
+  // with every column crushed to its default ~8-character width.
+  ws['!cols'] = headers.map(h=>({ wch: Math.max(10, String(h).length+2) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0,31)); // Excel's own sheet-name length cap
+  XLSX.writeFile(wb, filename);
+  showToast('Descargando '+filename, 'success');
+}
 // The 16% Mexican IVA on top of what the supplier quoted (q.quotedTotal /
 // p.order.supplierCostMxn) is what the supplier actually gets paid — see
 // generatePurchaseOrderPdf's own iva/totalConIva. Anywhere a "total" is
@@ -2400,6 +2422,18 @@ function responsibilityChip(p, viewerRole){
   const label = {CLIENT: es?'Cliente':'Client', INNOUS:'INNOUS', SUPPLIER: es?'Proveedor':'Supplier'}[who];
   const text = isYou ? (es?'Te toca a ti':'Waiting on you') : `${es?'Espera a':'Waiting on'} ${label}`;
   return `<span class="badge ${isYou?'badge-amber':'badge-gray'}">${text}</span>`;
+}
+// Plain-text versions of statusBadge/responsibilityChip (fix73) — for the
+// RFQs Excel export, which needs the same status/turno a viewer sees in
+// the table, just without the <span class="badge">...</span> wrapper.
+function rfqStatusLabel(p){
+  if(p.status==='sourcing' && p.supplierQuotes.some(q=>q.status==='submitted')) return 'Quotes Arriving';
+  return (RFQ_STATUS_META[p.status] || {label:p.status}).label;
+}
+function responsibilityLabel(p){
+  const who = rfqResponsibility(p);
+  if(!who) return '—';
+  return {CLIENT:'Cliente', INNOUS:'INNOUS', SUPPLIER:'Proveedor'}[who];
 }
 /* One color family per meaning, not per stage — gray = not started, green =
    actively being made, blue = handed off / in transit, amber = needs a
@@ -4639,7 +4673,8 @@ ROUTES['innous/rfqs'] = function(){
   const sorted = [...PROJECTS].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} solicitudes en total en la plataforma</div></div></div>
+    <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} solicitudes en total en la plataforma</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportRfqs()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
     <div class="filter-bar">
       <div class="search-bar" style="max-width:280px;"><i data-lucide="search"></i><input type="text" placeholder="Buscar RFQ, cliente, proyecto..." id="rfq-search" onkeyup="App.filterRfqTable()"></div>
       <select id="rfq-status-filter" onchange="App.filterRfqTable()"><option value="">Todos los Estatus</option>${RFQ_STATUS_FLOW.map(s=>`<option value="${s}">${RFQ_STATUS_META[s].label}</option>`).join('')}<option value="rejected">Rejected</option></select>
@@ -5171,7 +5206,8 @@ function purchaseOrderDetailsSection(p){
 ROUTES['innous/customers'] = function(){
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Clientes</div><div class="page-subtitle">${CUSTOMERS.length} cuentas activas</div></div></div>
+    <div class="page-header"><div><div class="page-title">Clientes</div><div class="page-subtitle">${CUSTOMERS.length} cuentas activas</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportCustomers()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Empresa</th><th>Contacto</th><th>Industria</th><th>Ubicación</th><th>RFQs</th><th>Pedidos Activos</th><th>Completados</th></tr></thead><tbody>
       ${CUSTOMERS.map(c=>{
         const proj = PROJECTS.filter(p=>p.customerId===c.id);
@@ -5297,7 +5333,10 @@ ROUTES['innous/suppliers'] = function(){
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Proveedores</div><div class="page-subtitle">${SUPPLIERS.length} socios de manufactura verificados en México</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/innous/new-supplier')"><i data-lucide="user-plus"></i>Crear Cuenta de Proveedor</button></div></div>
+      <div class="page-actions">
+        <button class="btn btn-secondary" onclick="App.exportSuppliers()"><i data-lucide="download"></i>Exportar Excel</button>
+        <button class="btn btn-primary" onclick="navigate('#/innous/new-supplier')"><i data-lucide="user-plus"></i>Crear Cuenta de Proveedor</button>
+      </div></div>
     <div class="grid grid-3">
       ${SUPPLIERS.map(s=>{
         const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
@@ -5716,7 +5755,8 @@ ROUTES['innous/quotes'] = function(){
   rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones de proveedores enviadas en todos los RFQs</div></div></div>
+    <div class="page-header"><div><div class="page-title">Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones de proveedores enviadas en todos los RFQs</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportQuotes()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proveedor</th><th>Costo Total (MXN)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>En Shortlist</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
@@ -5815,7 +5855,8 @@ ROUTES['innous/orders'] = function(){
   const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Pedidos</div><div class="page-subtitle">${orders.length} pedidos — activos y completados</div></div></div>
+    <div class="page-header"><div><div class="page-title">Pedidos</div><div class="page-subtitle">${orders.length} pedidos — activos y completados</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportOrders()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th><th>Pago</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
@@ -7470,6 +7511,61 @@ const App = {
       console.error('downloadPurchaseOrderPdf failed', err);
       showToast('No se pudo generar el PDF. Intenta de nuevo.');
     }
+  },
+  /* ---- Excel exports (fix73, INNOUS only) — each one mirrors exactly the
+     columns already shown on that list page's own table/grid, just as
+     plain values instead of HTML (see rfqStatusLabel/responsibilityLabel
+     above for the two that would otherwise need their badge stripped).
+     Money/quantity columns go in as real numbers, not formatted strings,
+     so a sum or average in Excel works without retyping anything. */
+  exportRfqs(){
+    const sorted = [...PROJECTS].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    const headers = ['RFQ','Cliente','Proyecto','Proceso','Cantidad','Invitados','Cotizaciones Recibidas','Estatus','Turno','Creado'];
+    const rows = sorted.map(p=>{
+      const submitted = p.supplierQuotes.filter(q=>q.status==='submitted').length;
+      return [p.id, customerName(p.customerId), p.projectName, p.process, p.quantity, p.invitedSupplierIds.length, submitted, rfqStatusLabel(p), responsibilityLabel(p), fmtDate(p.createdAt)];
+    });
+    exportRowsToExcel(`RFQs-${exportDateStamp()}.xlsx`, 'RFQs', headers, rows);
+  },
+  exportOrders(){
+    const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+    const headers = ['Pedido','Cliente','Proveedor','Costo del Proveedor','Moneda del Costo','Precio al Cliente (USD)','Margen (USD)','Producción','Pago'];
+    const rows = orders.map(p=>{
+      const supplierCost = p.order.supplierCostMxn || p.order.supplierCost;
+      const supplierCostCurrency = p.order.supplierCostMxn ? 'MXN' : 'USD';
+      const margin = p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0);
+      return [p.id, customerName(p.customerId), supplierName(p.selectedSupplierId), supplierCost, supplierCostCurrency, p.order.customerPrice, margin, orderStatusLabelFor(p, p.order.status), p.order.paymentStatus];
+    });
+    exportRowsToExcel(`Pedidos-${exportDateStamp()}.xlsx`, 'Pedidos', headers, rows);
+  },
+  exportQuotes(){
+    const rows = PROJECTS.flatMap(p=>p.supplierQuotes.filter(q=>q.status==='submitted').map(q=>({p,q})));
+    rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
+    const headers = ['RFQ','Cliente','Proveedor','Costo Total (MXN)','Tiempo de Entrega (días)','Enviada','En Shortlist'];
+    const data = rows.map(({p,q})=>[
+      p.id, customerName(p.customerId), supplierName(q.supplierId), q.quotedTotal, q.leadTimeDays, fmtDate(q.submittedAt),
+      p.targetPriceSupplierBudgetMxn ? 'Target Price' : (p.shortlist.find(s=>s.supplierId===q.supplierId) ? 'Sí' : 'No'),
+    ]);
+    exportRowsToExcel(`Cotizaciones-${exportDateStamp()}.xlsx`, 'Cotizaciones', headers, data);
+  },
+  exportCustomers(){
+    const headers = ['Empresa','Contacto','Correo','Industria','Ciudad','RFQs','Pedidos Activos','Completados'];
+    const rows = CUSTOMERS.map(c=>{
+      const proj = PROJECTS.filter(p=>p.customerId===c.id);
+      const activeOrders = proj.filter(p=>['awarded','in_production'].includes(p.status)).length;
+      const completed = proj.filter(p=>p.status==='completed').length;
+      return [c.company, c.contact, c.email, c.industry, c.city, proj.length, activeOrders, completed];
+    });
+    exportRowsToExcel(`Clientes-${exportDateStamp()}.xlsx`, 'Clientes', headers, rows);
+  },
+  exportSuppliers(){
+    const headers = ['Empresa','Ciudad','Rating','A Tiempo %','Proyectos Ganados','Invitado','Capacidad','Servicios','Certificaciones'];
+    const rows = SUPPLIERS.map(s=>{
+      const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
+      const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
+      return [s.name, s.city, s.rating, s.onTime, won, proj.length, s.capacity, s.capabilities.join(', '), s.certs.join(', ')];
+    });
+    exportRowsToExcel(`Proveedores-${exportDateStamp()}.xlsx`, 'Proveedores', headers, rows);
   },
   /* ---- Redaction editor (INNOUS only) ---- */
   async openRedactModal(pid, idx){
