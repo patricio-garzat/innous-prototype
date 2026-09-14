@@ -524,6 +524,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .stars svg{width:12.5px;height:12.5px;}
 .star-filled{fill:#F5A524;stroke:#F5A524;}
 .star-empty{fill:none;stroke:var(--border-strong);}
+/* Interactive star picker (fix81) — bigger, tappable targets (finger-sized,
+   not the tiny read-only .stars above), one click sets the value. */
+.star-picker{display:inline-flex;gap:2px;}
+.star-picker-btn{background:none;border:none;cursor:pointer;padding:3px;line-height:0;}
+.star-picker-btn svg{width:26px;height:26px;fill:none;stroke:var(--border-strong);transition:transform .1s ease;}
+.star-picker-btn:hover svg{stroke:#F5A524;transform:scale(1.1);}
+.star-picker-btn.active svg{fill:#F5A524;stroke:#F5A524;}
+.rating-card-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;flex-wrap:wrap;}
+.rating-card-row-label{font-size:13px;font-weight:600;}
 
 .supplier-card{border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--surface);transition:border-color .12s;}
 .supplier-card.selected{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);}
@@ -1418,6 +1427,17 @@ function projectRowToJs(row, existing){
     selectedSupplierId: row.selected_supplier_id || existing?.selectedSupplierId || null,
     selectedQuote: existing?.selectedQuote || null,
     order: existing?.order || null,
+    // Post-delivery ratings (fix81) — the client's (on-time/quality) and
+    // Innous's own (communication/on-time/quality) feedback for this one
+    // delivery, once the order is completed. Kept separate per rater
+    // rather than one shared rating: the client never knows who the
+    // supplier is, so their feedback is about the DELIVERY experience,
+    // while Innous's is specifically about the SUPPLIER — see
+    // refreshRealProjects (fetches order_ratings) and
+    // recalcSupplierMetrics/supplierRatingSummary (aggregates Innous's
+    // side, across every one of a supplier's rated orders, for their
+    // profile page).
+    ratings: existing?.ratings || {client:null, innous:null},
     activity: (row.activity||[]).map(a=>({...a, ts: a.ts ? new Date(a.ts) : new Date()})),
     chatClient: existing?.chatClient || [], chatSupplier: existing?.chatSupplier || {},
     // Formal-quote-only fields — always set by INNOUS (never derived from the
@@ -1597,6 +1617,16 @@ async function refreshRealProjects(){
       const si = p.shortlist.findIndex(x=>x.supplierId===s.supplierId);
       if(si>-1) p.shortlist[si]=s; else p.shortlist.push(s);
     });
+    // fix81 — a client's own RLS on order_ratings only ever returns their
+    // own (rater='client') row on their own projects; INNOUS's returns
+    // every rating, both raters, across every project. Either way this one
+    // shared query is already correctly scoped per role, same as the
+    // shortlist fetch right above.
+    const { data: ratings } = await sb.from('order_ratings').select('*');
+    (ratings||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      p.ratings[row.rater] = ratingRowToJs(row);
+    });
   }
   const orderTable = STATE.role==='CLIENT' ? 'orders_client_view' : STATE.role==='SUPPLIER' ? 'orders_supplier_view' : 'orders';
   const { data: orders } = await sb.from(orderTable).select('*');
@@ -1604,6 +1634,13 @@ async function refreshRealProjects(){
     const p = findProject(row.project_id); if(!p) return;
     p.order = orderRowToJs(row);
   });
+}
+function ratingRowToJs(row){
+  return {
+    ontime: row.ontime_stars||0, quality: row.quality_stars||0,
+    communication: row.communication_stars||0, // only ever set for rater='innous'
+    comment: row.comment||'', ts: row.updated_at ? new Date(row.updated_at) : new Date(),
+  };
 }
 function messageRowToJs(row){
   return { id: row.id, from: row.from_role, text: row.text, ts: new Date(row.ts),
@@ -2292,6 +2329,22 @@ async function persistSupplierMetrics(supplierId){
     await sb.from('suppliers').update({ rating: s.rating, on_time_pct: s.onTime, quality_pct: s.quality, projects_won: s.projects }).eq('user_id', supplierId);
   }catch(e){}
 }
+// Aggregates the subjective post-delivery ratings (fix81, see
+// clientRatingCardHtml/innousRatingCardHtml) across every one of a
+// supplier's completed orders — separate from recalcSupplierMetrics above,
+// which is a purely objective calculation (delivered on time vs. the
+// estimate, quality approved vs. not). Shown on the supplier's own profile
+// so INNOUS sees the hard numbers and the human feedback side by side.
+function supplierRatingSummary(supplierId){
+  const rated = PROJECTS.filter(p=>p.selectedSupplierId===supplierId && p.status==='completed');
+  const clientRatings = rated.map(p=>p.ratings.client).filter(Boolean);
+  const innousRatings = rated.map(p=>p.ratings.innous).filter(Boolean);
+  const avg = (list, key) => list.length ? Math.round(list.reduce((sum,r)=>sum+r[key],0)/list.length*10)/10 : 0;
+  return {
+    clientCount: clientRatings.length, clientOntime: avg(clientRatings,'ontime'), clientQuality: avg(clientRatings,'quality'),
+    innousCount: innousRatings.length, innousCommunication: avg(innousRatings,'communication'), innousOntime: avg(innousRatings,'ontime'), innousQuality: avg(innousRatings,'quality'),
+  };
+}
 
 /* ---------- Global App State ---------- */
 const STATE = {
@@ -2302,7 +2355,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'' };
 
@@ -2550,6 +2603,19 @@ function stars(rating){
   }
   out += `</span>`;
   return out;
+}
+// ---- Interactive star picker (fix81) — one tap sets the rating, no typing,
+// no dropdown; the whole point of a post-delivery rating is that it takes
+// five seconds. `onClickExpr` is a JS expression string with the literal
+// "__N__" in it, which gets swapped for each star's own 1-5 value (e.g.
+// "App.setClientRatingDraft('${pid}','quality',__N__)") — same "build the
+// onclick as a string" approach every other inline handler in this file
+// already uses, just with one placeholder substituted per button.
+function starPickerHtml(value, onClickExpr){
+  return `<span class="star-picker">${[1,2,3,4,5].map(n=>`
+    <button type="button" class="star-picker-btn ${n<=value?'active':''}" onclick="${onClickExpr.replaceAll('__N__', n)}" aria-label="${n} estrella${n>1?'s':''}">
+      <svg viewBox="0 0 24 24" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>
+    </button>`).join('')}</span>`;
 }
 function initials(name){ return name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
 /* Circular avatar — shows an uploaded (already square-cropped) photo when set, otherwise initials on a solid color. */
@@ -4432,6 +4498,27 @@ function orderCard(p){
 }
 
 /* ---- Client Order Detail ---- */
+// ---- Post-delivery rating, client side (fix81) — the client never knows
+// who the supplier is (see the confidentiality note at the top of this
+// file), so this is deliberately framed as rating the DELIVERY, not "the
+// supplier": on-time and quality only, no comment field required, one tap
+// per star. Editable any time after submitting (upsert on project_id+rater)
+// — no separate "locked" state to build or explain.
+function clientRatingCardHtml(p){
+  if(p.status!=='completed') return '';
+  const already = p.ratings.client;
+  if(!STATE.ui.clientRatingDrafts[p.id]) STATE.ui.clientRatingDrafts[p.id] = already ? {ontime:already.ontime, quality:already.quality, comment:already.comment} : {ontime:0, quality:0, comment:''};
+  const d = STATE.ui.clientRatingDrafts[p.id];
+  return `
+  <div class="card card-pad" style="margin-top:20px;">
+    <div class="section-title">${already?'Your Rating':'Rate This Delivery'}</div>
+    <div class="section-sub">${already?'Thanks for the feedback — tap a star to change it any time.':'Just two quick taps — how did this delivery go?'}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">On-Time Delivery</span>${starPickerHtml(d.ontime, `App.setClientRatingDraft('${p.id}','ontime',__N__)`)}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">Quality</span>${starPickerHtml(d.quality, `App.setClientRatingDraft('${p.id}','quality',__N__)`)}</div>
+    <textarea placeholder="Anything else? (optional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.clientRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitClientRating('${p.id}')"><i data-lucide="star"></i>${already?'Update Rating':'Submit Rating'}</button>
+  </div>`;
+}
 ROUTES['client/order'] = function(id){
   const p = findProject(id); if(!p||!p.order) return emptyState('search','Order not found','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
@@ -4483,6 +4570,7 @@ ROUTES['client/order'] = function(id){
         </div>
       </div>
     </div>
+    ${clientRatingCardHtml(p)}
   </div>`;
 };
 
@@ -5547,6 +5635,7 @@ ROUTES['innous/supplier'] = function(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Proveedor no encontrado','');
   const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
   const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
+  const rs = supplierRatingSummary(s.id);
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
@@ -5562,6 +5651,24 @@ ROUTES['innous/supplier'] = function(id){
       ${kpiCard('Calidad', s.quality+'%', 'tasa de aceptación', 'shield-check')}
       ${kpiCard('Proyectos Ganados', won, 'de '+proj.length+' invitados', 'trophy')}
     </div>
+    ${(rs.clientCount||rs.innousCount) ? `
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="section-title">Calificaciones Post-Entrega</div>
+      <div class="section-sub">Retroalimentación después de cada pedido entregado — humano, separado de los indicadores automáticos de arriba.</div>
+      <div class="grid grid-2" style="margin-top:12px;">
+        <div>
+          <div class="info-item-label">Cliente (${rs.clientCount} pedido${rs.clientCount===1?'':'s'})</div>
+          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.clientOntime)}</div>
+          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.clientQuality)}</div>
+        </div>
+        <div>
+          <div class="info-item-label">Innous (${rs.innousCount} pedido${rs.innousCount===1?'':'s'})</div>
+          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Comunicación</span>${stars(rs.innousCommunication)}</div>
+          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempos</span>${stars(rs.innousOntime)}</div>
+          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.innousQuality)}</div>
+        </div>
+      </div>
+    </div>` : ''}
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de Contacto</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -5979,6 +6086,28 @@ ROUTES['innous/orders'] = function(){
 };
 
 /* ---- INNOUS Order Detail ---- */
+// ---- Post-delivery rating, INNOUS side (fix81) — unlike the client's
+// (about the delivery, not the supplier, since the client never knows who
+// they are), this one IS specifically about the supplier: an internal
+// scorecard Innous builds order by order, that later shows up aggregated
+// on the supplier's own profile (see supplierRatingSummary) to help decide
+// who to invite to future RFQs. Same upsert-on-tap pattern as the client's.
+function innousRatingCardHtml(p){
+  if(p.status!=='completed') return '';
+  const already = p.ratings.innous;
+  if(!STATE.ui.innousRatingDrafts[p.id]) STATE.ui.innousRatingDrafts[p.id] = already ? {communication:already.communication, ontime:already.ontime, quality:already.quality, comment:already.comment} : {communication:0, ontime:0, quality:0, comment:''};
+  const d = STATE.ui.innousRatingDrafts[p.id];
+  return `
+  <div class="card card-pad" style="margin-top:20px;">
+    <div class="section-title">Calificar a ${supplierName(p.selectedSupplierId)}</div>
+    <div class="section-sub">${already?'Ya calificado — toca una estrella para cambiarlo cuando quieras.':'Tu evaluación interna de este proveedor en este pedido — alimenta su ficha.'}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">Comunicación</span>${starPickerHtml(d.communication, `App.setInnousRatingDraft('${p.id}','communication',__N__)`)}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">Tiempos</span>${starPickerHtml(d.ontime, `App.setInnousRatingDraft('${p.id}','ontime',__N__)`)}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">Calidad</span>${starPickerHtml(d.quality, `App.setInnousRatingDraft('${p.id}','quality',__N__)`)}</div>
+    <textarea placeholder="Notas internas (opcional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.innousRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitInnousRating('${p.id}')"><i data-lucide="star"></i>${already?'Actualizar Calificación':'Guardar Calificación'}</button>
+  </div>`;
+}
 ROUTES['innous/order'] = function(id){
   const p = findProject(id); if(!p||!p.order) return emptyState('search','Pedido no encontrado','');
   const stageIdx = ORDER_STATUS_FLOW.indexOf(p.order.status);
@@ -6022,6 +6151,7 @@ ROUTES['innous/order'] = function(id){
         ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
       </div>
     </div>
+    ${innousRatingCardHtml(p)}
   </div>`;
 };
 function qualityBlock(p){
@@ -8884,6 +9014,50 @@ const App = {
       await persistSupplierMetrics(p.selectedSupplierId);
     }
     showToast(status==='approved' ? 'Calidad aprobada' : 'Calidad rechazada — NCR abierto', status==='approved'?'success':undefined);
+    route();
+  },
+
+  /* ---- Post-delivery ratings (fix81) ---- */
+  setClientRatingDraft(pid, field, value){
+    if(!STATE.ui.clientRatingDrafts[pid]) STATE.ui.clientRatingDrafts[pid] = {ontime:0, quality:0, comment:''};
+    STATE.ui.clientRatingDrafts[pid][field] = value;
+    route();
+  },
+  async submitClientRating(pid){
+    const p = findProject(pid); if(!p) return;
+    const d = STATE.ui.clientRatingDrafts[pid];
+    if(!d || !d.ontime || !d.quality){ showToast('Please rate both categories.'); return; }
+    const comment = (d.comment||'').trim()||null;
+    if(!p.isDemo){
+      const { error } = await sb.from('order_ratings').upsert(
+        { project_id: pid, rater:'client', ontime_stars:d.ontime, quality_stars:d.quality, comment, updated_at:new Date().toISOString() },
+        { onConflict:'project_id,rater' }
+      );
+      if(error){ showToast(error.message); return; }
+    }
+    p.ratings.client = { ontime:d.ontime, quality:d.quality, communication:0, comment:comment||'', ts:new Date() };
+    showToast('Thanks for your feedback!', 'success');
+    route();
+  },
+  setInnousRatingDraft(pid, field, value){
+    if(!STATE.ui.innousRatingDrafts[pid]) STATE.ui.innousRatingDrafts[pid] = {communication:0, ontime:0, quality:0, comment:''};
+    STATE.ui.innousRatingDrafts[pid][field] = value;
+    route();
+  },
+  async submitInnousRating(pid){
+    const p = findProject(pid); if(!p) return;
+    const d = STATE.ui.innousRatingDrafts[pid];
+    if(!d || !d.communication || !d.ontime || !d.quality){ showToast('Califica las tres categorías.'); return; }
+    const comment = (d.comment||'').trim()||null;
+    if(!p.isDemo){
+      const { error } = await sb.from('order_ratings').upsert(
+        { project_id: pid, rater:'innous', communication_stars:d.communication, ontime_stars:d.ontime, quality_stars:d.quality, comment, updated_at:new Date().toISOString() },
+        { onConflict:'project_id,rater' }
+      );
+      if(error){ showToast(error.message); return; }
+    }
+    p.ratings.innous = { communication:d.communication, ontime:d.ontime, quality:d.quality, comment:comment||'', ts:new Date() };
+    showToast('Calificación guardada', 'success');
     route();
   },
 
