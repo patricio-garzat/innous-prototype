@@ -439,6 +439,15 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .file-chip .fc-size{color:var(--ink-tertiary);font-size:11.5px;}
 .file-chip .fc-remove{color:var(--ink-tertiary);padding:3px;}
 .file-chip .fc-remove:hover{color:var(--danger);}
+/* An uploaded photo in a chat bubble (fix71) — the actual image, not a
+   file chip, same as any chat app. Starts as a plain spinner-less
+   placeholder (loadChatImagePreviews swaps it for the real <img> once
+   its signed URL comes back) sized the same as the finished photo so
+   nothing jumps around when it loads in. */
+.chat-image-attachment{display:block;width:220px;max-width:100%;border-radius:10px;overflow:hidden;cursor:pointer;background:rgba(127,127,127,0.18);}
+.chat-image-attachment img{display:block;width:100%;height:auto;max-height:280px;object-fit:cover;}
+.chat-image-loading{display:flex;align-items:center;justify-content:center;height:140px;}
+.chat-image-loading svg{width:26px;height:26px;stroke:currentColor;opacity:.5;}
 
 /* ============ TIMELINE ============ */
 .timeline{display:flex;align-items:flex-start;overflow-x:auto;padding:6px 2px 2px;}
@@ -932,6 +941,9 @@ const PROCESS_ES = {
 function procES(p){ return PROCESS_ES[p] || p; }
 const MATERIALS = ['Aluminum 6061','Aluminum 7075','Stainless Steel 304','Stainless Steel 316','Steel 1018','Steel 4140','Steel A36','Cast Iron','Brass 360','Carbon Steel','Titanium Grade 5','Delrin (Acetal)'];
 const FILE_TYPES = {pdf:{ext:'PDF',color:'#B91C1C'},step:{ext:'STEP',color:'#2952CC'},dwg:{ext:'DWG',color:'#B45309'},dxf:{ext:'DXF',color:'#15803D'},jpg:{ext:'JPG',color:'#7C3AED'},png:{ext:'PNG',color:'#7C3AED'}};
+// Which chat attachments get an actual inline photo preview instead of a
+// generic file chip (fix71) — see chatMessagesHtml/loadChatImagePreviews.
+const IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','heic']);
 const CERTS = ['ISO 9001','AS9100','IATF 16949','ISO 14001'];
 
 const RFQ_STATUS_FLOW = ['submitted','under_review','sourcing','quotes_received','customer_review','awarded','in_production','completed'];
@@ -3150,6 +3162,28 @@ function chatTimeLabel(ts){
   if(d.toDateString()===yesterday.toDateString()) return 'Yesterday '+timeStr;
   return fmtDate(d)+' '+timeStr;
 }
+// Fetches a signed URL for every not-yet-loaded photo placeholder on
+// screen and swaps its loading spinner for the actual image (fix71) —
+// called once after every render that might show chat bubbles (see
+// route()). The chat-files bucket is private, so this can't just be a
+// plain <img src> baked straight into chatMessagesHtml's HTML string the
+// way a public image would be. Signed URLs are cached for a bit under
+// their own 300s validity so a re-render (poll, sending another message)
+// doesn't re-request one that's already good.
+const chatImageUrlCache = new Map(); // path -> {url, expiresAt}
+async function loadChatImagePreviews(){
+  const els = document.querySelectorAll('.chat-image-attachment[data-attachment-path]:not([data-loaded])');
+  for(const el of els){
+    el.setAttribute('data-loaded','1'); // claim it up front — this loop awaits per-item, and another call could otherwise start on the same element mid-fetch
+    const path = el.getAttribute('data-attachment-path');
+    const cached = chatImageUrlCache.get(path);
+    if(cached && cached.expiresAt>Date.now()){ el.innerHTML = `<img src="${cached.url}" alt="">`; continue; }
+    const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
+    if(error || !data) continue;
+    chatImageUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now()+280000 });
+    el.innerHTML = `<img src="${data.signedUrl}" alt="">`;
+  }
+}
 
 /* ---------- Plain-language "what's happening right now" banners ----------
    Every audience (client / innous / supplier) sees the same underlying status,
@@ -3855,6 +3889,7 @@ function route(){
   if(key==='innous/messages' || key==='client/messages' || key==='supplier/messages'){
     const cm = el.querySelector('.chat-messages');
     if(cm) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
+    loadChatImagePreviews();
   }
   lastRoutedHash = hash;
   lucide.createIcons();
@@ -4319,9 +4354,21 @@ function chatMessagesHtml(msgs, mineFrom, emptyText){
     let attachmentHtml = '';
     if(m.attachmentName){
       const ext = (m.attachmentName.split('.').pop()||'').toLowerCase();
-      const meta = FILE_TYPES[ext] || {ext: ext.toUpperCase()||'FILE', color:'#71717A'};
-      const clickAttrs = m.attachmentPath ? `style="cursor:pointer;" onclick="App.openChatFile('${escAttr(m.attachmentPath)}')" title="Click to open"` : 'style="opacity:.75;"';
-      attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
+      if(IMAGE_EXTS.has(ext) && m.attachmentPath){
+        // A real uploaded photo (fix71) — the actual image, not a file
+        // chip, same as any chat app. The bucket is private (see
+        // App.openChatFile), so there's no plain URL to drop straight
+        // into <img src> — this starts as a loading placeholder and
+        // loadChatImagePreviews (called once the whole page has rendered
+        // — see route()) fetches a signed URL and swaps it in.
+        attachmentHtml = `<div class="chat-image-attachment" data-attachment-path="${escAttr(m.attachmentPath)}" onclick="App.openChatFile('${escAttr(m.attachmentPath)}')" title="Click to open">
+          <div class="chat-image-loading"><i data-lucide="image"></i></div>
+        </div>`;
+      } else {
+        const meta = FILE_TYPES[ext] || {ext: ext.toUpperCase()||'FILE', color:'#71717A'};
+        const clickAttrs = m.attachmentPath ? `style="cursor:pointer;" onclick="App.openChatFile('${escAttr(m.attachmentPath)}')" title="Click to open"` : 'style="opacity:.75;"';
+        attachmentHtml = `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${escAttr(m.attachmentName)}</span></div>`;
+      }
     }
     const cardHtml = m.cardType ? chatCardHtml(m) : '';
     const isLast = i===msgs.length-1;
