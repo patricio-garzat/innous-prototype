@@ -2976,7 +2976,16 @@ function generatePurchaseOrderPdf(p){
   const legalAddress = STATE.settings.address||DEFAULT_SETTINGS.address;
   const poNumber = o.poNumber || 'OC-'+new Date().getFullYear()+'-0000';
   const quoteNumber = o.quoteNumber || 'IN-'+new Date().getFullYear()+'-0000';
-  const deliveryPlace = o.poDeliveryLocation || (isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'—'));
+  // A supplier never gets to see where their part actually ends up — the
+  // whole point of INNOUS being the sole point of contact is that neither
+  // side can identify or reach around the other. This same PDF gets
+  // downloaded by both INNOUS (App.downloadPurchaseOrderPdf on
+  // #/innous/order) and the supplier themselves (same button on
+  // #/supplier/order) — one shared generator, so the masking has to live
+  // here rather than relying on every caller to remember it.
+  const isSupplierView = STATE.role==='SUPPLIER';
+  const deliveryPlace = isSupplierView ? 'Coordinado por INNOUS'
+    : (o.poDeliveryLocation || (isPickupOrder(p) ? 'Recolección coordinada por Innous' : (p.deliveryLocation||'—')));
 
   doc.addFileToVFS('Calibri.ttf', INNOUS_QUOTE_FONT_TTF);
   doc.addFont('Calibri.ttf', 'Calibri', 'normal');
@@ -3028,7 +3037,10 @@ function generatePurchaseOrderPdf(p){
   const entregaRows = [
     ['Entregar en', deliveryPlace],
     ['Fecha requerida', fmtDate(p.deliveryDate)],
-    ['Incoterm / Flete', o.poIncoterm],
+    // Incoterm/Flete dictates who arranges freight and from/to where —
+    // still a logistics detail, so it's masked the same way for the
+    // supplier's own copy of this PDF.
+    ['Incoterm / Flete', isSupplierView ? 'Coordinado por INNOUS' : o.poIncoterm],
     ['Condiciones de pago', o.poPaymentTerms],
     ['Forma de pago', o.poPaymentMethod],
     ['Facturar a', legalName],
@@ -4760,14 +4772,18 @@ function chatCardHtml(m){
   if(m.cardType==='po'){
     if(STATE.role==='CLIENT') return '';
     const o = p.order;
+    // A supplier reading this card in their own chat with INNOUS never
+    // gets Entregar en/Incoterm — same masking as generatePurchaseOrderPdf,
+    // for the same reason (they never learn where the part ends up).
+    const isSupplierView = STATE.role==='SUPPLIER';
     return `<div class="chat-card-preview">
       <div class="chat-card-title-row"><div class="chat-card-title"><i data-lucide="file-text"></i>Purchase Order</div>${o?orderStatusBadge(p,true):''}</div>
       <div class="chat-card-folio">${o?o.poNumber:'—'}</div>
       <div class="chat-card-row">${escAttr(p.projectName)}</div>
       <div class="chat-card-fields">
         ${chatCardField('Total (IVA incl.)', o&&o.supplierCostMxn?fmtMXN(withIva(o.supplierCostMxn)):'—')}
-        ${chatCardField('Entregar en', escAttr(o?.poDeliveryLocation||''))}
-        ${chatCardField('Incoterm', escAttr(o?.poIncoterm||''))}
+        ${chatCardField('Entregar en', isSupplierView ? 'A cargo de INNOUS' : escAttr(o?.poDeliveryLocation||''))}
+        ${chatCardField('Incoterm', isSupplierView ? 'A cargo de INNOUS' : escAttr(o?.poIncoterm||''))}
         ${chatCardField('Cond. de Pago', escAttr(o?.poPaymentTerms||''))}
       </div>
       <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Download PDF</button>
@@ -6582,7 +6598,7 @@ function supplierRfqCard(p){
     <div class="info-grid" style="grid-template-columns:1fr 1fr;margin:12px 0;">
       ${infoItem('Cantidad', p.quantity.toLocaleString())}
       ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
-      ${infoItem('Ubicación', p.deliveryLocation)}
+      ${infoItem('Logística', 'A cargo de INNOUS')}
       ${infoItem('Archivos', p.files.filter(f=>f.redactedPath).length+' adjuntos')}
     </div>
     ${isTargetPrice && !submitted && !declined ? `<div class="td-sub" style="margin-bottom:10px;"><i data-lucide="zap" style="width:11px;height:11px;display:inline;"></i> Precio fijo: ${fmtMXN(p.targetPriceSupplierBudgetMxn)} — el primero en aceptar se queda con el proyecto.</div>` : `<div class="td-sub" style="margin-bottom:10px;"><i data-lucide="clock" style="width:11px;height:11px;display:inline;"></i> Fecha límite para cotizar: ${fmtDate(addDays(p.createdAt,10))}</div>`}
@@ -6614,7 +6630,7 @@ ROUTES['supplier/rfq'] = function(id){
         <div class="section-title">Especificaciones del RFQ</div>
         <div class="info-grid" style="margin-top:12px;grid-template-columns:1fr 1fr;">
           ${infoItem('Fecha de entrega', fmtDate(p.deliveryDate))}
-          ${infoItem('Ubicación de entrega', p.deliveryLocation)}
+          ${infoItem('Logística', 'A cargo de INNOUS')}
           ${infoItem('Fecha límite de cotización', fmtDate(addDays(p.createdAt,10)))}
         </div>
         <hr class="divider">
@@ -6683,7 +6699,7 @@ function supplierSubmittedQuoteCard(p, q){
       ${infoItem('Tiempo de Entrega', q.leadTimeDays+' días')}
       ${infoItem('Vigencia de la Cotización', q.validity)}
       ${infoItem('Enviada el', fmtDate(q.submittedAt))}
-      ${infoItem('Destino', p.deliveryLocation)}
+      ${infoItem('Logística', 'A cargo de INNOUS')}
     </div>
     ${q.notes ? `<hr class="divider"><div class="info-item-label">Notas</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${q.notes}</div>` : ''}
   </div>`;
