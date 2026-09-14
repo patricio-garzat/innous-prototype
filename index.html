@@ -4498,25 +4498,35 @@ function orderCard(p){
 }
 
 /* ---- Client Order Detail ---- */
-// ---- Post-delivery rating, client side (fix81) — the client never knows
-// who the supplier is (see the confidentiality note at the top of this
-// file), so this is deliberately framed as rating the DELIVERY, not "the
-// supplier": on-time and quality only, no comment field required, one tap
-// per star. Editable any time after submitting (upsert on project_id+rater)
-// — no separate "locked" state to build or explain.
+// ---- Post-delivery rating, client side (fix81/fix82) — the client never
+// knows who the supplier is (see the confidentiality note at the top of
+// this file), so this is deliberately framed as rating the DELIVERY, not
+// "the supplier": on-time and quality only, no comment field required, one
+// tap per star. Once submitted the picker is gone for good, replaced by a
+// plain read-only confirmation — rating an order is a one-time "how'd it
+// go", not a setting to keep fiddling with.
 function clientRatingCardHtml(p){
   if(p.status!=='completed') return '';
   const already = p.ratings.client;
-  if(!STATE.ui.clientRatingDrafts[p.id]) STATE.ui.clientRatingDrafts[p.id] = already ? {ontime:already.ontime, quality:already.quality, comment:already.comment} : {ontime:0, quality:0, comment:''};
+  if(already){
+    return `
+    <div class="card card-pad" style="margin-top:20px;">
+      <div class="section-title">Your Rating</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">On-Time Delivery</span>${stars(already.ontime)}</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">Quality</span>${stars(already.quality)}</div>
+      <div class="section-sub" style="margin-top:6px;">Thanks for the feedback!</div>
+    </div>`;
+  }
+  if(!STATE.ui.clientRatingDrafts[p.id]) STATE.ui.clientRatingDrafts[p.id] = {ontime:0, quality:0, comment:''};
   const d = STATE.ui.clientRatingDrafts[p.id];
   return `
   <div class="card card-pad" style="margin-top:20px;">
-    <div class="section-title">${already?'Your Rating':'Rate This Delivery'}</div>
-    <div class="section-sub">${already?'Thanks for the feedback — tap a star to change it any time.':'Just two quick taps — how did this delivery go?'}</div>
+    <div class="section-title">Rate This Delivery</div>
+    <div class="section-sub">Just two quick taps — how did this delivery go?</div>
     <div class="rating-card-row"><span class="rating-card-row-label">On-Time Delivery</span>${starPickerHtml(d.ontime, `App.setClientRatingDraft('${p.id}','ontime',__N__)`)}</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Quality</span>${starPickerHtml(d.quality, `App.setClientRatingDraft('${p.id}','quality',__N__)`)}</div>
     <textarea placeholder="Anything else? (optional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.clientRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
-    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitClientRating('${p.id}')"><i data-lucide="star"></i>${already?'Update Rating':'Submit Rating'}</button>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitClientRating('${p.id}')"><i data-lucide="star"></i>Submit Rating</button>
   </div>`;
 }
 ROUTES['client/order'] = function(id){
@@ -4571,6 +4581,23 @@ ROUTES['client/order'] = function(id){
       </div>
     </div>
     ${clientRatingCardHtml(p)}
+  </div>`;
+};
+// ---- Dedicated "rate this order" page (fix82) — where the "Rate your
+// delivery" notification (sent the moment INNOUS marks an order Delivered,
+// see App._doAdvanceOrderStatus) links to: nothing on this page but the one
+// card, so there's no full order detail to wade through just to leave two
+// stars. clientRatingCardHtml already renders the read-only "thanks" state
+// once it's been rated, so revisiting this page (an old notification,
+// bookmarked, etc.) after already rating just shows that instead of an
+// empty page.
+ROUTES['client/rate'] = function(id){
+  const p = findProject(id); if(!p) return emptyState('search','Order not found','');
+  return `
+  <div class="content-inner" style="max-width:560px;">
+    <div class="breadcrumb"><a href="#/client/order/${p.id}">${p.id}</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Rate</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Order ${p.id}</div></div></div>
+    ${p.status==='completed' ? clientRatingCardHtml(p) : emptyState('clock','Not ready yet','This order isn’t marked delivered yet.')}
   </div>`;
 };
 
@@ -6086,26 +6113,37 @@ ROUTES['innous/orders'] = function(){
 };
 
 /* ---- INNOUS Order Detail ---- */
-// ---- Post-delivery rating, INNOUS side (fix81) — unlike the client's
-// (about the delivery, not the supplier, since the client never knows who
-// they are), this one IS specifically about the supplier: an internal
-// scorecard Innous builds order by order, that later shows up aggregated
-// on the supplier's own profile (see supplierRatingSummary) to help decide
-// who to invite to future RFQs. Same upsert-on-tap pattern as the client's.
+// ---- Post-delivery rating, INNOUS side (fix81/fix82) — unlike the
+// client's (about the delivery, not the supplier, since the client never
+// knows who they are), this one IS specifically about the supplier: an
+// internal scorecard Innous builds order by order, that later shows up
+// aggregated on the supplier's own profile (see supplierRatingSummary) to
+// help decide who to invite to future RFQs. Once submitted the picker is
+// gone for good — same one-time "how'd it go" as the client's.
 function innousRatingCardHtml(p){
   if(p.status!=='completed') return '';
   const already = p.ratings.innous;
-  if(!STATE.ui.innousRatingDrafts[p.id]) STATE.ui.innousRatingDrafts[p.id] = already ? {communication:already.communication, ontime:already.ontime, quality:already.quality, comment:already.comment} : {communication:0, ontime:0, quality:0, comment:''};
+  if(already){
+    return `
+    <div class="card card-pad" style="margin-top:20px;">
+      <div class="section-title">Calificación de ${supplierName(p.selectedSupplierId)}</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">Comunicación</span>${stars(already.communication)}</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">Tiempos</span>${stars(already.ontime)}</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">Calidad</span>${stars(already.quality)}</div>
+      <div class="section-sub" style="margin-top:6px;">Calificación guardada.</div>
+    </div>`;
+  }
+  if(!STATE.ui.innousRatingDrafts[p.id]) STATE.ui.innousRatingDrafts[p.id] = {communication:0, ontime:0, quality:0, comment:''};
   const d = STATE.ui.innousRatingDrafts[p.id];
   return `
   <div class="card card-pad" style="margin-top:20px;">
     <div class="section-title">Calificar a ${supplierName(p.selectedSupplierId)}</div>
-    <div class="section-sub">${already?'Ya calificado — toca una estrella para cambiarlo cuando quieras.':'Tu evaluación interna de este proveedor en este pedido — alimenta su ficha.'}</div>
+    <div class="section-sub">Tu evaluación interna de este proveedor en este pedido — alimenta su ficha.</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Comunicación</span>${starPickerHtml(d.communication, `App.setInnousRatingDraft('${p.id}','communication',__N__)`)}</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Tiempos</span>${starPickerHtml(d.ontime, `App.setInnousRatingDraft('${p.id}','ontime',__N__)`)}</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Calidad</span>${starPickerHtml(d.quality, `App.setInnousRatingDraft('${p.id}','quality',__N__)`)}</div>
     <textarea placeholder="Notas internas (opcional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.innousRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
-    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitInnousRating('${p.id}')"><i data-lucide="star"></i>${already?'Actualizar Calificación':'Guardar Calificación'}</button>
+    <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitInnousRating('${p.id}')"><i data-lucide="star"></i>Guardar Calificación</button>
   </div>`;
 }
 ROUTES['innous/order'] = function(id){
@@ -6152,6 +6190,19 @@ ROUTES['innous/order'] = function(id){
       </div>
     </div>
     ${innousRatingCardHtml(p)}
+  </div>`;
+};
+// ---- Dedicated "rate this supplier" page (fix82) — same idea as
+// #/client/rate, on the other end of the same notification-driven flow:
+// linked from the "Califica a [proveedor]" notification every Innous
+// account gets the moment an order is marked Delivered.
+ROUTES['innous/rate'] = function(id){
+  const p = findProject(id); if(!p) return emptyState('search','Pedido no encontrado','');
+  return `
+  <div class="content-inner" style="max-width:560px;">
+    <div class="breadcrumb"><a href="#/innous/order/${p.id}">${p.id}</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Calificar</span></div>
+    <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div></div>
+    ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
 function qualityBlock(p){
@@ -8983,6 +9034,37 @@ const App = {
         });
         if(e3) console.error('innous_send_notification (shipped) failed', e3);
       }
+      // fix82: the moment an order finishes is exactly when both sides
+      // should be nudged to rate it — a rating card nobody knows exists
+      // mostly goes unused. Both links point at the dedicated rate-only
+      // pages above (#/client/rate, #/innous/rate), not the full order
+      // page, so clicking the notice goes straight to the two-second task
+      // instead of a whole order detail page to hunt through.
+      if(justCompleted){
+        if(isRealAccountId(p.customerId)){
+          const { error: e4 } = await sb.rpc('innous_send_notification', {
+            p_user_ids: [p.customerId],
+            p_title: `Rate your delivery — ${p.id}`,
+            p_body: `${p.projectName} was just delivered. Got 10 seconds to rate it?`,
+            p_project_id: p.id, p_link: '#/client/rate/'+p.id,
+          });
+          if(e4) console.error('innous_send_notification (rate-client) failed', e4);
+        }
+        // Sent to every INNOUS account, not just whoever is marking this
+        // delivered right now — so the reminder to rate the supplier
+        // doesn't get lost if a different ops person ends up handling it.
+        const { data: innousProfiles } = await sb.from('profiles').select('user_id').eq('role','INNOUS');
+        const innousIds = (innousProfiles||[]).map(r=>r.user_id);
+        if(innousIds.length){
+          const { error: e5 } = await sb.rpc('innous_send_notification', {
+            p_user_ids: innousIds,
+            p_title: `Califica a ${supplierName(p.selectedSupplierId)}`,
+            p_body: `El pedido ${p.id} (${p.projectName}) se acaba de entregar — califica al proveedor.`,
+            p_project_id: p.id, p_link: '#/innous/rate/'+p.id,
+          });
+          if(e5) console.error('innous_send_notification (rate-innous) failed', e5);
+        }
+      }
     }
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabelFor(p, next, true)}`, 'success');
     route();
@@ -9036,8 +9118,14 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     p.ratings.client = { ontime:d.ontime, quality:d.quality, communication:0, comment:comment||'', ts:new Date() };
+    delete STATE.ui.clientRatingDrafts[pid];
     showToast('Thanks for your feedback!', 'success');
-    route();
+    // fix82: reached from the "rate this order" notification, the whole
+    // point of #/client/rate/:id is that one card — once it's submitted
+    // there's nothing left to do there, so leave for the order page
+    // instead of re-rendering that now-empty dedicated view.
+    if(location.hash.startsWith('#/client/rate/')) navigate('#/client/order/'+pid);
+    else route();
   },
   setInnousRatingDraft(pid, field, value){
     if(!STATE.ui.innousRatingDrafts[pid]) STATE.ui.innousRatingDrafts[pid] = {communication:0, ontime:0, quality:0, comment:''};
@@ -9057,8 +9145,13 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     p.ratings.innous = { communication:d.communication, ontime:d.ontime, quality:d.quality, comment:comment||'', ts:new Date() };
+    delete STATE.ui.innousRatingDrafts[pid];
     showToast('Calificación guardada', 'success');
-    route();
+    // fix82: same idea as submitClientRating — leave the dedicated
+    // #/innous/rate/:id page for the full order page once there's nothing
+    // left to rate there.
+    if(location.hash.startsWith('#/innous/rate/')) navigate('#/innous/order/'+pid);
+    else route();
   },
 
   /* ---- Messaging ----
