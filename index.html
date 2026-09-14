@@ -413,13 +413,18 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .file-drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:28px;text-align:center;background:var(--surface-alt);cursor:pointer;transition:border-color .15s,background .15s;}
 .file-drop:hover,.file-drop.drag-over{border-color:var(--accent);background:var(--accent-soft);}
 /* The whole drawing has to fit here with no scrollbar in either direction
-   (fix61) — the canvas is sized once to "fit" this box (see loadRedactPage)
-   and then only ever resized visually via a CSS transform (App.redactWheel/
-   redactZoomBy/applyRedactTransform), never by growing past the box, so
-   overflow:hidden here never actually clips anything at the default zoom. */
-.redact-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;height:64vh;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;touch-action:none;}
+   (fix61/62) — the canvas is sized once to "fit" this box (see
+   loadRedactPage) and then only ever resized visually via a CSS transform
+   (App.redactWheel/redactZoomBy/applyRedactTransform), never by growing
+   past the box, so overflow:hidden here never actually clips anything at
+   the default zoom. flex:1/min-height:0 (rather than a guessed vh height)
+   is what makes it take up exactly whatever space .modal-xwide's flex
+   column above has left over after its other, fixed-size children — see
+   fix62's note there for why that's what actually kills the modal's own
+   scrollbar too, not just this box's. */
+.redact-canvas-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;flex:1;min-height:0;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;touch-action:none;}
 .redact-canvas-wrap canvas{cursor:crosshair;display:block;}
-.redact-zoom-bar{display:flex;align-items:center;justify-content:center;gap:2px;margin-bottom:10px;}
+.redact-zoom-bar{display:flex;align-items:center;justify-content:center;gap:2px;margin-bottom:10px;flex:none;}
 .redact-zoom-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink-secondary);border-radius:var(--radius-sm);}
 .redact-zoom-btn:hover{background:var(--surface-alt);}
 .redact-zoom-btn svg{width:15px;height:15px;}
@@ -453,7 +458,17 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .modal{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.25);transform:translateY(8px);transition:transform .15s;}
 .modal-overlay.open .modal{transform:translateY(0);}
 .modal.modal-wide{max-width:900px;}
-.modal.modal-xwide{max-width:1400px;}
+/* modal-xwide (fix61/62) is a fixed-height flex column instead of the
+   default "grow with content, scroll past max-height" modal — the whole
+   point of Redactar Plano is that NOTHING here should scroll, including
+   the modal itself: a fixed height with header/footer pinned and
+   .modal-body/.redact-canvas-wrap set to flex:1 (see below) means the
+   canvas always gets exactly whatever space is actually left over,
+   whatever that turns out to be, instead of a guessed vh number that
+   only worked until the surrounding text wrapped onto an extra line. */
+.modal.modal-xwide{max-width:1400px;height:88vh;display:flex;flex-direction:column;overflow:hidden;}
+.modal-xwide .modal-header,.modal-xwide .modal-footer{flex:none;}
+.modal-xwide .modal-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:1px solid var(--border);}
 .modal-header h3{font-size:16px;font-weight:700;}
 .modal-body{padding:22px;}
@@ -2791,9 +2806,9 @@ function redactModalHtml(){
   return `
   <div class="modal-header"><h3>Redactar Plano</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
-    <div class="field-hint" style="margin-bottom:10px;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. Usa el trackpad para moverte (dos dedos) y hacer zoom (pellizcar), o los botones de abajo. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
+    <div class="field-hint" style="margin-bottom:10px;flex:none;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. Usa el trackpad para moverte (dos dedos) y hacer zoom (pellizcar), o los botones de abajo. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
     ${st.numPages>1?`
-    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;">
+    <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;flex:none;">
       <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Anterior</button>
       <div class="td-strong" id="redact-page-indicator">Página ${st.pageNum} de ${st.numPages}</div>
       <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum>=st.numPages?'disabled':''} onclick="App.loadRedactPage(${st.pageNum+1})">Siguiente<i data-lucide="chevron-right"></i></button>
@@ -2807,7 +2822,7 @@ function redactModalHtml(){
     <div class="redact-canvas-wrap" onwheel="App.redactWheel(event)">
       <canvas id="redact-canvas" onmousedown="App.redactMouseDown(event)" onmousemove="App.redactMouseMove(event)" onmouseup="App.redactMouseUp(event)" onmouseleave="App.redactMouseUp(event)"></canvas>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex:none;">
       <div class="td-sub" id="redact-box-count">${(st.boxesByPage[st.pageNum]||[]).length} cuadro(s) en esta página${st.numPages>1?` · ${totalBoxes} en total`:''}</div>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn-secondary btn-sm" onclick="App.undoRedactBox()"><i data-lucide="undo-2"></i>Deshacer último</button>
