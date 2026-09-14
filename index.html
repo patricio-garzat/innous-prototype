@@ -2654,12 +2654,15 @@ const INNOUS_QUOTE_SIGNATURE = { name:'Ing. Patricio Garza T.', email:'patricio@
 // the same on nearly every quote, so these are what a brand-new RFQ starts
 // with, but every field stays editable per-quote (see quoteDetailsSection /
 // App.saveQuoteDetails) for the rare deal that needs different wording.
+// Warranty/toolingNote deliberately have NO standard text here — they vary
+// too much deal to deal for a generic default to be safe to leave
+// unreviewed (unlike payment terms/country of origin/validity, which really
+// are the same for nearly every Innous quote). Left blank until someone
+// explicitly fills them in — see quoteDetailsSection/generateQuotePdf.
 const QUOTE_TERMS_DEFAULTS = {
   paymentTerms: '50% down payment, 50% before shipping',
   countryOrigin: 'Mexico',
-  warranty: '12 months against manufacturing defects',
   validityDays: 30,
-  toolingNote: 'Quoted separately unless listed above',
 };
 function generateQuotePdf(p){
   const { jsPDF } = window.jspdf;
@@ -2749,9 +2752,9 @@ function generateQuotePdf(p){
     ['Payment terms', p.quotePaymentTerms || QUOTE_TERMS_DEFAULTS.paymentTerms],
     ['Delivery time', deliveryDays ? `${deliveryDays} days after PO / drawing release` : '—'],
     ['Country of origin', p.quoteCountryOrigin || QUOTE_TERMS_DEFAULTS.countryOrigin],
-    ['Warranty', p.quoteWarranty || QUOTE_TERMS_DEFAULTS.warranty],
+    ['Warranty', p.quoteWarranty || '—'],
     ['Quote validity', `${validityDays} days from date of issue`],
-    ['Tooling / FAI / certs.', p.quoteToolingNote || QUOTE_TERMS_DEFAULTS.toolingNote],
+    ['Tooling / FAI / certs.', p.quoteToolingNote || '—'],
   ];
   const y1 = poInfoBlock(doc, marginL, 130, colW, 'QUOTATION TO', quotationToRows, navy, ink, inkSec);
   const y2 = poInfoBlock(doc, col2X, 130, colW, 'COMMERCIAL TERMS', commercialTermsRows, navy, ink, inkSec);
@@ -5312,9 +5315,9 @@ function quoteDetailsSection(p, opts){
       paymentTerms: p.quotePaymentTerms || QUOTE_TERMS_DEFAULTS.paymentTerms,
       deliveryDays: p.quoteDeliveryDays || fallbackDays || '',
       countryOrigin: p.quoteCountryOrigin || QUOTE_TERMS_DEFAULTS.countryOrigin,
-      warranty: p.quoteWarranty || QUOTE_TERMS_DEFAULTS.warranty,
+      warranty: p.quoteWarranty || '',
       validityDays: p.quoteValidityDays || QUOTE_TERMS_DEFAULTS.validityDays,
-      toolingNote: p.quoteToolingNote || QUOTE_TERMS_DEFAULTS.toolingNote,
+      toolingNote: p.quoteToolingNote || '',
       discount: p.quoteDiscount || 0,
     };
   }
@@ -8370,9 +8373,14 @@ const App = {
       quotePaymentTerms: (d.paymentTerms||'').trim() || QUOTE_TERMS_DEFAULTS.paymentTerms,
       quoteDeliveryDays: parseInt(d.deliveryDays) || null,
       quoteCountryOrigin: (d.countryOrigin||'').trim() || QUOTE_TERMS_DEFAULTS.countryOrigin,
-      quoteWarranty: (d.warranty||'').trim() || QUOTE_TERMS_DEFAULTS.warranty,
+      // No fallback for these two (fix83) — unlike the other fields here,
+      // leaving them blank is a valid, deliberate choice (see the comment
+      // on QUOTE_TERMS_DEFAULTS above), not "forgot to fill it in", so a
+      // blank field actually SAVES as blank instead of silently reverting
+      // to boilerplate text nobody chose for this specific deal.
+      quoteWarranty: (d.warranty||'').trim() || null,
       quoteValidityDays: parseInt(d.validityDays) || QUOTE_TERMS_DEFAULTS.validityDays,
-      quoteToolingNote: (d.toolingNote||'').trim() || QUOTE_TERMS_DEFAULTS.toolingNote,
+      quoteToolingNote: (d.toolingNote||'').trim() || null,
       quoteDiscount: parseFloat(d.discount) || 0,
     };
     if(!p.isDemo){
