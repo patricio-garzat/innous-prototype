@@ -511,6 +511,16 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-list-item{display:flex;gap:10px;padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
 .chat-list-item:hover{background:var(--surface-alt);}
 .chat-list-item.active{background:var(--accent-soft);}
+/* Clientes/Proveedores rows in Ajustes (fix57) — a colored avatar per row
+   (see avatarColorFor) plus an accent-blue hover, instead of a plain white
+   table where every name/sub line read the same flat gray. */
+.account-list{display:flex;flex-direction:column;}
+.account-row{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);cursor:pointer;}
+.account-row:last-child{border-bottom:none;}
+.account-row:hover{background:var(--accent-soft);}
+.account-row-info{flex:1;min-width:0;}
+.account-row-name{font-weight:700;font-size:13.5px;color:var(--ink);}
+.account-row-chevron{width:16px;height:16px;stroke:var(--ink-tertiary);flex:0 0 auto;}
 .chat-thread{flex:1;display:flex;flex-direction:column;min-width:0;}
 .chat-thread-header{padding:14px 18px;border-bottom:1px solid var(--border);}
 .chat-messages{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;}
@@ -5156,31 +5166,41 @@ function supplierBillingSection(s){
    page on every keystroke — that would also drop focus out of the search
    box after each character. */
 function settingsBillingInfoSection(){
-  const accountRow = (label, sub, onclick)=>{
+  // Each row gets a colored avatar (same avatarColorFor palette as the
+  // Proveedores grid / chat list — see avatarHtml) so names don't just
+  // blend into a flat white table anymore, plus a chevron to make clear
+  // it opens something. See .account-row below for the accent-blue hover.
+  const accountRow = (id, label, sub, onclick)=>{
     const searchText = escAttr(`${label} ${sub||''}`.toLowerCase());
-    return `<tr class="row-link" data-search="${searchText}" onclick="${onclick}"><td class="td-strong">${label}</td><td class="td-sub">${sub||'—'}</td></tr>`;
+    return `<div class="account-row" data-search="${searchText}" onclick="${onclick}">
+      ${avatarHtml(null, initials(label), avatarColorFor(id), 36)}
+      <div class="account-row-info"><div class="account-row-name">${escAttr(label)}</div><div class="td-sub">${sub?escAttr(sub):'—'}</div></div>
+      <i data-lucide="chevron-right" class="account-row-chevron"></i>
+    </div>`;
   };
   return `
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-header"><h3>Clientes</h3></div>
+    <div class="card-header" style="border-bottom:2px solid var(--accent);">
+      <h3 style="display:flex;align-items:center;gap:8px;"><i data-lucide="building-2" style="width:16px;height:16px;stroke:var(--accent);"></i>Clientes</h3>
+      <span class="badge badge-blue">${CUSTOMERS.length}</span>
+    </div>
     <div style="padding:14px 20px 0;">
       <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-customer-search" placeholder="Buscar cliente..." onkeyup="App.filterAccountsList('customer')"></div>
     </div>
-    <div class="table-wrap" style="margin-top:14px;">
-      <table class="data-table" id="settings-customers-table"><tbody>
-        ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.company, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin clientes registrados</td></tr>`}
-      </tbody></table>
+    <div class="account-list" id="settings-customers-table" style="margin-top:10px;">
+      ${CUSTOMERS.length ? CUSTOMERS.map(c=>accountRow(c.id, c.company, c.contact, `App.openAccountInfoModal('customer','${c.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin clientes registrados</div>`}
     </div>
   </div>
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-header"><h3>Proveedores</h3></div>
+    <div class="card-header" style="border-bottom:2px solid var(--navy);">
+      <h3 style="display:flex;align-items:center;gap:8px;"><i data-lucide="factory" style="width:16px;height:16px;stroke:var(--navy);"></i>Proveedores</h3>
+      <span class="badge" style="background:var(--navy-soft);color:var(--navy);">${SUPPLIERS.length}</span>
+    </div>
     <div style="padding:14px 20px 0;">
       <div class="search-bar"><i data-lucide="search"></i><input type="text" id="settings-supplier-search" placeholder="Buscar proveedor..." onkeyup="App.filterAccountsList('supplier')"></div>
     </div>
-    <div class="table-wrap" style="margin-top:14px;">
-      <table class="data-table" id="settings-suppliers-table"><tbody>
-        ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.name, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<tr><td class="td-sub" style="padding:16px;">Sin proveedores registrados</td></tr>`}
-      </tbody></table>
+    <div class="account-list" id="settings-suppliers-table" style="margin-top:10px;">
+      ${SUPPLIERS.length ? SUPPLIERS.map(s=>accountRow(s.id, s.name, s.contactName, `App.openAccountInfoModal('supplier','${s.id}')`)).join('') : `<div class="td-sub" style="padding:16px 20px;">Sin proveedores registrados</div>`}
     </div>
   </div>`;
 }
@@ -7235,11 +7255,11 @@ const App = {
   // never loses focus mid-keystroke.
   filterAccountsList(type){
     const inputId = type==='customer' ? 'settings-customer-search' : 'settings-supplier-search';
-    const tableId = type==='customer' ? 'settings-customers-table' : 'settings-suppliers-table';
+    const listId = type==='customer' ? 'settings-customers-table' : 'settings-suppliers-table';
     const q = (document.getElementById(inputId)?.value||'').toLowerCase();
-    document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr=>{
-      if(tr.dataset.search===undefined) return; // the "sin registros" placeholder row
-      tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
+    document.querySelectorAll(`#${listId} .account-row`).forEach(row=>{
+      if(row.dataset.search===undefined) return; // the "sin registros" placeholder
+      row.style.display = row.dataset.search.includes(q) ? '' : 'none';
     });
   },
 
