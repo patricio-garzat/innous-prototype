@@ -229,6 +229,29 @@ svg{display:block;}
    itself (background/color/cursor), same as before. */
 .btn:disabled{opacity:.5;cursor:not-allowed;pointer-events:none;}
 .btn svg{width:15px;height:15px;}
+/* fix100: viewer lockdown, visual half (the functional half is the
+   INNOUS_VIEWER_BLOCKED_METHODS wrapper in the script below — a blocked
+   click already does nothing before it reaches here). Every form control
+   gets locked, except the handful of search/filter boxes that only ever
+   read (they don't write anything, so a viewer keeping the ability to
+   search/filter — same as any other reading — isn't a gap in "solo
+   lectura"). .btn-primary/.btn-danger are dimmed site-wide since, by this
+   app's own convention, those two colors ARE the write actions (Save,
+   Send, Create, Delete, Authorize...) — .btn-secondary/.btn-ghost are
+   deliberately left alone since a large share of those are navigation
+   (view detail, cancel, filter, page back/forward), not writes, and
+   graying those out would break actual reading for no security benefit
+   (the write itself is still blocked either way if one of them happens
+   to trigger one). */
+body.innous-viewer-mode input:not(#rfq-search):not(#settings-customer-search):not(#settings-supplier-search),
+body.innous-viewer-mode textarea,
+body.innous-viewer-mode select:not(#rfq-status-filter) {
+  pointer-events:none; cursor:not-allowed; opacity:.6; background:var(--surface-alt);
+}
+body.innous-viewer-mode .btn-primary,
+body.innous-viewer-mode .btn-danger {
+  opacity:.5; cursor:not-allowed; pointer-events:none;
+}
 .btn-primary{background:linear-gradient(100deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
 .btn-primary:hover{background:linear-gradient(100deg,var(--navy-deep),var(--accent-ink));box-shadow:0 6px 18px -6px rgba(0,56,101,0.5);transform:translateY(-1px);}
 .btn-primary:active{transform:translateY(0);}
@@ -3624,6 +3647,11 @@ const ROLE_META = {
 function renderShell(){
   const es = STATE.role!=='CLIENT';
   const isAccount = STATE.authMode==='account';
+  // fix100: the CSS half of the viewer lockdown — see innous-viewer-mode
+  // rules near the top of the stylesheet. Toggled here because renderShell
+  // runs at the top of every single route(), so it can't go stale across
+  // navigations the way setting it once at login could.
+  document.body.classList.toggle('innous-viewer-mode', STATE.role==='INNOUS' && STATE.innousAccess==='viewer');
   const showLogout = STATE.authMode!=='guest'; // account or demo — either way, there should be a way back to the landing page
   document.getElementById('nav-back-btn').disabled = navHistDepth<=0;
   document.getElementById('nav-forward-btn').disabled = navHistDepth>=navHistTop;
@@ -9668,6 +9696,47 @@ const App = {
     navigate(STATE.role==='INNOUS' ? '#/innous/messages' : STATE.role==='CLIENT' ? '#/client/messages' : '#/supplier/messages');
   },
 };
+// fix100: viewer lockdown, done once here instead of hand-editing every
+// button across the whole app — every name below performs a real write
+// (create/update/delete/send/upload) somewhere inside it. Wrapping them
+// centrally means nothing new added to App later can slip through
+// unguarded by accident the way a button-by-button audit could miss one,
+// and it's a pure no-op for CLIENT/SUPPLIER sessions and for INNOUS
+// admins (the condition only ever trips for STATE.role==='INNOUS' &&
+// STATE.innousAccess==='viewer') — several of these are only ever
+// reachable by a different role in the first place and are listed anyway
+// so this stays correct if that ever changes. The real guarantee is
+// still server-side RLS (see supabase-fix97-innous-viewer-role.sql)
+// regardless of this — this is what makes the UI actually behave like
+// nothing happened instead of a click doing something that silently
+// fails at the database. Deliberately NOT wrapped: submitLogin/
+// signInWithGoogle/logOut (auth must keep working), linkGoogleAccount/
+// unlinkGoogleAccount (only touches the viewer's own login method, no
+// business data), and anything read-only (opening/viewing a file,
+// dismissing your own notifications, opening a modal to look at it).
+const INNOUS_VIEWER_BLOCKED_METHODS = [
+  'saveAccount','createSupplierAccount','createInnousTeammate','changeTeammateAccess',
+  'removeInnousTeammate','saveInnousSettings','deleteCustomer','deleteSupplier','deleteRfq',
+  'confirmRejectRfq','onNewSupplierCsfSelected','saveRedaction','submitRfq',
+  'sendRfqToSuppliers','saveQuoteDetails','savePurchaseOrderDetails','saveCustomerAccount',
+  'saveSupplierAccount','onSupplierCsfSelected','deleteSupplierCsf','addToShortlist',
+  'removeFromShortlist','sendQuotesToCustomer','confirmSelectQuote','authorizeProject',
+  'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
+  'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
+  'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
+  'sendChatCard','deleteChat','submitSignup',
+];
+INNOUS_VIEWER_BLOCKED_METHODS.forEach(name=>{
+  const original = App[name];
+  if(typeof original !== 'function') return;
+  App[name] = function(...args){
+    if(STATE.role==='INNOUS' && STATE.innousAccess==='viewer'){
+      showToast('Tu cuenta es de solo lectura — no puedes hacer cambios.');
+      return;
+    }
+    return original.apply(this, args);
+  };
+});
 
 document.addEventListener('click', ()=>{
   const m=document.getElementById('role-menu'); if(m) m.classList.remove('open');
