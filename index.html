@@ -6561,17 +6561,19 @@ function innousTeamSectionHtml(){
     return `
     <div class="account-pw-toggle" style="cursor:default;">
       ${avatarHtml(t.photo, initials(t.name), 'var(--navy)', 34)}
-      <div class="account-pw-toggle-text">
-        <div class="account-pw-toggle-title">${escAttr(t.name)}${isSelf?' <span class="td-sub" style="font-weight:400;">(tú)</span>':''}</div>
-        <div class="account-pw-toggle-sub">${escAttr(t.email||t.username||'—')}</div>
+      <div class="account-pw-toggle-text" style="overflow:hidden;">
+        <div class="account-pw-toggle-title" style="overflow-wrap:break-word;">${escAttr(t.name)}${isSelf?' <span class="td-sub" style="font-weight:400;">(tú)</span>':''}</div>
+        <div class="account-pw-toggle-sub" style="overflow-wrap:break-word;">${escAttr(t.email||t.username||'—')}</div>
       </div>
       ${isAdmin && !isSelf ? `
-        <select onchange="App.changeTeammateAccess('${t.id}', this.value)" style="margin-right:8px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;background:var(--surface);">
-          <option value="admin" ${t.access==='admin'?'selected':''}>Admin</option>
-          <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
-        </select>
-        <button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>
-      ` : `<span class="badge ${t.access==='admin'?'badge-blue':'badge-gray'}"><span class="dot ${t.access==='admin'?'dot-blue':'dot-gray'}"></span>${t.access==='admin'?'Admin':'Viewer'}</span>`}
+        <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+          <select onchange="App.changeTeammateAccess('${t.id}', this.value)" style="flex:0 0 auto;width:auto;padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;background:var(--surface);">
+            <option value="admin" ${t.access==='admin'?'selected':''}>Admin</option>
+            <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);flex:0 0 auto;" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>
+        </div>
+      ` : `<span class="badge ${t.access==='admin'?'badge-blue':'badge-gray'}" style="flex:0 0 auto;"><span class="dot ${t.access==='admin'?'dot-blue':'dot-gray'}"></span>${t.access==='admin'?'Admin':'Viewer'}</span>`}
     </div>`;
   }).join('');
   return `
