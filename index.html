@@ -58,6 +58,53 @@
   --sidebar-w:248px;
   --topbar-h:100px;
 }
+/* fix107: dark mode — INNOUS accounts only (App.toggleDarkMode/
+   applyDarkModePreference below only ever set this attribute on <body>
+   from inside enterAppAsUser's INNOUS branch and clear it in logOut(), so
+   a CLIENT/SUPPLIER session — and the pre-login boot/landing/login
+   screens, which never carry this attribute at all — never sees it,
+   regardless of what's saved in localStorage on that browser).
+   Scoped to `body` rather than `:root`/`html` specifically so it covers
+   #app-shell, #modal-root and #toast-container (all body children) while
+   leaving #boot-loading (its own hardcoded colors, untouched by design —
+   see its own fix102 comment) alone either way.
+   Same token set as :root above, redefined for a dark surface: kept every
+   token that's also read as plain TEXT/icon color (--accent-ink,
+   --success, --warning, --danger, --purple) noticeably brighter than
+   their light-mode values, not just inverted — a dark-on-dark color
+   passes contrast in a button/badge fill but not as text on its own. */
+body[data-theme="dark"]{
+  --bg:#0B0E13;
+  --surface:#151920;
+  --surface-alt:#1C222B;
+  --border:#272E39;
+  --border-strong:#3A4351;
+  --ink:#F1F3F6;
+  --ink-secondary:#ACB4C0;
+  --ink-tertiary:#828B99;
+  --accent:#29B6F6;
+  --accent-ink:#4FC3F7;
+  --accent-soft:#12293A;
+  --navy:#0E4E78;
+  --navy-deep:#0A3A5C;
+  --cyan:#29B6F6;
+  --success:#34D399;
+  --success-soft:#0E2A20;
+  --warning:#FBBF24;
+  --warning-soft:#2E2408;
+  --danger:#F87171;
+  --danger-soft:#2E1616;
+  --purple:#B79CFB;
+  --purple-soft:#241C3D;
+  --navy-soft:#142433;
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.45);
+  --shadow-md:0 6px 20px rgba(0,0,0,0.5);
+}
+/* The wordmark's "INNOUS / beyond frontiers" text paths, embedded as a
+   scoped style inside the SVG markup itself (see logoSvgMarkup()) with a
+   literal near-black fill — not a var, so it doesn't pick up --ink on its
+   own. Overridden here instead of touching the (very long) inline SVG. */
+body[data-theme="dark"] .innous-logo-dark{fill:#F1F3F6;}
 html,body{height:100%;}
 body{
   font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -1049,6 +1096,14 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </a>
     </div>
     <div class="topbar-right">
+      <!-- fix107: dark mode toggle — INNOUS accounts only, shown/hidden by
+           renderShell() (same spot other role-conditional topbar chrome
+           already does this, e.g. #role-switcher's display toggle just
+           above it). Hidden by default in markup so it never flashes
+           visible for a CLIENT/SUPPLIER on the first paint before JS runs. -->
+      <button class="notif-btn" id="dark-mode-btn" style="display:none;" onclick="App.toggleDarkMode()" aria-label="Cambiar a modo oscuro">
+        <i data-lucide="moon" id="dark-mode-icon"></i>
+      </button>
       <div class="notif-wrap">
         <button class="notif-btn" id="notif-btn" onclick="App.toggleNotifMenu(event)" aria-label="Notifications">
           <i data-lucide="bell"></i>
@@ -2118,6 +2173,11 @@ async function enterAppAsUser(user){
     // a write action; the real enforcement is server-side RLS regardless
     // of what this says, this is only ever used for the UI layer.
     STATE.innousAccess = profile.innous_access || 'admin';
+    // fix107: apply the saved dark-mode preference now that we know this
+    // login really is INNOUS — see App.toggleDarkMode's own comment for
+    // why this (plus logOut() clearing it) are the only two places this
+    // attribute ever gets set/removed.
+    try{ if(localStorage.getItem('innous_dark_mode')==='1') document.body.setAttribute('data-theme','dark'); }catch(e){}
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
@@ -3720,6 +3780,11 @@ function renderShell(){
   // runs at the top of every single route(), so it can't go stale across
   // navigations the way setting it once at login could.
   document.body.classList.toggle('innous-viewer-mode', STATE.role==='INNOUS' && STATE.innousAccess==='viewer');
+  // fix107: dark mode toggle button — INNOUS only, icon reflects current state.
+  const darkBtn = document.getElementById('dark-mode-btn');
+  darkBtn.style.display = STATE.role==='INNOUS' ? '' : 'none';
+  document.getElementById('dark-mode-icon').setAttribute('data-lucide', document.body.getAttribute('data-theme')==='dark' ? 'sun' : 'moon');
+  lucide.createIcons();
   const showLogout = STATE.authMode!=='guest'; // account or demo — either way, there should be a way back to the landing page
   document.getElementById('nav-back-btn').disabled = navHistDepth<=0;
   document.getElementById('nav-forward-btn').disabled = navHistDepth>=navHistTop;
@@ -4369,7 +4434,7 @@ ROUTES['client/dashboard'] = function(){
     ${readyForReview.map(p=>stageBanner(
       `Quotes have arrived for <strong>${p.projectName}</strong> (${p.id}) — ${p.shortlist.length} manufacturing options are ready for your review.`,
       'action',
-      `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`
+      `<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`
     )).join('')}
     <div class="grid grid-4" style="margin-bottom:24px;">
       ${kpiCard('Active RFQs', activeRfqs.length, 'in the sourcing pipeline','file-text')}
@@ -4562,7 +4627,7 @@ ROUTES['client/rfq'] = function(id){
       </div>
     </div>
     ${p.status==='rejected' ? rejectedRfqBanner(p,'client') : `
-    ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
+    ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
     <div class="grid grid-2">
       <div class="card card-pad">
@@ -5061,7 +5126,7 @@ ROUTES['innous/overview'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Resumen de Operaciones</div><div class="brand-rule"></div><div class="page-subtitle">Vista general de la plataforma, con todos los clientes y proveedores</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/innous/rfqs')"><i data-lucide="file-text"></i>Todos los RFQs</button></div></div>
-    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — revisa, aprueba o arma el shortlist para que los RFQs avancen.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
+    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — revisa, aprueba o arma el shortlist para que los RFQs avancen.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:16px;">
       ${kpiCard('RFQs Activos', active.length, 'en todo el proceso','file-text')}
       ${kpiCard('Esperando Cotizaciones', awaitingQuotes.length, 'buscando proveedores','send')}
@@ -6791,7 +6856,7 @@ ROUTES['supplier/dashboard'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Bienvenido de nuevo</div><div class="brand-rule"></div><div class="page-subtitle">${currentSupplier().name} · Panel del Proveedor</div></div>
       <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>Ver RFQs Disponibles</button></div></div>
-    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — cotiza o actualiza producción para no perder oportunidades.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:#fff;" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
+    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — cotiza o actualiza producción para no perder oportunidades.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:24px;">
       ${kpiCard('RFQs Disponibles', available.length, 'esperando tu cotización','inbox')}
       ${kpiCard('Cotizaciones Enviadas', submitted.length, 'total enviadas','file-text')}
@@ -7569,6 +7634,7 @@ const App = {
     // id — belt-and-suspenders alongside that branch no longer falling
     // back to a stale photo itself.
     INNOUS_USER.name='Ops Team'; INNOUS_USER.photo=null; INNOUS_USER.username=''; INNOUS_USER.email='';
+    document.body.removeAttribute('data-theme'); // fix107 — same "different person, same computer" reasoning
     // Clear the hash so a different person logging in afterward on this same
     // tab/computer (e.g. a shared office machine) always lands on their own
     // home page, instead of accidentally inheriting whatever page the
@@ -7773,6 +7839,21 @@ const App = {
     const sb = document.getElementById('sidebar'), bd = document.getElementById('sidebar-backdrop');
     if(forceClose===true){ sb.classList.remove('open'); bd.classList.remove('open'); return; }
     sb.classList.toggle('open'); bd.classList.toggle('open');
+  },
+  // fix107: dark mode — INNOUS accounts only. The preference is saved to
+  // localStorage (same "interface preference, not tracking" bucket as
+  // everything else this app keeps there per the Aviso de Privacidad),
+  // but it's only ever actually APPLIED (the data-theme attribute set on
+  // body) from here and from enterAppAsUser's INNOUS branch/logOut()
+  // below — never unconditionally on page load — so a CLIENT/SUPPLIER
+  // session on the same browser never inherits it just because an INNOUS
+  // account once turned it on there.
+  toggleDarkMode(){
+    if(STATE.role!=='INNOUS') return;
+    const next = document.body.getAttribute('data-theme')==='dark' ? '' : 'dark';
+    if(next) document.body.setAttribute('data-theme','dark'); else document.body.removeAttribute('data-theme');
+    try{ localStorage.setItem('innous_dark_mode', next==='dark' ? '1' : '0'); }catch(e){}
+    renderShell();
   },
   toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('notif-menu').classList.remove('open'); document.getElementById('role-menu').classList.toggle('open'); },
   toggleNotifMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.remove('open'); document.getElementById('notif-menu').classList.toggle('open'); },
