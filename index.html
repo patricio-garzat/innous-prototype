@@ -1323,6 +1323,10 @@ function mockFiles(process){
 }
 
 let PROJECTS = [];
+// fix97: every INNOUS colleague's own account — admin or viewer — for the
+// "Equipo" section in Settings. Loaded once at login (enterAppAsUser) and
+// re-fetched after adding/removing/changing someone (App.refreshInnousTeam).
+let INNOUS_TEAM = [];
 
 /* ---------- Real backend (Supabase) ----------
    Real, shared authentication and data — a client on one device and a
@@ -1418,6 +1422,17 @@ async function refreshRealCustomersAndSuppliers(){
     const idx = SUPPLIERS.findIndex(x=>x.id===s.id);
     if(idx>-1) SUPPLIERS[idx]=s; else SUPPLIERS.push(s);
   });
+}
+// fix97 — every INNOUS profile (admin + viewer alike; "INNOUS ve todos los
+// perfiles" already lets any INNOUS account read this, viewer included —
+// seeing the team roster isn't a "movement", only adding/editing one is).
+async function refreshInnousTeam(){
+  const { data, error } = await sb.from('profiles').select('*').eq('role','INNOUS');
+  if(error){ console.error('refreshInnousTeam failed', error); return; }
+  INNOUS_TEAM = (data||[]).map(row=>({
+    id: row.user_id, name: row.display_name||'—', email: row.email||'',
+    username: row.username||'', access: row.innous_access||'admin', photo: row.photo_url||null,
+  })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 /* Real RFQ, still just the submission + status-review slice (see the big
    comment above the SUPABASE_URL block) — supplier invitations, quotes,
@@ -2007,9 +2022,15 @@ async function enterAppAsUser(user){
     INNOUS_USER.name = profile.display_name || user.email;
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
     INNOUS_USER.username = profile.username || '';
+    // fix97: 'admin' (default, covers every account from before this
+    // existed) or 'viewer' — read everywhere the UI needs to hide/disable
+    // a write action; the real enforcement is server-side RLS regardless
+    // of what this says, this is only ever used for the UI layer.
+    STATE.innousAccess = profile.innous_access || 'admin';
     await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
+    await refreshInnousTeam();
   }
   // Settings (fix64) — the `settings` row is readable by every role (see
   // "todos pueden leer settings" in supabase-schema.sql), not just INNOUS,
@@ -3621,7 +3642,12 @@ function renderShell(){
     const s = currentSupplier();
     chip.innerHTML = `${avatarHtml(s.photo, initials(s.name))}<div><div class="user-chip-text">${s.contactName||'Equipo'}</div><div class="user-chip-sub">${s.name}</div></div>`;
   } else {
-    chip.innerHTML = `${avatarHtml(INNOUS_USER.photo, 'IN', 'var(--accent)')}<div><div class="user-chip-text">${INNOUS_USER.name}</div><div class="user-chip-sub">INNOUS Platform</div></div>`;
+    // fix97: quiet reminder for a viewer-access account that they're in
+    // read-only mode — the real enforcement is server-side RLS regardless
+    // of this label, this is purely so nobody's confused about why a save
+    // button didn't work.
+    const subLabel = STATE.innousAccess==='viewer' ? 'Solo lectura' : 'INNOUS Platform';
+    chip.innerHTML = `${avatarHtml(INNOUS_USER.photo, 'IN', 'var(--accent)')}<div><div class="user-chip-text">${INNOUS_USER.name}</div><div class="user-chip-sub">${subLabel}</div></div>`;
   }
 
   const menu = document.getElementById('role-menu');
@@ -6521,13 +6547,89 @@ function settingsSection(key, icon, title, sub, bodyHtml, danger){
   </div>
   ${open?`<div class="settings-panel"${panelStyle}>${bodyHtml}</div>`:''}`;
 }
+// fix97: the "Equipo INNOUS" settings section — every INNOUS account and
+// its access level. Viewers see the exact same list (read access isn't
+// restricted), but only an admin gets the "Agregar compañero" button and
+// the per-person access/remove controls — enforced again server-side
+// regardless (changeTeammateAccess/removeInnousTeammate would just fail
+// there for a viewer), this is only to not show controls that wouldn't
+// work anyway.
+function innousTeamSectionHtml(){
+  const isAdmin = STATE.innousAccess==='admin';
+  const rows = INNOUS_TEAM.map(t=>{
+    const isSelf = t.id===STATE.innousUserId;
+    return `
+    <div class="account-pw-toggle" style="cursor:default;">
+      ${avatarHtml(t.photo, initials(t.name), 'var(--navy)', 34)}
+      <div class="account-pw-toggle-text">
+        <div class="account-pw-toggle-title">${escAttr(t.name)}${isSelf?' <span class="td-sub" style="font-weight:400;">(tú)</span>':''}</div>
+        <div class="account-pw-toggle-sub">${escAttr(t.email||t.username||'—')}</div>
+      </div>
+      ${isAdmin && !isSelf ? `
+        <select onchange="App.changeTeammateAccess('${t.id}', this.value)" style="margin-right:8px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;background:var(--surface);">
+          <option value="admin" ${t.access==='admin'?'selected':''}>Admin</option>
+          <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
+        </select>
+        <button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>
+      ` : `<span class="badge ${t.access==='admin'?'badge-blue':'badge-gray'}"><span class="dot ${t.access==='admin'?'dot-blue':'dot-gray'}"></span>${t.access==='admin'?'Admin':'Viewer'}</span>`}
+    </div>`;
+  }).join('');
+  return `
+  <div class="section-sub">Admin ve y hace todo, igual que hoy. Viewer ve exactamente lo mismo en todo el portal, pero no puede crear, editar, borrar ni enviar nada — ni desde aquí ni saltándose la pantalla.</div>
+  <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+    ${rows || '<div class="field-hint">Aún no hay compañeros registrados.</div>'}
+  </div>
+  ${isAdmin ? `<button type="button" class="btn btn-secondary" style="margin-top:14px;" onclick="App.openNewTeammateModal()"><i data-lucide="user-plus"></i>Agregar compañero</button>` : ''}
+  `;
+}
+function newTeammateModalHtml(){
+  const d = STATE.ui.newTeammateDraft;
+  return `
+  <div class="modal-header"><h3>Agregar Compañero de INNOUS</h3><button class="modal-close" onclick="App.closeNewTeammateModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="form-group"><label class="field-label">Nombre</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.newTeammateDraft.name=this.value"></div>
+    <div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="STATE.ui.newTeammateDraft.email=this.value"></div>
+    <div class="form-group password-field">
+      <label class="field-label">Contraseña</label>
+      <div class="password-input-wrap">
+        <input type="password" id="teammate-password" autocomplete="new-password" oninput="STATE.ui.newTeammateDraft.password=this.value">
+        <button type="button" class="password-toggle-btn" onclick="App.togglePasswordVisibility('teammate-password', this)"><i data-lucide="eye"></i></button>
+      </div>
+    </div>
+    <div class="form-group password-field">
+      <label class="field-label">Confirmar contraseña</label>
+      <div class="password-input-wrap">
+        <input type="password" id="teammate-password2" autocomplete="new-password" oninput="STATE.ui.newTeammateDraft.password2=this.value">
+        <button type="button" class="password-toggle-btn" onclick="App.togglePasswordVisibility('teammate-password2', this)"><i data-lucide="eye"></i></button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="field-label">Nivel de acceso</label>
+      <select onchange="STATE.ui.newTeammateDraft.access=this.value" style="width:100%;padding:9px 12px;border-radius:9px;border:1px solid var(--border);font-size:13.5px;background:var(--surface);">
+        <option value="viewer" ${d.access==='viewer'?'selected':''}>Viewer — solo puede ver, no puede mover nada</option>
+        <option value="admin" ${d.access==='admin'?'selected':''}>Admin — acceso completo, igual que tú</option>
+      </select>
+    </div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeNewTeammateModal()">Cancelar</button><button class="btn btn-primary" onclick="App.createInnousTeammate()"><i data-lucide="user-plus"></i>Crear cuenta</button></div>
+  `;
+}
 ROUTES['innous/settings'] = function(){
   if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, email:STATE.settings.email, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, logoUrl:STATE.settings.logoUrl, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
+  // fix97: real enforcement of viewer-mode is server-side (RLS) regardless
+  // of this — this is just so a viewer isn't left filling out a form only
+  // to have "Guardar" silently fail. Doesn't touch the fields themselves
+  // (a much larger change across a page this size); a viewer can still
+  // type into them, just can't actually save.
+  const isViewer = STATE.innousAccess==='viewer';
   return `
   <div class="content-inner" style="max-width:680px;">
     <div class="page-header"><div><div class="page-title">Configuración</div><div class="page-subtitle">Configuración de la plataforma</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button></div></div>
+      <div class="page-actions">${isViewer
+        ? `<button class="btn btn-secondary" disabled title="Tu cuenta es de solo lectura"><i data-lucide="lock"></i>Guardar Cambios</button>`
+        : `<button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button>`}</div></div>
+    ${settingsSection('equipo','users-2','Equipo INNOUS','Cuentas de tu equipo y su nivel de acceso', innousTeamSectionHtml())}
     ${settingsSection('empresa','building-2','Empresa','Razón social, domicilio y datos fiscales de Innous', `
       <div class="section-sub">Se usa en la cotización formal en PDF que el cliente puede descargar al elegir un proveedor, y en el membrete de la Orden de Compra del proveedor.</div>
       <div class="account-photo-row" style="margin-top:12px;">
@@ -7185,6 +7287,67 @@ const App = {
       console.error('createSupplierAccount failed', err);
       showToast('No se pudo conectar. Intenta de nuevo.');
     }
+  },
+  /* ---- fix97: INNOUS teammate accounts (admin/viewer) ----
+     Unlike createSupplierAccount above, the profile row here is NOT
+     inserted directly by the isolated client's own fresh session — nobody
+     gets to self-register as INNOUS (the open self-signup policy
+     explicitly only allows CLIENT/SUPPLIER). Instead, once the new
+     auth.users row exists, THIS (the admin's own, already logged-in)
+     session calls create_innous_teammate_profile(), which checks
+     is_innous_admin() against the CALLER — only possible because the
+     caller here is the admin's real session, not the brand-new user's. */
+  openNewTeammateModal(){
+    STATE.ui.newTeammateDraft = { name:'', email:'', password:'', password2:'', access:'viewer' };
+    openModal(newTeammateModalHtml());
+  },
+  closeNewTeammateModal(){ STATE.ui.newTeammateDraft = null; closeModal(); },
+  async createInnousTeammate(){
+    const d = STATE.ui.newTeammateDraft;
+    const name = (d.name||'').trim();
+    const email = (d.email||'').trim().toLowerCase();
+    const password = d.password||'', password2 = d.password2||'';
+    const access = d.access==='admin' ? 'admin' : 'viewer';
+    if(!name){ showToast('Escribe el nombre.'); return; }
+    if(!email || !email.includes('@')){ showToast('Escribe un correo válido.'); return; }
+    if(password.length<6){ showToast('La contraseña debe tener al menos 6 caracteres.'); return; }
+    if(password!==password2){ showToast('Las contraseñas no coinciden.'); return; }
+    try{
+      const tempClient = createIsolatedAuthClient();
+      const { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup-teammate');
+      if(error || !data.user){ showToast(error?.message || 'No se pudo crear la cuenta.'); return; }
+      if(!data.session){
+        showToast('La cuenta se creó pero requiere confirmación por correo — revisa la configuración de autenticación en Supabase.');
+        return;
+      }
+      const { error: profileErr } = await sb.rpc('create_innous_teammate_profile', {
+        p_user_id: data.user.id, p_display_name: name, p_email: email, p_access: access,
+      });
+      if(profileErr){ showToast('Cuenta creada, pero falló el perfil: '+profileErr.message); return; }
+      await refreshInnousTeam();
+      STATE.ui.newTeammateDraft = null;
+      closeModal();
+      showToast('Cuenta creada', 'success');
+      route();
+    }catch(err){
+      console.error('createInnousTeammate failed', err);
+      showToast('No se pudo conectar. Intenta de nuevo.');
+    }
+  },
+  async changeTeammateAccess(userId, access){
+    const { error } = await sb.from('profiles').update({ innous_access: access }).eq('user_id', userId);
+    if(error){ showToast(error.message); return; }
+    await refreshInnousTeam();
+    showToast('Nivel de acceso actualizado', 'success');
+    route();
+  },
+  async removeInnousTeammate(userId, name){
+    if(!confirm(`¿Eliminar de forma permanente la cuenta de "${name}"? Ya no podrá iniciar sesión.`)) return;
+    const { error } = await sb.rpc('innous_delete_account', { p_user_id: userId });
+    if(error){ showToast(error.message); return; }
+    await refreshInnousTeam();
+    showToast('Cuenta eliminada', 'success');
+    route();
   },
   // fix75: clients still log in with email only, but suppliers now log in
   // with a username instead — their email stays on file for contact only
