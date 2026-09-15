@@ -299,7 +299,14 @@ body.innous-viewer-mode .btn-primary,
 body.innous-viewer-mode .btn-danger {
   opacity:.5; cursor:not-allowed; pointer-events:none;
 }
-.btn-primary{background:linear-gradient(90deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
+/* fix109: border:none (not just transparent) — .btn's own base rule sets
+   border:1px solid transparent, and on a rounded-corner element with a
+   gradient background, Safari/WebKit in particular can render a faint
+   seam along that "transparent" border instead of treating it as truly
+   invisible (the seam the user reported on the left edge — 90deg fixed
+   the angle-skew half of that report, this is the other half). No
+   border needed here at all, it's a solid filled button. */
+.btn-primary{background:linear-gradient(90deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);border:none;background-clip:padding-box;}
 .btn-primary:hover{background:linear-gradient(90deg,var(--navy-deep),var(--accent-ink));box-shadow:0 6px 18px -6px rgba(0,56,101,0.5);transform:translateY(-1px);}
 .btn-primary:active{transform:translateY(0);}
 .btn-primary:disabled{background:var(--border-strong);color:var(--ink-tertiary);cursor:not-allowed;box-shadow:none;transform:none;}
@@ -903,7 +910,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 /* fix101: matches .btn-primary's blue gradient elsewhere in the portal —
    this one was still on the old plain-black hero style from before that
    became the standard primary look. */
-.btn-hero-primary{background:linear-gradient(90deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 12px 26px -10px rgba(0,56,101,0.5);transition:transform .15s,box-shadow .15s,background .15s;}
+.btn-hero-primary{background:linear-gradient(90deg,var(--navy),var(--accent-ink));color:#fff;box-shadow:0 12px 26px -10px rgba(0,56,101,0.5);transition:transform .15s,box-shadow .15s,background .15s;border:none;}
 .btn-hero-primary:hover{background:linear-gradient(90deg,var(--navy-deep),var(--accent-ink));transform:translateY(-1px);box-shadow:0 16px 32px -10px rgba(0,56,101,0.55);}
 .btn-hero-ghost{background:var(--surface);color:var(--ink);border:1.5px solid var(--border-strong);transition:border-color .15s,transform .15s,background .15s;}
 .btn-hero-ghost:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
