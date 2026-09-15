@@ -2093,7 +2093,16 @@ async function enterAppAsUser(user){
   } else { // INNOUS — the one role that needs to see every real account, not just its own
     STATE.innousUserId = user.id;
     INNOUS_USER.name = profile.display_name || user.email;
-    INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
+    // fix105: was "|| INNOUS_USER.photo" — a stale-data bug. logOut()
+    // doesn't reload the page, it just swaps back to the auth screens in
+    // place, so INNOUS_USER (one shared object reused across every INNOUS
+    // login, unlike CUSTOMERS/SUPPLIERS which look a person up by id from
+    // an array) still had whoever logged in LAST TIME's photo sitting in
+    // it. For someone with no photo_url of their own that fallback won,
+    // showing the previous person's photo instead of the initials circle
+    // this account should actually get. Plain null now — always reflects
+    // exactly this login, never a leftover from the one before it.
+    INNOUS_USER.photo = profile.photo_url || null;
     INNOUS_USER.username = profile.username || '';
     // fix104: the actual Supabase Auth login email (user.email) — not
     // profile.email, which is only ever a display copy (see
@@ -7552,6 +7561,12 @@ const App = {
     stopTypingChannel();
     await sb.auth.signOut();
     STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
+    // fix105: same "different person, same tab/computer" concern as the
+    // hash-clear below, for the one shared object enterAppAsUser's INNOUS
+    // branch writes into on every login instead of looking someone up by
+    // id — belt-and-suspenders alongside that branch no longer falling
+    // back to a stale photo itself.
+    INNOUS_USER.name='Ops Team'; INNOUS_USER.photo=null; INNOUS_USER.username=''; INNOUS_USER.email='';
     // Clear the hash so a different person logging in afterward on this same
     // tab/computer (e.g. a shared office machine) always lands on their own
     // home page, instead of accidentally inheriting whatever page the
