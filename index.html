@@ -965,7 +965,13 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
     </svg>
   </div>
   <div class="boot-bar"><div class="boot-bar-fill"></div></div>
-  <div class="boot-loading-text" id="boot-loading-text">Cargando INNOUS…</div>
+  <!-- fix103: no label by default — just the mark + bar, per request. Left
+       empty (not removed) rather than deleted: boot()'s 4s slow-network
+       timer still fills this in with "Esto está tardando más de lo
+       normal…" if a load is actually taking a while, so that fallback
+       doesn't silently stop working — an empty div just collapses to
+       nothing and takes no visual space until/unless that fires. -->
+  <div class="boot-loading-text" id="boot-loading-text"></div>
 </div>
 <style>
   .boot-mesh{
