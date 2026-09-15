@@ -2095,6 +2095,13 @@ async function enterAppAsUser(user){
     INNOUS_USER.name = profile.display_name || user.email;
     INNOUS_USER.photo = profile.photo_url || INNOUS_USER.photo;
     INNOUS_USER.username = profile.username || '';
+    // fix104: the actual Supabase Auth login email (user.email) — not
+    // profile.email, which is only ever a display copy (see
+    // App.saveAccount's email-change branch, it's what keeps this in
+    // sync after a successful change; until fix97's one-time backfill it
+    // didn't exist at all). Falling back to it here too in case that
+    // backfill/sync is ever behind for some reason.
+    INNOUS_USER.email = user.email || profile.email || '';
     // fix97: 'admin' (default, covers every account from before this
     // existed) or 'viewer' — read everywhere the UI needs to hide/disable
     // a write action; the real enforcement is server-side RLS regardless
@@ -2490,7 +2497,7 @@ const STATE = {
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
   ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{} },
 };
-const INNOUS_USER = { name:'Ops Team', photo:null, username:'' };
+const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
 // screens don't need a network request (or the CDN allowlist) just to draw
 // it — used by the "Continue with Google" button and the account-settings
@@ -4172,6 +4179,7 @@ function accountModalHtml(){
     ` : `
     <div class="form-group"><label class="field-label">${nameLabel}</label><input type="text" value="${escAttr(d.name)}" oninput="STATE.ui.accountDraft.name=this.value"></div>
     ${showCompany?`<div class="form-group"><label class="field-label">${companyLabel}</label><input type="text" value="${escAttr(d.company)}" oninput="STATE.ui.accountDraft.company=this.value"></div>`:''}
+    ${showUsername?`<div class="form-group"><label class="field-label">Correo</label><input type="email" value="${escAttr(d.email)}" oninput="STATE.ui.accountDraft.email=this.value"><div class="field-hint">Es el correo con el que inicias sesión — si lo cambias, puede que Supabase te pida confirmar dando clic a un link que llega a la dirección nueva antes de que quede activo.</div></div>`:''}
     ${showUsername?`<div class="form-group"><label class="field-label">Username</label><input type="text" value="${escAttr(d.username)}" placeholder="para poder entrar con username en vez de correo" oninput="STATE.ui.accountDraft.username=this.value"><div class="field-hint">Opcional — si lo pones, puedes iniciar sesión con este username o con tu correo, lo que prefieras.</div></div>`:''}
     `}
     ${STATE.authMode==='account'?`
@@ -7845,7 +7853,7 @@ const App = {
       rec = INNOUS_USER;
       nameLabel = 'Name'; companyLabel = ''; showCompany = false;
       initialsText = 'IN';
-      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null, username:rec.username||''};
+      if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:rec.name, company:'', photo:rec.photo||null, username:rec.username||'', email:rec.email||''};
     }
     // fix50: suppliers can no longer edit their own name/company/photo —
     // only Innous can (see supabase-fix50 dropping their self-UPDATE
@@ -7914,6 +7922,7 @@ const App = {
     }
     const d = STATE.ui.accountDraft;
     let err = null;
+    let emailChanged = false;
     if(STATE.role==='CLIENT'){
       const rec = currentClient(); rec.contact = d.name.trim()||rec.contact; rec.company = d.company.trim()||rec.company; rec.photo = d.photo;
       if(STATE.authMode==='account'){ ({error: err} = await sb.from('customers').update({ contact: rec.contact, company: rec.company, photo_url: rec.photo }).eq('user_id', STATE.clientId)); }
@@ -7926,8 +7935,24 @@ const App = {
     } else {
       const username = (d.username||'').trim().toLowerCase();
       if(username && !/^[a-z0-9._-]{3,32}$/.test(username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
+      // fix104: editable login email. sb.auth.updateUser({email}) is the
+      // *real* login credential (auth.users) — separate from
+      // profiles.email, which is only ever a display copy the "Equipo
+      // INNOUS" list reads (see fix97's one-time backfill comment). Runs
+      // BEFORE the profiles update below so that update can write the
+      // new value into the same row in one shot; runs before the
+      // password change further down for the same token-rotation reason
+      // explained in the comment up top.
+      const newEmail = (d.email||'').trim().toLowerCase();
+      if(!newEmail || !newEmail.includes('@')){ showToast('Escribe un correo válido.'); return; }
+      emailChanged = STATE.authMode==='account' && newEmail !== (INNOUS_USER.email||'').toLowerCase();
+      if(emailChanged){
+        const { error: emailErr } = await sb.auth.updateUser({ email: newEmail });
+        if(emailErr){ showToast(emailErr.message); return; }
+      }
       INNOUS_USER.name = d.name.trim()||INNOUS_USER.name; INNOUS_USER.photo = d.photo; INNOUS_USER.username = username;
-      if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo, username: username||null }).eq('user_id', STATE.innousUserId)); }
+      if(emailChanged) INNOUS_USER.email = newEmail;
+      if(STATE.authMode==='account'){ ({error: err} = await sb.from('profiles').update({ display_name: INNOUS_USER.name, photo_url: INNOUS_USER.photo, username: username||null, email: INNOUS_USER.email||newEmail }).eq('user_id', STATE.innousUserId)); }
     }
     if(err){
       const msg = /duplicate key|unique constraint/i.test(err.message) ? 'Ese nombre de usuario ya está en uso.' : err.message;
@@ -7940,7 +7965,8 @@ const App = {
     }
     STATE.ui.accountDraft = null;
     closeModal();
-    showToast(STATE.role==='SUPPLIER' ? 'Cuenta actualizada' : 'Account updated', 'success');
+    if(emailChanged) showToast('Cuenta actualizada — revisa tu correo nuevo, puede que Supabase te pida confirmar el cambio dando clic a un link antes de que quede activo.', 'success');
+    else showToast(STATE.role==='SUPPLIER' ? 'Cuenta actualizada' : 'Account updated', 'success');
     route();
   },
   onPhotoSelected(input){
