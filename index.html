@@ -200,10 +200,17 @@ svg{display:block;}
 .notif-empty{padding:28px 16px;text-align:center;color:var(--ink-tertiary);font-size:12.5px;}
 .notif-empty svg{width:24px;height:24px;margin:0 auto 8px;stroke:var(--success);}
 
-.user-chip{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:20px;border:1px solid var(--border);}
+/* fix111: filled blue like the rest of the primary actions in the topbar,
+   was just a plain outline before. Text colors below are overridden to
+   white/near-white specifically inside this chip since it's no longer
+   sitting on --surface — var(--ink)/var(--ink-tertiary) elsewhere are
+   unaffected. border:none for the same reason as .btn-primary (fix109) —
+   a transparent/light border under a gradient can show as a seam on some
+   renderers, and a filled pill doesn't need a border stroke anyway. */
+.user-chip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border-radius:20px;background:linear-gradient(90deg,var(--navy),var(--accent-ink));border:none;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
 .avatar{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;}
-.user-chip-text{font-size:12.5px;font-weight:500;line-height:1.2;}
-.user-chip-sub{font-size:10.5px;color:var(--ink-tertiary);}
+.user-chip-text{font-size:12.5px;font-weight:500;line-height:1.2;color:#fff;}
+.user-chip-sub{font-size:10.5px;color:rgba(255,255,255,0.72);}
 
 .app-body{flex:1;display:flex;min-height:0;}
 
