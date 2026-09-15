@@ -1167,31 +1167,33 @@ function orderStatusLabelFor(p, status, es){
   }
   return orderStatusLabel(status, es);
 }
-/* The supplier's production work ends the moment the order reaches
-   SUPPLIER_ORDER_STAGE_LIMIT (Quality Inspection) — returns the next status
-   for them to mark, or null once it's out of their hands. */
+/* fix106: the supplier no longer advances production status at all — the
+   user's own call, made deliberately, to not put that responsibility on
+   the supplier and keep it entirely with INNOUS instead. Was gated by
+   SUPPLIER_ORDER_STAGE_LIMIT up to Quality Inspection; always null now, so
+   every "Marcar como..." button, the dashboard's "Actualizar producción"
+   reminder, and the Undo button all disappear from the supplier side on
+   their own — none of them special-case this, they just stop finding a
+   next/revertable status. SUPPLIER_ORDER_STAGE_LIMIT itself stays defined
+   (still referenced by a couple of comments/history) but nothing reads it
+   for this decision anymore. Enforced again server-side, not just here —
+   see supabase-fix106-innous-owns-production.sql dropping the supplier's
+   own UPDATE policy on `orders` entirely. */
 function supplierNextOrderStatus(p){
-  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  if(idx >= ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT)) return null;
-  return ORDER_STATUS_FLOW[idx+1];
+  return null;
 }
-/* INNOUS takes over exactly where the supplier leaves off — Quality Inspection
-   onward (Shipped, Delivered) is logistics, and logistics is INNOUS's alone. */
+/* INNOUS now owns the full flow, Order Confirmed through Delivered. */
 function innousNextOrderStatus(p){
   const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  if(idx < ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT)) return null;
+  if(idx < 0 || idx >= ORDER_STATUS_FLOW.length-1) return null;
   return ORDER_STATUS_FLOW[idx+1];
 }
-// Mirror of the two functions above, for the "Undo last update" button —
-// true only when the CURRENT status was reached by that same role's own
-// forward transition, so nobody can undo a step the other side made.
 function supplierCanRevertOrder(p){
-  const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  return idx>0 && idx<=ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT);
+  return false;
 }
 function innousCanRevertOrder(p){
   const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
-  return idx>ORDER_STATUS_FLOW.indexOf(SUPPLIER_ORDER_STAGE_LIMIT);
+  return idx>0;
 }
 
 /* An INNOUS-deleted example (non-account) customer/supplier shouldn't reappear
@@ -3657,9 +3659,9 @@ function orderStageMessage(p, audience){
     return `Your order has shipped via ${l.carrier||'our carrier'} — tracking #${l.tracking||'—'}, headed to ${l.destination}. Estimated delivery: ${fmtDate(l.estimatedDelivery)}.`;
   }
   const msgs = {
-    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Pedido confirmado — coordina el arranque de producción con el proveedor.", supplier:"Pedido confirmado. Actualiza el estatus cuando comience la producción."},
-    in_production:{client:"Your order is now in production.", innous:"Producción en curso con el proveedor.", supplier:"Producción en curso. Actualiza el estatus cuando termine la producción."},
-    production_finished:{client:"Production is complete — the order is headed to quality inspection.", innous:"Producción terminada — confirma la inspección de calidad.", supplier:"Producción terminada. Márcalo como Inspección de Calidad para mandarlo a revisión."},
+    order_confirmed:{client:"Your order has been confirmed and is queued to begin production.", innous:"Pedido confirmado — coordina el arranque de producción con el proveedor.", supplier:"Pedido confirmado. INNOUS actualizará el estatus conforme avance la producción."},
+    in_production:{client:"Your order is now in production.", innous:"Producción en curso con el proveedor.", supplier:"Producción en curso. INNOUS actualizará el estatus cuando termine."},
+    production_finished:{client:"Production is complete — the order is headed to quality inspection.", innous:"Producción terminada — confirma la inspección de calidad.", supplier:"Producción terminada. INNOUS lo marcará como Inspección de Calidad para mandarlo a revisión."},
     quality_inspection:{client:"Your order is in quality inspection. Once it passes, INNOUS takes over shipping and delivery.", innous:"Inspección de calidad en curso — en cuanto se apruebe, marca este pedido como Enviado para pasarlo a logística.", supplier:"Inspección de calidad en curso. Tu parte del pedido termina aquí — de aquí en adelante, INNOUS se encarga de toda la logística."},
     shipped:{client:"Your order is on its way — INNOUS is handling delivery logistics.", innous:"Pedido enviado — sigue la entrega abajo y márcalo como Entregado en cuanto llegue.", supplier:"Pedido enviado. La logística de entrega ya está en manos de INNOUS."},
     delivered:{client:"Delivered! This order is complete.", innous:"Entregado — pedido completado.", supplier:"Entregado — pedido completado."},
@@ -7126,11 +7128,11 @@ ROUTES['supplier/production'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Actualiza el estatus de producción conforme avance el trabajo</div></div></div>
+    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Sigue el estatus de producción de tus pedidos activos — INNOUS lo va actualizando conforme avanza</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Estatus Actual</th><th></th></tr></thead><tbody>
       ${orders.map(p=>{
         const nextStatus = supplierNextOrderStatus(p);
-        const doneText = p.order.status==='delivered' ? 'Completo' : 'En logística (INNOUS)';
+        const doneText = p.order.status==='delivered' ? 'Completo' : 'A cargo de INNOUS';
         return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p, true)}</td>
         <td>${nextStatus?`<button class="btn btn-primary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
       }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
@@ -9264,6 +9266,11 @@ const App = {
   // Shipping card will show them (see supabase-fix25/26). Nothing gets
   // invented; INNOUS types in what's actually printed on the label.
   async advanceOrderStatus(pid){
+    // fix106: belt-and-suspenders alongside supplierNextOrderStatus always
+    // returning null now (which already removes the button itself) and
+    // the dropped RLS policy (the real guarantee) — catches a supplier
+    // calling this directly some other way, same message either way.
+    if(STATE.role==='SUPPLIER'){ showToast('La actualización de estatus de producción ahora la maneja INNOUS.'); return; }
     const p = findProject(pid);
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     const next = ORDER_STATUS_FLOW[idx+1];
@@ -9283,6 +9290,7 @@ const App = {
   // side made a given transition is the one allowed to walk it back, so a
   // supplier can't undo INNOUS's shipping/delivery calls and vice versa.
   async revertOrderStatus(pid){
+    if(STATE.role==='SUPPLIER'){ showToast('La actualización de estatus de producción ahora la maneja INNOUS.'); return; }
     const p = findProject(pid); if(!p || !p.order) return;
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     if(idx<=0) return;
