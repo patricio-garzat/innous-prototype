@@ -891,6 +891,10 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .auth-card input{padding:12px 14px;border-radius:9px;font-size:14px;background:var(--surface-alt);border-color:var(--border);}
 .auth-card input:focus{background:var(--surface);}
 .auth-card .btn-block{padding:12px;font-size:14.5px;border-radius:9px;margin-top:6px;}
+/* fix96: divider between the password form and "Continue with Google" —
+   a plain centered word on a hairline, same idea as most login screens. */
+.auth-or-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--ink-tertiary);font-size:12px;text-transform:uppercase;letter-spacing:.4px;}
+.auth-or-divider::before,.auth-or-divider::after{content:'';flex:1;height:1px;background:var(--border);}
 .auth-switch{text-align:center;font-size:13px;color:var(--ink-tertiary);margin-top:20px;}
 .auth-switch a{color:var(--accent-ink);font-weight:600;cursor:pointer;}
 .auth-back{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--ink-secondary);cursor:pointer;margin-bottom:18px;}
@@ -1331,7 +1335,17 @@ let PROJECTS = [];
    run on the local demo data layer below, pending the next phase. */
 const SUPABASE_URL = 'https://axbtkcfblzgyosxzxiud.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4YnRrY2ZibHpneW9zeHp4aXVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwMDU2NDUsImV4cCI6MjEwNDU4MTY0NX0.7eXLIi2c-6dxVUAX0cbNe7B54KriVgDeH6Unq-UbUfc';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// fix96: flowType:'pkce' — needed for Google sign-in (App.signInWithGoogle/
+// linkGoogleAccount below). The default ('implicit') flow returns from
+// Google with the session tokens stuffed into the URL as a #hash fragment,
+// which collides head-on with this app's own hash-based router (every
+// route is a #/... hash too) — the router would try to treat
+// "#access_token=..." as a page. PKCE instead returns a plain ?code=...
+// query param that supabase-js exchanges for the session before anything
+// else runs, so the hash is left alone for the router. Doesn't touch
+// email+password login at all (signInWithPassword returns tokens directly
+// in its response, no redirect/URL involved either way).
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
 // A throwaway client, used only by App.createSupplierAccount (fix50) to run
 // auth.signUp() for a NEW supplier without disturbing Innous's own session
 // in `sb` above. supabase-js keeps each client's session in its own memory
@@ -2383,6 +2397,11 @@ const STATE = {
   ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'' };
+// fix96: Google's official 4-color "G" mark, inline so the login/account
+// screens don't need a network request (or the CDN allowlist) just to draw
+// it — used by the "Continue with Google" button and the account-settings
+// linking section.
+const GOOGLE_G_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.83.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.67 9c0-.59.1-1.17.28-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>`;
 
 /* ---------- Platform settings (INNOUS Settings page) — persisted so changes
    actually stick, and so the default markup really is used across the app. ---------- */
@@ -3915,6 +3934,8 @@ function renderLoginForm(){
             <div class="form-group password-field"><label class="field-label">Password</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}</div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>Log In</button>
           </form>
+          <div class="auth-or-divider"><span>or</span></div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.signInWithGoogle()">${GOOGLE_G_ICON_SVG}Continue with Google</button>
         </div>
         <div class="auth-switch">Don't have an account? <a onclick="App.goToSignup()">Sign up</a></div>
       </div>
@@ -4077,6 +4098,18 @@ function accountModalHtml(){
       </div>
     </div>
     `:''}
+    ${STATE.role==='INNOUS' ? `
+    <div class="account-pw-toggle" style="cursor:default;">
+      <div class="account-pw-toggle-icon" style="background:var(--surface);">${GOOGLE_G_ICON_SVG}</div>
+      <div class="account-pw-toggle-text">
+        <div class="account-pw-toggle-title">Google</div>
+        <div class="account-pw-toggle-sub">${STATE.ui.accountGoogleIdentity===null ? 'Revisando…' : (STATE.ui.accountGoogleIdentity ? 'Vinculada — puedes iniciar sesión con Google' : 'No vinculada')}</div>
+      </div>
+      ${STATE.ui.accountGoogleIdentity===null ? '' : STATE.ui.accountGoogleIdentity
+        ? `<button type="button" class="btn btn-secondary btn-sm" onclick="App.unlinkGoogleAccount()">Desvincular</button>`
+        : `<button type="button" class="btn btn-secondary btn-sm" onclick="App.linkGoogleAccount()">Vincular</button>`}
+    </div>
+    ` : ''}
     `:''}
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeAccountModal()">${es?'Cancelar':'Cancel'}</button><button class="btn btn-primary" onclick="App.saveAccount()"><i data-lucide="check"></i>${es?'Guardar':'Save'}</button></div>
@@ -7214,6 +7247,54 @@ const App = {
     }
     return false;
   },
+  // fix96: "Continue with Google" on the login screen — sign IN only, on
+  // purpose, never sign-up. A Google account that's never been linked to
+  // an existing profile still completes the OAuth handshake fine (Supabase
+  // has no idea it "shouldn't" be allowed), but it lands as a brand-new
+  // auth.users row with no matching `profiles` row — and enterAppAsUser()
+  // already signs out + shows "No se encontró tu perfil" for exactly that
+  // case (see its error branch), same as it would for any other orphaned
+  // session. So the actual gate isn't here, it's that only an INNOUS
+  // account that has explicitly run App.linkGoogleAccount() below (from
+  // inside Account Settings, while already logged in) can ever complete
+  // this and land in the app — nobody can self-provision an account this
+  // way, only attach Google to one that already exists.
+  async signInWithGoogle(){
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if(error) showToast(error.message);
+    // No further code runs on success — signInWithOAuth navigates the
+    // whole page away to Google, and coming back reloads index.html fresh
+    // (boot() below picks up the new session same as any page load).
+  },
+  // fix96: the actual gate for signInWithGoogle above — attaches a Google
+  // identity to the INNOUS account that's already logged in right now
+  // (linkIdentity, not signInWithOAuth: it adds to THIS user_id instead of
+  // possibly creating/matching a different one). Only reachable from
+  // inside Account Settings while already authenticated with a password,
+  // so there's no way to get this far without already being a real,
+  // existing INNOUS account.
+  async linkGoogleAccount(){
+    const { error } = await sb.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if(error) showToast(error.message);
+    // Same as signInWithGoogle — success navigates away and back; boot()
+    // logs back in with the (unchanged) session and Account Settings can
+    // be reopened to see "Linked" if you want to confirm it took.
+  },
+  async unlinkGoogleAccount(){
+    const identity = STATE.ui.accountGoogleIdentity;
+    if(!identity) return;
+    const { error } = await sb.auth.unlinkIdentity(identity);
+    if(error){ showToast(error.message); return; }
+    STATE.ui.accountGoogleIdentity = false;
+    App.reopenAccountModal();
+    showToast('Cuenta de Google desvinculada', 'success');
+  },
   async logOut(){
     stopLiveUpdates();
     stopChatRealtime();
@@ -7503,7 +7584,7 @@ const App = {
   },
 
   /* ---- Account settings (name / company / circular 1:1 photo) ---- */
-  openAccountModal(){
+  async openAccountModal(){
     document.getElementById('role-menu')?.classList.remove('open');
     const es = STATE.role!=='CLIENT';
     let rec, nameLabel, companyLabel, showCompany, initialsText;
@@ -7535,7 +7616,18 @@ const App = {
     // supplier themselves (readOnlyProfile above already blocks that).
     const showUsername = STATE.role==='INNOUS';
     STATE.ui.accountModalMeta = {nameLabel, companyLabel, showCompany, showUsername, initialsText, readOnlyProfile};
+    // fix96: null = "haven't checked yet" (renders a quiet loading line
+    // instead of flashing "not linked" first) — only INNOUS accounts get
+    // Google-linking at all, see App.linkGoogleAccount's own comment for why.
+    STATE.ui.accountGoogleIdentity = null;
     openModal(accountModalHtml());
+    if(STATE.role==='INNOUS' && STATE.authMode==='account'){
+      const { data, error } = await sb.auth.getUserIdentities();
+      if(!error){
+        STATE.ui.accountGoogleIdentity = (data.identities||[]).find(i=>i.provider==='google') || false;
+        if(document.querySelector('.modal')) App.reopenAccountModal();
+      }
+    }
   },
   reopenAccountModal(){
     document.querySelector('.modal').innerHTML = accountModalHtml();
