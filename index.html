@@ -2205,7 +2205,26 @@ function stopSessionHeartbeat(){
   if(sessionHeartbeatTimer){ clearInterval(sessionHeartbeatTimer); sessionHeartbeatTimer = null; }
 }
 async function enterAppAsUser(user){
-  const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+  let { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+  // fix119: cuenta que se acaba de confirmar por correo — App.submitSignup
+  // dejó los datos del formulario guardados en user_metadata (pending_role)
+  // en vez de crear el perfil de inmediato, porque sin sesión confirmada
+  // auth.uid() no resuelve y las políticas de "insértate solo a ti mismo"
+  // lo hubieran rechazado. Ahora sí hay una sesión real (llegó por el
+  // enlace de confirmación), así que se crea aquí, una sola vez.
+  if(!error && !profile && user.user_metadata?.pending_role){
+    const m = user.user_metadata;
+    const { error: profileErr } = await sb.from('profiles').insert({ user_id: user.id, role: m.pending_role });
+    if(!profileErr){
+      if(m.pending_role==='CLIENT'){
+        await sb.from('customers').insert({ user_id: user.id, company: m.company, contact: m.contact, email: user.email, phone: m.phone||'', city: m.city||'', industry: m.industry||'' });
+      } else if(m.pending_role==='SUPPLIER'){
+        await sb.from('suppliers').insert({ user_id: user.id, name: m.company, contact_name: m.contact, email: user.email, phone: m.phone||'', city: m.city||'', capabilities: m.capabilities||[], certs: m.certs||[], years_operating: m.years_operating||0, operators: m.operators||0 });
+      }
+      try{ await sb.auth.updateUser({ data: { pending_role: null } }); }catch(e){}
+      ({ data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle());
+    }
+  }
   if(error || !profile){
     await sb.auth.signOut();
     showToast('No se encontró tu perfil. Contacta a soporte.');
@@ -4054,10 +4073,35 @@ function logoSvgMarkup(){ return document.querySelector('#app-shell .logo-svg')?
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
   if(STATE.authView==='recovery') root.innerHTML = renderRecoveryForm();
+  else if(STATE.authView==='signup-check-email') root.innerHTML = renderSignupCheckEmail();
   else if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
   else if(STATE.authView==='login') root.innerHTML = renderLoginForm();
   else root.innerHTML = renderLanding();
   lucide.createIcons();
+}
+// fix119: pantalla que aparece justo después de mandar el formulario de
+// "Crear Cuenta" cuando Supabase Auth tiene "Confirm email" activado
+// (App.submitSignup detecta esto porque signUp regresa sin sesión) — el
+// perfil/cliente todavía NO existe en la base de datos en este punto, se
+// termina de crear hasta que confirme (ver enterAppAsUser).
+function renderSignupCheckEmail(){
+  const email = STATE.ui.signupCheckEmailAddress || '';
+  return `
+  <div class="auth-shell">
+    <div class="auth-mesh"></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-main">
+      <div class="auth-narrow">
+        <div class="auth-card">
+          <div class="auth-card-icon"><i data-lucide="mail-check"></i></div>
+          <div class="auth-card-title">Revisa tu correo</div>
+          <div class="auth-card-sub">Te mandamos un enlace a <b>${escAttr(email)}</b> para confirmar tu cuenta. Ábrelo desde ese mismo dispositivo o navegador para terminar de crearla.</div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>Volver al inicio</button>
+        </div>
+      </div>
+    </div>
+    ${authFooterLinks()}
+  </div>`;
 }
 // fix117: la pantalla que aparece SOLO cuando se llegó por el link de
 // "Restablecer Contraseña" (ver pendingPasswordRecovery en boot()) — sin
@@ -7489,13 +7533,42 @@ const App = {
     if(es && f.getAll('capabilities').length===0){ showToast('Selecciona al menos un servicio que ofreces'); return false; }
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     try{
-      const { data, error } = await withTimeout(sb.auth.signUp({ email, password }), 12000, 'signup');
+      const cityState = `${f.get('city').trim()}, ${f.get('state').trim()}`;
+      // fix119: los datos del formulario van en user_metadata (no se
+      // insertan todavía en profiles/customers/suppliers) — si "Confirm
+      // email" está activado en Supabase Auth, signUp regresa sin sesión
+      // (data.session===null) hasta que confirme por correo, y sin sesión
+      // auth.uid() no resuelve, así que cualquier insert de aquí lo
+      // rechazarían las políticas de "insértate solo a ti mismo". Se
+      // terminan de crear en enterAppAsUser, una vez que sí hay sesión.
+      const { data, error } = await withTimeout(sb.auth.signUp({
+        email, password,
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
+          data: {
+            pending_role: role, company: f.get('company').trim(), contact: f.get('contact').trim(),
+            phone: f.get('phone').trim(), city: cityState, industry: f.get('industry')||'',
+            capabilities: f.getAll('capabilities'), certs: f.getAll('certs'),
+            years_operating: parseInt(f.get('yearsOperating'),10)||0, operators: parseInt(f.get('operators'),10)||0,
+          },
+        },
+      }), 12000, 'signup');
       if(error || !data.user){
         showToast(error?.message || (es?'No se pudo crear la cuenta':'Could not create account'));
         if(submitBtn) submitBtn.disabled = false;
         return false;
       }
-      const cityState = `${f.get('city').trim()}, ${f.get('state').trim()}`;
+      if(!data.session){
+        // Confirmación de correo requerida — enterAppAsUser termina de
+        // crear el perfil cuando confirme y regrese con sesión real.
+        STATE.authView = 'signup-check-email';
+        STATE.ui.signupCheckEmailAddress = email;
+        renderAuthRoot();
+        return false;
+      }
+      // "Confirm email" deshabilitado (o la cuenta ya vino confirmada) —
+      // signUp ya regresó con sesión, así que se crea todo de una vez,
+      // igual que siempre.
       const { error: profileErr } = await sb.from('profiles').insert({ user_id: data.user.id, role });
       if(profileErr){ showToast(profileErr.message); if(submitBtn) submitBtn.disabled=false; return false; }
       if(role==='CLIENT'){
