@@ -682,6 +682,9 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .chat-list-item{display:flex;gap:10px;padding:13px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
 .chat-list-item:hover{background:var(--surface-alt);}
 .chat-list-item.active{background:var(--accent-soft);}
+/* fix123: cuántos mensajes de ese hilo no se han abierto todavía — mismo
+   circulito en los 3 roles (Mensajes de INNOUS/Cliente/Proveedor). */
+.chat-unread-badge{margin-left:auto;align-self:center;flex:0 0 auto;background:var(--accent);color:#fff;font-size:11px;font-weight:700;line-height:1;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 5px;}
 /* Clientes/Proveedores rows in Ajustes (fix57) — a colored avatar per row
    (see avatarColorFor) plus an accent-blue hover, instead of a plain white
    table where every name/sub line read the same flat gray. */
@@ -1919,6 +1922,16 @@ async function markThreadRead(msgs, mineFrom){
   const nowIso = new Date().toISOString();
   const { error } = await sb.from('messages_general').update({ read_at: nowIso, delivered_at: nowIso }).in('id', toMark.map(m=>m.id));
   if(!error) toMark.forEach(m=>{ m.readAt = new Date(nowIso); if(!m.deliveredAt) m.deliveredAt = new Date(nowIso); });
+}
+// fix123: mismo filtro exacto que markThreadRead de arriba (de alguien más,
+// sin read_at) pero solo de lectura — para pintar el circulito con el
+// número en la lista de chats de los 3 roles, antes de que ese hilo se
+// abra y markThreadRead lo baje a 0.
+function unreadCount(msgs, mineFrom){
+  return msgs.filter(m=>m.from!==mineFrom && !m.readAt).length;
+}
+function unreadBadgeHtml(count){
+  return count ? `<span class="chat-unread-badge">${count>99?'99+':count}</span>` : '';
 }
 /* ---- Real messages — several NAMED chats per person, not one continuous
    stream: every row in messages_general belongs to (owner_type, owner_id,
@@ -5260,7 +5273,8 @@ ROUTES['client/messages'] = function(threadNameRaw){
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/client/messages/${encodeURIComponent(t.name)}')">
           ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--accent)', 34)}
-          <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+          <div style="min-width:0;"><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+          ${unreadBadgeHtml(activeName===t.name?0:unreadCount(t.msgs,'client'))}
         </div>`).join('') || emptyState('message-square','No conversations yet','')}
       </div>
       <div class="chat-thread">
@@ -6823,14 +6837,18 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
     if(owner) chatThread(owner, rest.join(':')); // makes a brand-new (still empty) chat show up below too
   }
   const rows = [];
-  CUSTOMERS.forEach(c=> entityThreads(c).forEach(t=> rows.push({type:'client', id:c.id, personName:c.company, photo:c.photo, email:c.email, phone:c.phone, threadName:t.name, key:'client:'+c.id+':'+t.name, ts:t.ts})));
-  SUPPLIERS.forEach(s=> entityThreads(s).forEach(t=> rows.push({type:'supplier', id:s.id, personName:s.name, photo:s.photo, email:s.email, phone:s.phone, threadName:t.name, key:'supplier:'+s.id+':'+t.name, ts:t.ts})));
+  CUSTOMERS.forEach(c=> entityThreads(c).forEach(t=> rows.push({type:'client', id:c.id, personName:c.company, photo:c.photo, email:c.email, phone:c.phone, threadName:t.name, key:'client:'+c.id+':'+t.name, ts:t.ts, unread:unreadCount(t.msgs,'innous')})));
+  SUPPLIERS.forEach(s=> entityThreads(s).forEach(t=> rows.push({type:'supplier', id:s.id, personName:s.name, photo:s.photo, email:s.email, phone:s.phone, threadName:t.name, key:'supplier:'+s.id+':'+t.name, ts:t.ts, unread:unreadCount(t.msgs,'innous')})));
   rows.sort((a,b)=>b.ts-a.ts);
   if(!STATE.ui.activeChatKey && rows.length) STATE.ui.activeChatKey = rows[0].key;
   const active = rows.find(r=>r.key===STATE.ui.activeChatKey) || rows[0];
   const owner = active ? (active.type==='client' ? CUSTOMERS.find(c=>c.id===active.id) : SUPPLIERS.find(s=>s.id===active.id)) : null;
   const msgs = active ? chatThread(owner, active.threadName) : [];
-  if(active){ ensureTypingChannel(active.key); markThreadRead(msgs, 'innous'); }
+  // El hilo activo se marca como leído de una vez en la lista (no espera
+  // a que markThreadRead termine su round-trip a la base de datos) — ya
+  // lo estás viendo en pantalla ahora mismo, sin importar cuándo se
+  // confirme del lado del servidor.
+  if(active){ ensureTypingChannel(active.key); active.unread = 0; markThreadRead(msgs, 'innous'); }
   return `
   <div class="content-inner messages-shell ${(type&&id)?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Mensajes</div><div class="page-subtitle">Conversaciones directas con clientes y proveedores.</div></div>
@@ -6840,7 +6858,8 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
       <div class="chat-list">
         ${rows.map(r=>`<div class="chat-list-item ${active&&active.key===r.key?'active':''}" onclick="App.openInnousChatThread('${r.key}')">
           ${avatarHtml(r.photo, initials(r.personName), r.type==='client'?'var(--accent)':'var(--ink)', 34)}
-          <div><div style="font-weight:600;font-size:13px;">${escAttr(r.personName)}</div><div class="td-sub">${r.type==='client'?'Cliente':'Proveedor'} · ${escAttr(r.threadName)}</div></div>
+          <div style="min-width:0;"><div style="font-weight:600;font-size:13px;">${escAttr(r.personName)}</div><div class="td-sub">${r.type==='client'?'Cliente':'Proveedor'} · ${escAttr(r.threadName)}</div></div>
+          ${unreadBadgeHtml(r.unread)}
         </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
       <div class="chat-thread">
@@ -7423,7 +7442,8 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
       <div class="chat-list">
         ${threads.map(t=>`<div class="chat-list-item ${activeName===t.name?'active':''}" onclick="navigate('#/supplier/messages/${encodeURIComponent(t.name)}')">
           ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--ink)', 34)}
-          <div><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+          <div style="min-width:0;"><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub">INNOUS</div></div>
+          ${unreadBadgeHtml(activeName===t.name?0:unreadCount(t.msgs,'supplier'))}
         </div>`).join('') || emptyState('message-square','Aún no hay conversaciones','')}
       </div>
       <div class="chat-thread">
