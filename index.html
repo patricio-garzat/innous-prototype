@@ -5898,6 +5898,7 @@ ROUTES['innous/customer'] = function(id){
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(c.photo, initials(c.company), null, 52)}<div><div class="page-title">${c.company}</div><div class="page-subtitle">Cliente desde ${c.registeredAt?fmtDate(c.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
         <button class="btn btn-secondary" onclick="App.editAccountFromDetail('customer','${c.id}')"><i data-lucide="pencil"></i>Editar</button>
+        <button class="btn btn-secondary" onclick="App.sendClientPasswordReset('${c.id}')"><i data-lucide="key-round"></i>Restablecer Contraseña</button>
         <button class="btn btn-primary" onclick="App.startChat('client','${c.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
         <button class="btn btn-danger" onclick="App.deleteCustomer('${c.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
@@ -7955,6 +7956,20 @@ const App = {
     const { error } = await sb.auth.resetPasswordForEmail(s.email, { redirectTo: window.location.origin + window.location.pathname });
     if(error){ showToast(error.message); return; }
     showToast(`Enlace de restablecimiento enviado a ${s.email}`, 'success');
+  },
+  // fix122: mismo flujo que sendSupplierPasswordReset — Supabase Auth solo
+  // tiene UNA plantilla global de "Reset Password" (no distingue quién la
+  // recibe), así que se dejó en inglés+español juntos (ver
+  // supabase-fix118-reset-password-email-template.html actualizado) para
+  // que le sirva tanto a un cliente en EE.UU. como a un proveedor mexicano
+  // sin tener que mandar dos plantillas distintas.
+  async sendClientPasswordReset(id){
+    const c = CUSTOMERS.find(x=>x.id===id); if(!c) return;
+    if(!c.email){ showToast('This client has no email on file — add one first under Editar.'); return; }
+    if(!confirm(`Send "${c.company}" (${c.email}) a link to set a new password?`)) return;
+    const { error } = await sb.auth.resetPasswordForEmail(c.email, { redirectTo: window.location.origin + window.location.pathname });
+    if(error){ showToast(error.message); return; }
+    showToast(`Password reset link sent to ${c.email}`, 'success');
   },
   /* Unlike deleting a customer/supplier account, this really does erase the
      RFQ — there's no "keep it for history" case here, since an RFQ with no
