@@ -1500,6 +1500,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // email+password login at all (signInWithPassword returns tokens directly
 // in its response, no redirect/URL involved either way).
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: 'pkce' } });
+// fix117: registrado ya desde aquí (antes de boot()) para no perder el
+// evento — supabase-js procesa el ?code=... de la URL y dispara
+// PASSWORD_RECOVERY como parte de la MISMA inicialización que boot()
+// espera con sb.auth.getSession() más abajo, así que para cuando boot()
+// revisa pendingPasswordRecovery, ya quedó en true si aplica. Es lo único
+// que este listener maneja — cualquier otro evento (login normal, OAuth,
+// refresh de token) lo sigue resolviendo boot()/enterAppAsUser como
+// siempre, sin este listener meterse.
+let pendingPasswordRecovery = false;
+sb.auth.onAuthStateChange((event)=>{ if(event==='PASSWORD_RECOVERY') pendingPasswordRecovery = true; });
 // A throwaway client, used only by App.createSupplierAccount (fix50) to run
 // auth.signUp() for a NEW supplier without disturbing Innous's own session
 // in `sb` above. supabase-js keeps each client's session in its own memory
@@ -4043,10 +4053,39 @@ function badgeForNav(id){
 function logoSvgMarkup(){ return document.querySelector('#app-shell .logo-svg')?.outerHTML || ''; }
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
-  if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
+  if(STATE.authView==='recovery') root.innerHTML = renderRecoveryForm();
+  else if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
   else if(STATE.authView==='login') root.innerHTML = renderLoginForm();
   else root.innerHTML = renderLanding();
   lucide.createIcons();
+}
+// fix117: la pantalla que aparece SOLO cuando se llegó por el link de
+// "Restablecer Contraseña" (ver pendingPasswordRecovery en boot()) — sin
+// switches a login/signup ni Google, a propósito: la sesión temporal de
+// recuperación solo sirve para este único paso, y App.submitPasswordRecovery
+// cierra sesión al terminar para forzar un login limpio con la contraseña
+// nueva.
+function renderRecoveryForm(){
+  return `
+  <div class="auth-shell">
+    <div class="auth-mesh"></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-main">
+      <div class="auth-narrow">
+        <div class="auth-card">
+          <div class="auth-card-icon"><i data-lucide="key-round"></i></div>
+          <div class="auth-card-title">Restablece tu contraseña</div>
+          <div class="auth-card-sub">Elige una contraseña nueva para tu cuenta de INNOUS.</div>
+          <form onsubmit="return App.submitPasswordRecovery(event)">
+            <div class="form-group password-field"><label class="field-label">Contraseña Nueva</label>${pwFieldHtml('recovery-password', 'name="password" required autocomplete="new-password" minlength="8"')}</div>
+            <div class="form-group password-field"><label class="field-label">Confirmar Contraseña</label>${pwFieldHtml('recovery-confirm', 'name="confirm" required autocomplete="new-password" minlength="8"')}</div>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>Guardar Contraseña</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    ${authFooterLinks()}
+  </div>`;
 }
 function authTopbar(){
   return `
@@ -6029,6 +6068,7 @@ ROUTES['innous/supplier'] = function(id){
     <div class="page-header"><div style="display:flex;align-items:center;gap:14px;">${avatarHtml(s.photo, initials(s.name), null, 52)}<div><div class="page-title">${s.name}</div><div class="page-subtitle">${s.city} · Socio desde ${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div></div>
       <div class="page-actions">
         <button class="btn btn-secondary" onclick="App.editAccountFromDetail('supplier','${s.id}')"><i data-lucide="pencil"></i>Editar</button>
+        <button class="btn btn-secondary" onclick="App.sendSupplierPasswordReset('${s.id}')"><i data-lucide="key-round"></i>Restablecer Contraseña</button>
         <button class="btn btn-primary" onclick="App.startChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
         <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
@@ -7669,6 +7709,29 @@ const App = {
     }
     return false;
   },
+  // fix117: la única acción posible en renderRecoveryForm() — usa la
+  // sesión temporal que la propia sb.auth ya trae de haber seguido el
+  // link de recuperación para poner la contraseña nueva, y luego cierra
+  // esa sesión a propósito (en vez de dejarlo entrar de una vez) para que
+  // el siguiente inicio de sesión sea limpio y pase por
+  // claimOrRenewSession/enterAppAsUser como cualquier otro login normal.
+  async submitPasswordRecovery(e){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const password = f.get('password'), confirm = f.get('confirm');
+    if(password.length<8){ showToast('La contraseña debe tener al menos 8 caracteres.'); return false; }
+    if(password!==confirm){ showToast('Las contraseñas no coinciden.'); return false; }
+    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    const { error } = await sb.auth.updateUser({ password });
+    if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
+    pendingPasswordRecovery = false;
+    await sb.auth.signOut();
+    STATE.authMode='guest'; STATE.authView='login'; STATE.signupRole=null;
+    history.replaceState(null,'',location.pathname+location.search);
+    renderAuthRoot();
+    showToast('Contraseña actualizada — ya puedes iniciar sesión.', 'success');
+    return false;
+  },
   // fix96: "Continue with Google" on the login screen — sign IN only, on
   // purpose, never sign-up. A Google account that's never been linked to
   // an existing profile still completes the OAuth handshake fine (Supabase
@@ -7802,6 +7865,23 @@ const App = {
     } else { const ids=loadDeletedDemoIds(); if(!ids.includes(id)){ ids.push(id); saveDeletedDemoIds(ids); } } // example (non-account) supplier — remember so it stays gone after a refresh
     showToast('Cuenta del proveedor eliminada', 'success');
     navigate('#/innous/suppliers');
+  },
+  // fix117: en vez de que INNOUS teclee/vea la contraseña nueva del
+  // proveedor (que requeriría la service_role key — el acceso maestro sin
+  // restricciones a toda la base de datos, algo que este proyecto evita a
+  // propósito en todas partes), se manda el flujo nativo de Supabase Auth:
+  // un correo con un link seguro para que el PROVEEDOR mismo ponga su
+  // contraseña nueva. INNOUS nunca la ve ni la escribe — solo dispara el
+  // envío. Ver submitPasswordRecovery/renderRecoveryForm para el otro lado
+  // (cuando el proveedor de clic al link) y el listener de
+  // PASSWORD_RECOVERY junto a la creación de `sb`.
+  async sendSupplierPasswordReset(id){
+    const s = SUPPLIERS.find(x=>x.id===id); if(!s) return;
+    if(!s.email){ showToast('Este proveedor no tiene correo registrado — agrégalo primero en Editar.'); return; }
+    if(!confirm(`¿Enviar a ${s.email} un enlace para que "${s.name}" ponga una contraseña nueva?`)) return;
+    const { error } = await sb.auth.resetPasswordForEmail(s.email, { redirectTo: window.location.origin + window.location.pathname });
+    if(error){ showToast(error.message); return; }
+    showToast(`Enlace de restablecimiento enviado a ${s.email}`, 'success');
   },
   /* Unlike deleting a customer/supplier account, this really does erase the
      RFQ — there's no "keep it for history" case here, since an RFQ with no
@@ -10064,7 +10144,15 @@ async function boot(){
   const slowTimer = setTimeout(()=>{ const t=document.getElementById('boot-loading-text'); if(t) t.textContent='Esto está tardando más de lo normal…'; }, 4000);
   try{
     const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000, 'session');
-    if(session && session.user){
+    if(pendingPasswordRecovery){
+      // fix117: llegó por el link de "Restablecer Contraseña" — nunca
+      // entra a la app normal con esta sesión temporal, solo puede poner
+      // su contraseña nueva. Ver renderRecoveryForm/submitPasswordRecovery.
+      document.getElementById('app-shell').style.display = 'none';
+      document.getElementById('auth-root').style.display = '';
+      STATE.authView = 'recovery';
+      renderAuthRoot();
+    } else if(session && session.user){
       await withTimeout(enterAppAsUser(session.user), 15000, 'enterApp');
     } else {
       document.getElementById('app-shell').style.display = 'none';
