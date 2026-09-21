@@ -4089,6 +4089,8 @@ function logoSvgMarkup(){ return document.querySelector('#app-shell .logo-svg')?
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
   if(STATE.authView==='recovery') root.innerHTML = renderRecoveryForm();
+  else if(STATE.authView==='forgot-password') root.innerHTML = renderForgotPasswordForm();
+  else if(STATE.authView==='forgot-password-sent') root.innerHTML = renderForgotPasswordSent();
   else if(STATE.authView==='signup-check-email') root.innerHTML = renderSignupCheckEmail();
   else if(STATE.authView==='signup') root.innerHTML = renderSignupForm();
   else if(STATE.authView==='login') root.innerHTML = renderLoginForm();
@@ -4125,6 +4127,11 @@ function renderSignupCheckEmail(){
 // recuperación solo sirve para este único paso, y App.submitPasswordRecovery
 // cierra sesión al terminar para forzar un login limpio con la contraseña
 // nueva.
+// fix125: en inglés — al inicio (fix117) solo lo veían proveedores, pero
+// desde fix122 (INNOUS resetea clientes) y este mismo fix125 (self-service
+// "Forgot your password") cualquiera puede llegar aquí, igual que el resto
+// de las pantallas de antes de iniciar sesión (todas en inglés, ver
+// renderLoginForm/renderSignupForm).
 function renderRecoveryForm(){
   return `
   <div class="auth-shell">
@@ -4134,13 +4141,60 @@ function renderRecoveryForm(){
       <div class="auth-narrow">
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="key-round"></i></div>
-          <div class="auth-card-title">Restablece tu contraseña</div>
-          <div class="auth-card-sub">Elige una contraseña nueva para tu cuenta de INNOUS.</div>
+          <div class="auth-card-title">Reset your password</div>
+          <div class="auth-card-sub">Choose a new password for your INNOUS account.</div>
           <form onsubmit="return App.submitPasswordRecovery(event)">
-            <div class="form-group password-field"><label class="field-label">Contraseña Nueva</label>${pwFieldHtml('recovery-password', 'name="password" required autocomplete="new-password" minlength="8"')}</div>
-            <div class="form-group password-field"><label class="field-label">Confirmar Contraseña</label>${pwFieldHtml('recovery-confirm', 'name="confirm" required autocomplete="new-password" minlength="8"')}</div>
-            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>Guardar Contraseña</button>
+            <div class="form-group password-field"><label class="field-label">New Password</label>${pwFieldHtml('recovery-password', 'name="password" required autocomplete="new-password" minlength="8"')}</div>
+            <div class="form-group password-field"><label class="field-label">Confirm Password</label>${pwFieldHtml('recovery-confirm', 'name="confirm" required autocomplete="new-password" minlength="8"')}</div>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>Save Password</button>
           </form>
+        </div>
+      </div>
+    </div>
+    ${authFooterLinks()}
+  </div>`;
+}
+// fix125: link nuevo en renderLoginForm — cualquiera (cliente, proveedor o
+// INNOUS) escribe su usuario o correo, igual que en el login normal, y le
+// llega el mismo correo de "Reset Password" que ya usan fix117/122
+// (bilingüe, ver supabase-fix118-reset-password-email-template.html).
+function renderForgotPasswordForm(){
+  return `
+  <div class="auth-shell">
+    <div class="auth-mesh"></div>
+    ${authTopbar()}
+    <div class="auth-main">
+      <div class="auth-narrow">
+        <div class="auth-back" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>Back</div>
+        <div class="auth-card">
+          <div class="auth-card-icon"><i data-lucide="key-round"></i></div>
+          <div class="auth-card-title">Forgot your password?</div>
+          <div class="auth-card-sub">Enter your username or email and we'll send you a link to set a new one.</div>
+          <form onsubmit="return App.submitForgotPassword(event)">
+            <div class="form-group"><label class="field-label">Username or Email</label><input type="text" name="login" required autocomplete="username"></div>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="send"></i>Send Reset Link</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    ${authFooterLinks()}
+  </div>`;
+}
+// fix125: mensaje idéntico exista o no la cuenta/usuario — nunca revela si
+// algo existe (App.submitForgotPassword nunca condiciona lo que se
+// renderiza al resultado real de la búsqueda), igual que cualquier login.
+function renderForgotPasswordSent(){
+  return `
+  <div class="auth-shell">
+    <div class="auth-mesh"></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-main">
+      <div class="auth-narrow">
+        <div class="auth-card">
+          <div class="auth-card-icon"><i data-lucide="mail-check"></i></div>
+          <div class="auth-card-title">Check your email</div>
+          <div class="auth-card-sub">If an account exists for that username or email, we've sent a link to reset the password.</div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>Back to Log In</button>
         </div>
       </div>
     </div>
@@ -4312,7 +4366,9 @@ function renderLoginForm(){
           <div class="auth-card-sub">Welcome back to INNOUS.</div>
           <form onsubmit="return App.submitLogin(event)">
             <div class="form-group"><label class="field-label">Username or Email</label><input type="text" name="login" required autocomplete="username"></div>
-            <div class="form-group password-field"><label class="field-label">Password</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}</div>
+            <div class="form-group password-field"><label class="field-label">Password</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}
+              <div style="text-align:right;margin-top:6px;"><a onclick="App.goToForgotPassword()" style="font-size:12.5px;color:var(--accent-ink);cursor:pointer;">Forgot your password?</a></div>
+            </div>
             <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>Log In</button>
           </form>
           <div class="auth-or-divider"><span>or</span></div>
@@ -7816,8 +7872,8 @@ const App = {
     e.preventDefault();
     const f = new FormData(e.target);
     const password = f.get('password'), confirm = f.get('confirm');
-    if(password.length<8){ showToast('La contraseña debe tener al menos 8 caracteres.'); return false; }
-    if(password!==confirm){ showToast('Las contraseñas no coinciden.'); return false; }
+    if(password.length<8){ showToast('Password must be at least 8 characters.'); return false; }
+    if(password!==confirm){ showToast('Passwords do not match.'); return false; }
     const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
     const { error } = await sb.auth.updateUser({ password });
     if(error){ showToast(error.message); if(submitBtn) submitBtn.disabled=false; return false; }
@@ -7826,7 +7882,45 @@ const App = {
     STATE.authMode='guest'; STATE.authView='login'; STATE.signupRole=null;
     history.replaceState(null,'',location.pathname+location.search);
     renderAuthRoot();
-    showToast('Contraseña actualizada — ya puedes iniciar sesión.', 'success');
+    showToast('Password updated — you can now log in.', 'success');
+    return false;
+  },
+  goToForgotPassword(){ STATE.authView='forgot-password'; renderAuthRoot(); },
+  // fix125: mismo patrón de resolución usuario→correo que submitLogin de
+  // arriba (probar supplier, luego innous) — así un proveedor o alguien de
+  // INNOUS puede escribir su username aquí igual que en el login normal,
+  // ya que resetPasswordForEmail necesita un correo, no un username.
+  // A propósito SIEMPRE termina en la misma pantalla de confirmación sin
+  // importar si algo se encontró o no — nunca revela si una cuenta/usuario
+  // existe, igual que cualquier login.
+  async submitForgotPassword(e){
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const raw = f.get('login').trim();
+    const viaEmail = raw.includes('@');
+    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
+    try{
+      let email = null;
+      if(viaEmail){
+        email = raw.toLowerCase();
+      } else {
+        const username = raw.toLowerCase();
+        let { data: resolved } = await withTimeout(sb.rpc('resolve_supplier_login_email', { p_username: username }), 12000, 'resolve-username');
+        if(!resolved){
+          ({ data: resolved } = await withTimeout(sb.rpc('resolve_innous_login_email', { p_username: username }), 12000, 'resolve-username-innous'));
+        }
+        email = resolved || null;
+      }
+      if(email){
+        await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+      }
+      STATE.authView = 'forgot-password-sent';
+      renderAuthRoot();
+    }catch(err){
+      console.error('submitForgotPassword failed', err);
+      showToast('Could not connect. Please try again.');
+      if(submitBtn) submitBtn.disabled = false;
+    }
     return false;
   },
   // fix96: "Continue with Google" on the login screen — sign IN only, on
