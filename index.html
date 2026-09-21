@@ -2135,11 +2135,81 @@ async function pollLiveUpdates(){
   const isOnOpenSettingsPanel = location.hash==='#/innous/settings' && !!STATE.ui.settingsOpenSection;
   if(!isTyping && !isOnOpenSettingsPanel) route();
 }
+/* ---- fix116: una sola sesión activa por cuenta, en todos los roles ----
+   El candado vive en profiles.active_session_id/session_last_seen_at y se
+   toca EXCLUSIVAMENTE a través de las 3 funciones RPC de
+   supabase-fix116-single-session.sql — a propósito no hay un grant
+   directo de UPDATE sobre esas columnas (a diferencia de username/email/
+   innous_access): el punto es que el cliente no pueda simplemente
+   escribirlas sin pasar por el chequeo atómico que hace claim_session
+   del lado del servidor.
+   Si esta pestaña ya tiene un session_id guardado para este mismo user_id
+   (localStorage), intenta renovarlo (mismo dispositivo recargando la
+   página o retomando la sesión). Si no, intenta reclamar uno nuevo — que
+   solo tiene éxito si nadie más está activo ahorita mismo (o si la sesión
+   que había se puso vieja, ver claim_session). Si falla, el llamador
+   (enterAppAsUser) rechaza la entrada — la sesión que ya estaba abierta
+   en el otro dispositivo nunca se toca ni se interrumpe. */
+let sessionHeartbeatTimer = null, currentSessionId = null;
+async function claimOrRenewSession(userId){
+  let storedId = null;
+  try{
+    if(localStorage.getItem('innous_session_user_id') === userId) storedId = localStorage.getItem('innous_session_id');
+  }catch(e){}
+  if(storedId){
+    const { data: renewed } = await sb.rpc('renew_session_heartbeat', { p_session_id: storedId });
+    if(renewed){ currentSessionId = storedId; startSessionHeartbeat(); return true; }
+  }
+  const newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+'-'+Math.random());
+  const { data: claimed, error } = await sb.rpc('claim_session', { p_session_id: newId });
+  if(error || !claimed) return false;
+  currentSessionId = newId;
+  try{ localStorage.setItem('innous_session_id', newId); localStorage.setItem('innous_session_user_id', userId); }catch(e){}
+  startSessionHeartbeat();
+  return true;
+}
+function startSessionHeartbeat(){
+  stopSessionHeartbeat();
+  sessionHeartbeatTimer = setInterval(async ()=>{
+    if(!currentSessionId) return;
+    const { data: ok } = await sb.rpc('renew_session_heartbeat', { p_session_id: currentSessionId });
+    if(!ok){
+      // Alguien más inició sesión con esta cuenta y nos ganó la sesión —
+      // a diferencia de logOut(), aquí NO se llama clear_session (borraría
+      // la sesión de quien nos ganó, no la nuestra).
+      stopSessionHeartbeat();
+      currentSessionId = null;
+      try{ localStorage.removeItem('innous_session_id'); localStorage.removeItem('innous_session_user_id'); }catch(e){}
+      stopLiveUpdates(); stopChatRealtime(); stopTypingChannel();
+      await sb.auth.signOut();
+      STATE.authMode='guest'; STATE.authView='landing'; STATE.signupRole=null;
+      document.body.removeAttribute('data-theme');
+      document.getElementById('app-shell').style.display='none';
+      document.getElementById('auth-root').style.display='';
+      renderAuthRoot();
+      showToast('Tu sesión se cerró porque alguien inició sesión con esta cuenta en otro dispositivo.');
+    }
+  }, 45000);
+}
+function stopSessionHeartbeat(){
+  if(sessionHeartbeatTimer){ clearInterval(sessionHeartbeatTimer); sessionHeartbeatTimer = null; }
+}
 async function enterAppAsUser(user){
   const { data: profile, error } = await sb.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
   if(error || !profile){
     await sb.auth.signOut();
     showToast('No se encontró tu perfil. Contacta a soporte.');
+    document.getElementById('app-shell').style.display = 'none';
+    document.getElementById('auth-root').style.display = '';
+    renderAuthRoot();
+    return;
+  }
+  // fix116: va antes de todo lo demás, para no cargar datos de una sesión
+  // que de todos modos vamos a rechazar.
+  const sessionOk = await claimOrRenewSession(user.id);
+  if(!sessionOk){
+    await sb.auth.signOut();
+    showToast('Ya hay una sesión activa con esta cuenta en otro dispositivo. Ciérrala primero para entrar aquí.');
     document.getElementById('app-shell').style.display = 'none';
     document.getElementById('auth-root').style.display = '';
     renderAuthRoot();
@@ -7648,6 +7718,12 @@ const App = {
     showToast('Cuenta de Google desvinculada', 'success');
   },
   async logOut(){
+    // fix116: liberar la sesión ANTES de signOut — auth.uid() ya no
+    // resolvería dentro de clear_session después de cerrar sesión.
+    stopSessionHeartbeat();
+    if(currentSessionId){ try{ await sb.rpc('clear_session', { p_session_id: currentSessionId }); }catch(e){} }
+    currentSessionId = null;
+    try{ localStorage.removeItem('innous_session_id'); localStorage.removeItem('innous_session_user_id'); }catch(e){}
     stopLiveUpdates();
     stopChatRealtime();
     stopTypingChannel();
