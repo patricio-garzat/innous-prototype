@@ -913,22 +913,12 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   position:relative;overflow:hidden;
   background:var(--bg);
 }
+/* fix143: se quitaron las manchas azules/moradas difuminadas de fondo
+   (antes animadas con meshDrift) de todas las pantallas de acceso —
+   el elemento .auth-mesh se queda en el HTML (7 pantallas lo insertan)
+   pero ya no pinta nada. */
 .auth-mesh{
   position:absolute;inset:-10%;z-index:0;pointer-events:none;
-  /* More color, less "flat white login page" (fix74) — same three navy/
-     cyan blobs as before, just stronger, plus a small purple one for
-     variety, since a login/signup screen otherwise has almost no color
-     on it at all besides the button. */
-  background:
-    radial-gradient(620px 480px at 12% 6%, rgba(0,163,224,0.26), transparent 62%),
-    radial-gradient(680px 520px at 88% 2%, rgba(0,56,101,0.24), transparent 60%),
-    radial-gradient(560px 440px at 50% 58%, rgba(0,163,224,0.16), transparent 68%),
-    radial-gradient(480px 380px at 90% 94%, rgba(109,40,217,0.12), transparent 65%);
-  animation:meshDrift 24s ease-in-out infinite alternate;
-}
-@keyframes meshDrift{
-  0%{ transform:translate3d(0,0,0) scale(1); }
-  100%{ transform:translate3d(-2.5%,2%,0) scale(1.06); }
 }
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 .auth-topbar .logo-svg{height:clamp(40px,8vh,88px);}
