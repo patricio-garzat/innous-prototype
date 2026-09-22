@@ -519,8 +519,12 @@ textarea{resize:vertical;min-height:90px;}
 .legal-doc li{font-size:13.5px;line-height:1.7;color:var(--ink-secondary);margin-bottom:4px;}
 .legal-divider{margin:28px 0;border:none;border-top:1px solid var(--border);}
 .legal-disclaimer{margin-top:24px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);font-size:11.5px;color:var(--ink-tertiary);line-height:1.6;}
-.auth-footer-links{flex:0 0 auto;position:relative;z-index:1;text-align:center;padding:8px 20px calc(8px + env(safe-area-inset-bottom,0px));font-size:10.5px;color:var(--ink-tertiary);}
+/* fix147: las letras de abajo estaban muy chicas y pegadas al borde
+   (8px de aire) — más tamaño, más aire, y una segunda línea de
+   copyright/razón social debajo de los links legales. */
+.auth-footer-links{flex:0 0 auto;position:relative;z-index:1;text-align:center;padding:16px 20px calc(20px + env(safe-area-inset-bottom,0px));font-size:12px;color:var(--ink-tertiary);line-height:1.7;}
 .auth-footer-links a{color:inherit;text-decoration:underline;cursor:pointer;margin:0 2px;}
+.auth-footer-copyright{font-size:11px;color:var(--ink-tertiary);opacity:.75;margin-top:2px;}
 .signup-legal-accept{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;}
 .signup-legal-accept input[type=checkbox]{width:auto;margin-top:3px;flex:0 0 auto;}
 .signup-legal-accept label{font-size:12px;color:var(--ink-tertiary);line-height:1.55;}
@@ -927,10 +931,22 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    dentro de .auth-main) en vez de con el padding fijo de 40px que usa
    el resto de las pantallas de acceso (login/signup, con una tarjeta
    angosta que no necesita alinearse con nada). .auth-topbar-wide mete
-   ese mismo max-width/centrado adentro del topbar solo para el home. */
+   ese mismo max-width/centrado adentro del topbar solo para el home —
+   fix147 le quitó el logo (ahora vive en .landing-brand-band, arriba
+   de todo) así que aquí solo quedan los botones, alineados a la
+   derecha.
+   fix147: franja azul (mismo degradado navy→accent que ya se usaba en
+   botones/dividers) arriba de todo el home, con el logo en blanco
+   adentro — referencia que dio el usuario: la barra de color del home
+   de FRISA. El logo reutiliza el mismo SVG de siempre; las dos clases
+   de relleno (innous-logo-dark/innous-logo-blue) se fuerzan a blanco
+   nada más dentro de esta franja para que haya contraste. */
+.landing-brand-band{flex:0 0 auto;position:relative;z-index:1;background:linear-gradient(90deg,var(--navy),var(--accent-ink));}
+.landing-brand-band-inner{max-width:1180px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;}
+.landing-brand-band .logo-svg{height:30px;width:auto;display:block;}
+.landing-brand-band .logo-svg .innous-logo-dark,.landing-brand-band .logo-svg .innous-logo-blue{fill:#fff;}
 .auth-topbar.auth-topbar-wide{display:block;padding-left:24px;padding-right:24px;}
-.auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;}
-.auth-topbar-wide .logo-svg{height:clamp(48px,9vh,100px);}
+.auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:flex-end;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
@@ -4267,6 +4283,7 @@ const AUTH_I18N = {
     signupClientTitle:'Create your client account',
     signupClientSub:'Start sourcing verified manufacturing partners in Mexico.',
     industry:'Industry', selectIndustry:'Select your industry',
+    copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. All rights reserved.`,
   },
   es: {
     newHere:'¿Nuevo aquí?', alreadyHaveAccount:'¿Ya tienes cuenta?',
@@ -4298,6 +4315,7 @@ const AUTH_I18N = {
     signupClientTitle:'Crea tu cuenta de cliente',
     signupClientSub:'Empieza a buscar proveedores de manufactura verificados en México.',
     industry:'Industria', selectIndustry:'Selecciona tu industria',
+    copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. Todos los derechos reservados.`,
   },
 };
 function at(key){ const d = AUTH_I18N[STATE.ui.authLang] || AUTH_I18N.en; return d[key] !== undefined ? d[key] : AUTH_I18N.en[key]; }
@@ -4420,19 +4438,33 @@ function renderForgotPasswordSent(){
     ${authFooterLinks()}
   </div>`;
 }
+// fix147: franja azul de marca arriba del todo, solo en el home — ver
+// el comentario junto a .landing-brand-band en el CSS.
+function landingBrandBandHtml(){
+  return `
+  <div class="landing-brand-band">
+    <div class="landing-brand-band-inner">
+      <a href="#" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
+    </div>
+  </div>`;
+}
 function authTopbar(wide){
-  const inner = `
-    <a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
+  const actions = `
     <div class="auth-topbar-actions">
       ${authLangToggleHtml()}
       ${STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`}
     </div>`;
-  return wide
-    ? `<div class="auth-topbar auth-topbar-wide"><div class="auth-topbar-inner">${inner}</div></div>`
-    : `<div class="auth-topbar">${inner}</div>`;
+  // fix147: en el home el logo ya vive en landingBrandBandHtml() (la
+  // franja azul de arriba), así que aquí (wide) solo van los botones.
+  if(wide) return `<div class="auth-topbar auth-topbar-wide"><div class="auth-topbar-inner">${actions}</div></div>`;
+  return `<div class="auth-topbar"><a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>${actions}</div>`;
 }
 function authFooterLinks(){
-  return `<div class="auth-footer-links"><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>`;
+  const year = new Date().getFullYear();
+  return `<div class="auth-footer-links">
+    <div><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>
+    <div class="auth-footer-copyright">${at('copyrightLine')(year)}</div>
+  </div>`;
 }
 function stepDotsHtml(total, current){
   let out = '<div class="step-dots">';
@@ -4453,6 +4485,7 @@ function renderLanding(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
+    ${landingBrandBandHtml()}
     ${authTopbar(true)}
     <div class="auth-main auth-main-landing">
       <div class="landing-grid">
