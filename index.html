@@ -309,6 +309,22 @@ body.innous-viewer-mode .btn-primary,
 body.innous-viewer-mode .btn-danger {
   opacity:.5; cursor:not-allowed; pointer-events:none;
 }
+/* fix130: mismo candado que viewer arriba, para el nivel Editor — con dos
+   excepciones (#btn-send-rfq/#btn-authorize-project), los dos únicos
+   botones que un Editor sí puede usar (enviar RFQ a cotizar, autorizar un
+   pedido — ver App.sendRfqToSuppliers/App.authorizeProject e
+   INNOUS_EDITOR_ALLOWED_METHODS más abajo, que es la parte que de verdad
+   importa: el candado real es del lado del servidor, ver
+   supabase-fix130-niveles-de-acceso.sql). */
+body.innous-editor-mode input:not(#rfq-search):not(#settings-customer-search):not(#settings-supplier-search),
+body.innous-editor-mode textarea,
+body.innous-editor-mode select:not(#rfq-status-filter) {
+  pointer-events:none; cursor:not-allowed; opacity:.6; background:var(--surface-alt);
+}
+body.innous-editor-mode .btn-primary:not(#btn-send-rfq):not(#btn-authorize-project),
+body.innous-editor-mode .btn-danger {
+  opacity:.5; cursor:not-allowed; pointer-events:none;
+}
 /* fix109: border:none (not just transparent) — .btn's own base rule sets
    border:1px solid transparent, and on a rounded-corner element with a
    gradient background, Safari/WebKit in particular can render a faint
@@ -3937,6 +3953,9 @@ function renderShell(){
   // runs at the top of every single route(), so it can't go stale across
   // navigations the way setting it once at login could.
   document.body.classList.toggle('innous-viewer-mode', STATE.role==='INNOUS' && STATE.innousAccess==='viewer');
+  // fix130: mismo mecanismo, nivel Editor — ver el comentario junto a
+  // .innous-editor-mode en el CSS.
+  document.body.classList.toggle('innous-editor-mode', STATE.role==='INNOUS' && STATE.innousAccess==='editor');
   // fix108: dark mode toggle button — every role now (fix107 was INNOUS-
   // only); icon reflects current state.
   const darkBtn = document.getElementById('dark-mode-btn');
@@ -5624,7 +5643,7 @@ function supplierMatchingSection(p){
     </div>
     <hr class="divider">
     <div style="display:flex;justify-content:flex-end;">
-      <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="App.sendRfqToSuppliers('${p.id}')"><i data-lucide="send"></i>Enviar RFQ a ${selected.length||''} Proveedor${selected.length===1?'':'es'}</button>
+      <button id="btn-send-rfq" class="btn btn-primary" ${selected.length?'':'disabled'} onclick="App.sendRfqToSuppliers('${p.id}')"><i data-lucide="send"></i>Enviar RFQ a ${selected.length||''} Proveedor${selected.length===1?'':'es'}</button>
     </div>
   </div>`;
 }
@@ -5954,7 +5973,7 @@ function purchaseOrderDetailsSection(p){
       </div>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-secondary" onclick="App.savePurchaseOrderDetails('${p.id}')"><i data-lucide="save"></i>Guardar Detalles de la Orden de Compra</button>
-        <button class="btn btn-primary" ${isConfirmed?'':'disabled title="Guarda primero los Detalles de la Orden de Compra"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>
+        <button id="btn-authorize-project" class="btn btn-primary" ${isConfirmed?'':'disabled title="Guarda primero los Detalles de la Orden de Compra"'} onclick="App.authorizeProject('${p.id}')"><i data-lucide="check-circle"></i>Autorizar y Notificar al Proveedor</button>
       </div>
     </div>
   </div>`;
@@ -6992,8 +7011,20 @@ function settingsSection(key, icon, title, sub, bodyHtml, danger){
 // regardless (changeTeammateAccess/removeInnousTeammate would just fail
 // there for a viewer), this is only to not show controls that wouldn't
 // work anyway.
+// fix130: badge por nivel — ver INNOUS_ACCESS_META para el resto (label
+// largo en el modal, etc.)
+function innousAccessBadgeHtml(access){
+  const meta = { owner:{label:'Owner', badge:'badge-purple', dot:'dot-purple'}, admin:{label:'Admin', badge:'badge-blue', dot:'dot-blue'}, editor:{label:'Editor', badge:'badge-green', dot:'dot-green'}, viewer:{label:'Viewer', badge:'badge-gray', dot:'dot-gray'} }[access] || {label:access, badge:'badge-gray', dot:'dot-gray'};
+  return `<span class="badge ${meta.badge}" style="flex:0 0 auto;"><span class="dot ${meta.dot}"></span>${meta.label}</span>`;
+}
 function innousTeamSectionHtml(){
-  const isAdmin = STATE.innousAccess==='admin';
+  // fix130: crear compañeros, cambiarles el nivel de acceso, y borrarlos
+  // es exclusivo del OWNER — ni un Admin normal puede (aunque siga
+  // viendo/haciendo todo lo demás igual que hoy). Editar el correo de
+  // inicio de sesión (fix129) se queda en cualquier Admin-o-más, ya que
+  // el usuario no pidió restringir eso específicamente.
+  const isOwner = STATE.innousAccess==='owner';
+  const isAdminOrAbove = isOwner || STATE.innousAccess==='admin';
   const rows = INNOUS_TEAM.map(t=>{
     const isSelf = t.id===STATE.innousUserId;
     return `
@@ -7003,24 +7034,27 @@ function innousTeamSectionHtml(){
         <div class="account-pw-toggle-title" style="overflow-wrap:break-word;">${escAttr(t.name)}${isSelf?' <span class="td-sub" style="font-weight:400;">(tú)</span>':''}</div>
         <div class="account-pw-toggle-sub" style="overflow-wrap:break-word;">${escAttr(t.email||t.username||'—')}</div>
       </div>
-      ${isAdmin && !isSelf ? `
+      ${!isSelf ? `
         <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto;">
+          ${isOwner ? `
           <select onchange="App.changeTeammateAccess('${t.id}', this.value)" style="flex:0 0 auto;width:auto;padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;background:var(--surface);">
+            <option value="owner" ${t.access==='owner'?'selected':''}>Owner</option>
             <option value="admin" ${t.access==='admin'?'selected':''}>Admin</option>
+            <option value="editor" ${t.access==='editor'?'selected':''}>Editor</option>
             <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
-          </select>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="App.openEditTeammateEmailModal('${t.id}','${escAttr(t.name)}','${escAttr(t.email)}')" title="Editar correo de inicio de sesión"><i data-lucide="mail"></i></button>
-          <button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);flex:0 0 auto;" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>
+          </select>` : innousAccessBadgeHtml(t.access)}
+          ${isAdminOrAbove ? `<button type="button" class="btn btn-secondary btn-sm" onclick="App.openEditTeammateEmailModal('${t.id}','${escAttr(t.name)}','${escAttr(t.email)}')" title="Editar correo de inicio de sesión"><i data-lucide="mail"></i></button>` : ''}
+          ${isOwner ? `<button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);flex:0 0 auto;" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>` : ''}
         </div>
-      ` : `<span class="badge ${t.access==='admin'?'badge-blue':'badge-gray'}" style="flex:0 0 auto;"><span class="dot ${t.access==='admin'?'dot-blue':'dot-gray'}"></span>${t.access==='admin'?'Admin':'Viewer'}</span>`}
+      ` : innousAccessBadgeHtml(t.access)}
     </div>`;
   }).join('');
   return `
-  <div class="section-sub">Admin ve y hace todo, igual que hoy. Viewer ve exactamente lo mismo en todo el portal, pero no puede crear, editar, borrar ni enviar nada — ni desde aquí ni saltándose la pantalla.</div>
+  <div class="section-sub">Owner controla el equipo completo (crear, cambiar nivel, borrar compañeros) — nadie más, ni un Admin. Admin ve y hace todo lo demás, igual que hoy. Editor puede recibir RFQs, mandarlos a cotizar, y autorizar pedidos — nada más, no puede editar ni borrar nada. Viewer ve exactamente lo mismo en todo el portal, pero no puede crear, editar, borrar ni enviar nada — ni desde aquí ni saltándose la pantalla.</div>
   <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
     ${rows || '<div class="field-hint">Aún no hay compañeros registrados.</div>'}
   </div>
-  ${isAdmin ? `<button type="button" class="btn btn-secondary" style="margin-top:14px;" onclick="App.openNewTeammateModal()"><i data-lucide="user-plus"></i>Agregar compañero</button>` : ''}
+  ${isOwner ? `<button type="button" class="btn btn-secondary" style="margin-top:14px;" onclick="App.openNewTeammateModal()"><i data-lucide="user-plus"></i>Agregar compañero</button>` : ''}
   `;
 }
 function newTeammateModalHtml(){
@@ -7048,7 +7082,9 @@ function newTeammateModalHtml(){
       <label class="field-label">Nivel de acceso</label>
       <select onchange="STATE.ui.newTeammateDraft.access=this.value" style="width:100%;padding:9px 12px;border-radius:9px;border:1px solid var(--border);font-size:13.5px;background:var(--surface);">
         <option value="viewer" ${d.access==='viewer'?'selected':''}>Viewer — solo puede ver, no puede mover nada</option>
-        <option value="admin" ${d.access==='admin'?'selected':''}>Admin — acceso completo, igual que tú</option>
+        <option value="editor" ${d.access==='editor'?'selected':''}>Editor — recibe RFQs, manda a cotizar, y autoriza pedidos, nada más</option>
+        <option value="admin" ${d.access==='admin'?'selected':''}>Admin — acceso completo, igual que tú, menos manejar el equipo</option>
+        <option value="owner" ${d.access==='owner'?'selected':''}>Owner — control total, incluido el equipo</option>
       </select>
     </div>
   </div>
@@ -7081,11 +7117,14 @@ ROUTES['innous/settings'] = function(){
   // to have "Guardar" silently fail. Doesn't touch the fields themselves
   // (a much larger change across a page this size); a viewer can still
   // type into them, just can't actually save.
-  const isViewer = STATE.innousAccess==='viewer';
+  // fix130: editor tampoco puede editar Configuración — solo tiene
+  // permitidas sendRfqToSuppliers/authorizeProject, nada de "info" (ver
+  // INNOUS_EDITOR_ALLOWED_METHODS).
+  const isReadOnlySettings = STATE.innousAccess==='viewer' || STATE.innousAccess==='editor';
   return `
   <div class="content-inner" style="max-width:680px;">
     <div class="page-header"><div><div class="page-title">Configuración</div><div class="page-subtitle">Configuración de la plataforma</div></div>
-      <div class="page-actions">${isViewer
+      <div class="page-actions">${isReadOnlySettings
         ? `<button class="btn btn-secondary" disabled title="Tu cuenta es de solo lectura"><i data-lucide="lock"></i>Guardar Cambios</button>`
         : `<button class="btn btn-primary" onclick="App.saveInnousSettings()"><i data-lucide="save"></i>Guardar Cambios</button>`}</div></div>
     ${settingsSection('equipo','users-2','Equipo INNOUS','Cuentas de tu equipo y su nivel de acceso', innousTeamSectionHtml())}
@@ -7832,7 +7871,10 @@ const App = {
     const name = (d.name||'').trim();
     const email = (d.email||'').trim().toLowerCase();
     const password = d.password||'', password2 = d.password2||'';
-    const access = d.access==='admin' ? 'admin' : 'viewer';
+    // fix130: ya no son solo 2 niveles — pasa el valor tal cual eligió el
+    // owner en el modal (owner/admin/editor/viewer), con 'viewer' como
+    // respaldo si por lo que sea llega algo raro.
+    const access = ['owner','admin','editor','viewer'].includes(d.access) ? d.access : 'viewer';
     if(!name){ showToast('Escribe el nombre.'); return; }
     if(!email || !email.includes('@')){ showToast('Escribe un correo válido.'); return; }
     if(password.length<6){ showToast('La contraseña debe tener al menos 6 caracteres.'); return; }
@@ -8527,6 +8569,15 @@ const App = {
       const newEmail = (d.email||'').trim().toLowerCase();
       if(!newEmail || !newEmail.includes('@')){ showToast('Escribe un correo válido.'); return; }
       emailChanged = STATE.authMode==='account' && newEmail !== (INNOUS_USER.email||'').toLowerCase();
+      // fix130: viewer/editor pueden seguir guardando su propia foto/
+      // username/contraseña (saveAccount ya no está en
+      // INNOUS_VIEWER_BLOCKED_METHODS) pero NO su propio correo de
+      // inicio de sesión — eso se queda solo para admin/owner, o para
+      // que un admin/owner se lo cambie desde Equipo INNOUS (fix129).
+      if(emailChanged && (STATE.innousAccess==='viewer' || STATE.innousAccess==='editor')){
+        showToast('Tu cuenta no puede cambiar el correo de inicio de sesión — pide a un Admin u Owner que lo haga.');
+        return;
+      }
       if(emailChanged){
         const { error: emailErr } = await sb.auth.updateUser({ email: newEmail });
         if(emailErr){ showToast(emailErr.message); return; }
@@ -9280,13 +9331,19 @@ const App = {
     if(p.status==='submitted' || p.status==='under_review') p.status = 'sourcing';
     logActivity(p,'INNOUS', `RFQ sent to ${newIds.length} supplier${newIds.length===1?'':'s'}.`);
     if(!p.isDemo){
-      const { error: e1 } = await sb.from('invited_suppliers').insert(newIds.map(sid=>({ project_id: p.id, supplier_id: sid })));
-      if(e1){ showToast(e1.message); return; }
-      const { error: e2 } = await sb.from('supplier_quotes').insert(newIds.map(sid=>({ project_id: p.id, supplier_id: sid, status:'pending' })));
-      if(e2){ showToast(e2.message); return; }
-      projectsUpdate.status = p.status;
-      const { error: e3 } = await sb.from('projects').update(projectsUpdate).eq('id', p.id);
-      if(e3){ showToast(e3.message); return; }
+      // fix130: una sola función SECURITY DEFINER en vez de los tres
+      // writes directos de antes (invited_suppliers/supplier_quotes/
+      // projects), para que un Editor pueda mandar RFQs a cotizar sin
+      // tener acceso de escritura general a `projects` — ver
+      // supabase-fix130-niveles-de-acceso.sql.
+      const { error } = await sb.rpc('innous_send_rfq_to_suppliers', {
+        p_project_id: p.id, p_supplier_ids: newIds, p_status: p.status,
+        p_target_price_markup_pct: lockingTargetPrice ? projectsUpdate.target_price_markup_pct : null,
+        p_target_price_exchange_rate: lockingTargetPrice ? projectsUpdate.target_price_exchange_rate : null,
+        p_target_price_supplier_budget_mxn: lockingTargetPrice ? projectsUpdate.target_price_supplier_budget_mxn : null,
+        p_items: lockingTargetPrice ? projectsUpdate.items : null,
+      });
+      if(error){ showToast(error.message); return; }
     }
     STATE.ui.selectedInviteSuppliers = [];
     showToast(`RFQ enviado a ${newIds.length} proveedor${newIds.length===1?'':'es'}`, 'success');
@@ -9711,17 +9768,12 @@ const App = {
     if(!purchaseOrderDetailsComplete(p)){ showToast('Guarda los Detalles de la Orden de Compra antes de autorizar.'); return; }
     const now = new Date();
     if(!p.isDemo){
-      const { error } = await sb.from('projects').update({ innous_authorized_at: now.toISOString() }).eq('id', pid);
+      // fix130: pasó a ser una función SECURITY DEFINER (en vez de dos
+      // llamadas directas — update de projects + innous_send_notification)
+      // para que un Editor pueda autorizar sin tener acceso de escritura
+      // general a `projects` — ver supabase-fix130-niveles-de-acceso.sql.
+      const { error } = await sb.rpc('innous_authorize_project', { p_project_id: pid });
       if(error){ showToast(error.message); return; }
-      if(isRealAccountId(p.selectedSupplierId)){
-        const { error: e2 } = await sb.rpc('innous_send_notification', {
-          p_user_ids: [p.selectedSupplierId],
-          p_title: `Tu cotización para ${p.id} fue seleccionada`,
-          p_body: `INNOUS autorizó el proyecto "${p.projectName}" — ya puedes empezar a trabajar en él. Descarga tu Orden de Compra desde el pedido.`,
-          p_project_id: p.id,
-        });
-        if(e2) console.error('innous_send_notification (authorize) failed', e2);
-      }
     }
     p.innousAuthorizedAt = now;
     showToast('Proyecto autorizado — proveedor notificado', 'success');
@@ -10381,10 +10433,15 @@ const App = {
 // fails at the database. Deliberately NOT wrapped: submitLogin/
 // signInWithGoogle/logOut (auth must keep working), linkGoogleAccount/
 // unlinkGoogleAccount (only touches the viewer's own login method, no
-// business data), and anything read-only (opening/viewing a file,
-// dismissing your own notifications, opening a modal to look at it).
+// business data), anything read-only (opening/viewing a file, dismissing
+// your own notifications, opening a modal to look at it), and — fix130 —
+// saveAccount: every role (including viewer) is explicitly allowed to
+// keep editing their own photo/username/password, same reasoning as
+// linkGoogleAccount above; saveAccount itself now blocks just the
+// login-email part of that for viewer/editor (see its own fix130
+// comment), since that one wasn't meant to be self-service for them.
 const INNOUS_VIEWER_BLOCKED_METHODS = [
-  'saveAccount','createSupplierAccount','createInnousTeammate','changeTeammateAccess',
+  'createSupplierAccount','createInnousTeammate','changeTeammateAccess',
   'removeInnousTeammate','saveInnousSettings','deleteCustomer','deleteSupplier','deleteRfq',
   'confirmRejectRfq','onNewSupplierCsfSelected','saveRedaction','submitRfq',
   'sendRfqToSuppliers','saveQuoteDetails','savePurchaseOrderDetails','saveCustomerAccount',
@@ -10395,13 +10452,35 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
   'sendChatCard','deleteChat','submitSignup',
 ];
+// fix130: dos capas más sobre el candado de viewer de arriba, para los
+// dos niveles nuevos —
+//  - Owner-only: crear/quitar compañeros y cambiarles el nivel de
+//    acceso, exclusivo del owner (ni siquiera un Admin normal puede) —
+//    el candado real es del lado del servidor (el trigger
+//    enforce_innous_access_owner_only y is_innous_owner() en
+//    supabase-fix130-niveles-de-acceso.sql), esto es solo para que la UI
+//    no muestre un error feo de la base de datos.
+//  - Editor: bloqueado igual que viewer en TODO excepto
+//    sendRfqToSuppliers/authorizeProject (las únicas dos funciones que sí
+//    tiene permitidas — ver innous_send_rfq_to_suppliers/
+//    innous_authorize_project, mismas funciones SECURITY DEFINER que de
+//    verdad hacen cumplir esto, no solo la UI).
+const INNOUS_OWNER_ONLY_METHODS = ['createInnousTeammate','changeTeammateAccess','removeInnousTeammate'];
+const INNOUS_EDITOR_ALLOWED_METHODS = ['sendRfqToSuppliers','authorizeProject'];
 INNOUS_VIEWER_BLOCKED_METHODS.forEach(name=>{
   const original = App[name];
   if(typeof original !== 'function') return;
   App[name] = function(...args){
-    if(STATE.role==='INNOUS' && STATE.innousAccess==='viewer'){
-      showToast('Tu cuenta es de solo lectura — no puedes hacer cambios.');
-      return;
+    if(STATE.role==='INNOUS'){
+      const access = STATE.innousAccess;
+      if(INNOUS_OWNER_ONLY_METHODS.includes(name) && access!=='owner'){
+        showToast('Solo el owner de INNOUS puede hacer esto.');
+        return;
+      }
+      if(access==='viewer' || (access==='editor' && !INNOUS_EDITOR_ALLOWED_METHODS.includes(name))){
+        showToast('Tu cuenta no tiene permiso para hacer cambios.');
+        return;
+      }
     }
     return original.apply(this, args);
   };
