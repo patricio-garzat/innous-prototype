@@ -922,6 +922,15 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 }
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 .auth-topbar .logo-svg{height:clamp(40px,8vh,88px);}
+/* fix146: en el home, el logo debe alinearse con el borde izquierdo del
+   texto del hero de abajo (.landing-grid, centrado con max-width:1180px
+   dentro de .auth-main) en vez de con el padding fijo de 40px que usa
+   el resto de las pantallas de acceso (login/signup, con una tarjeta
+   angosta que no necesita alinearse con nada). .auth-topbar-wide mete
+   ese mismo max-width/centrado adentro del topbar solo para el home. */
+.auth-topbar.auth-topbar-wide{display:block;padding-left:24px;padding-right:24px;}
+.auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;}
+.auth-topbar-wide .logo-svg{height:clamp(48px,9vh,100px);}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
@@ -4411,15 +4420,16 @@ function renderForgotPasswordSent(){
     ${authFooterLinks()}
   </div>`;
 }
-function authTopbar(){
-  return `
-  <div class="auth-topbar">
+function authTopbar(wide){
+  const inner = `
     <a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
     <div class="auth-topbar-actions">
       ${authLangToggleHtml()}
       ${STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`}
-    </div>
-  </div>`;
+    </div>`;
+  return wide
+    ? `<div class="auth-topbar auth-topbar-wide"><div class="auth-topbar-inner">${inner}</div></div>`
+    : `<div class="auth-topbar">${inner}</div>`;
 }
 function authFooterLinks(){
   return `<div class="auth-footer-links"><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>`;
@@ -4443,7 +4453,7 @@ function renderLanding(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    ${authTopbar()}
+    ${authTopbar(true)}
     <div class="auth-main auth-main-landing">
       <div class="landing-grid">
         <div class="hero-wrap landing-hero-col" style="margin:0;">
