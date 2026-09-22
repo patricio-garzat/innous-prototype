@@ -211,7 +211,15 @@ svg{display:block;}
    a transparent/light border under a gradient can show as a seam on some
    renderers, and a filled pill doesn't need a border stroke anyway. */
 .user-chip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border-radius:20px;background:linear-gradient(90deg,var(--navy),var(--accent-ink));border:none;box-shadow:0 4px 14px -6px rgba(0,56,101,0.4);}
-.avatar{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;}
+/* fix139: var(--navy), no var(--ink) — --ink es texto/línea (se invierte
+   a casi-blanco en modo oscuro), no un color de relleno con texto blanco
+   encima. --navy se queda oscuro en los dos temas a propósito (mismo
+   color que ya usan .btn-primary/.user-chip), así que blanco encima
+   siempre tiene contraste. Aplica a cada .avatar/.badge-dark/chip
+   "seleccionado"/timeline "hecho"/.toast/.markup-chip.active de aquí en
+   adelante — todos tenían este mismo bug: fondo casi blanco + letra
+   blanca en modo oscuro, ilegible. */
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .user-chip-text{font-size:12.5px;font-weight:500;line-height:1.2;color:#fff;}
 .user-chip-sub{font-size:10.5px;color:rgba(255,255,255,0.72);}
 
@@ -392,7 +400,7 @@ body.innous-editor-mode .btn-danger {
 .badge-green{background:var(--success-soft);color:var(--success);}
 .badge-amber{background:var(--warning-soft);color:var(--warning);}
 .badge-red{background:var(--danger-soft);color:var(--danger);}
-.badge-dark{background:var(--ink);color:#fff;}
+.badge-dark{background:var(--navy);color:#fff;}
 .badge-purple{background:#F1E9FB;color:#6D28D9;} /* fully finished / archived — distinct from "gray" (not started yet) and "green" (actively in progress) */
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
 .dot-gray{background:var(--ink-tertiary);} .dot-blue{background:var(--accent);} .dot-green{background:var(--success);} .dot-amber{background:var(--warning);} .dot-red{background:var(--danger);} .dot-purple{background:#6D28D9;}
@@ -533,13 +541,13 @@ textarea{resize:vertical;min-height:90px;}
 .select-chip{position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:7px 10px;border:1.5px solid var(--border-strong);border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-secondary);transition:border-color .15s,background .15s,color .15s;}
 .select-chip input{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}
 .select-chip:hover{border-color:var(--ink-tertiary);}
-.select-chip:has(input:checked){border-color:var(--ink);background:var(--ink);color:#fff;}
+.select-chip:has(input:checked){border-color:var(--navy);background:var(--navy);color:#fff;}
 select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352525B' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;}
 .process-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
 @media(max-width:768px){.process-grid{grid-template-columns:repeat(2,1fr);}}
 .process-option{border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:12px 10px;text-align:center;cursor:pointer;font-size:12.5px;font-weight:600;}
 .process-option:hover{border-color:var(--ink-tertiary);}
-.process-option.selected{border-color:var(--ink);background:var(--ink);color:#fff;}
+.process-option.selected{border-color:var(--navy);background:var(--navy);color:#fff;}
 .process-option svg{width:18px;height:18px;margin:0 auto 6px;stroke:var(--ink-secondary);}
 .process-option.selected svg{stroke:#fff;}
 
@@ -589,7 +597,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .timeline-step:first-child .timeline-line{display:none;}
 .timeline-line-fill{height:100%;width:0%;background:var(--ink);transition:width .3s ease;}
 .timeline-dot{width:26px;height:26px;border-radius:50%;background:var(--surface);border:2px solid var(--border-strong);display:flex;align-items:center;justify-content:center;z-index:1;font-size:11px;font-weight:700;color:var(--ink-tertiary);}
-.timeline-step.done .timeline-dot{background:var(--ink);border-color:var(--ink);color:#fff;}
+.timeline-step.done .timeline-dot{background:var(--navy);border-color:var(--navy);color:#fff;}
 .timeline-step.current .timeline-dot{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft);}
 .timeline-label{font-size:11px;text-align:center;margin-top:8px;color:var(--ink-tertiary);font-weight:600;padding:0 4px;line-height:1.3;}
 .timeline-step.done .timeline-label,.timeline-step.current .timeline-label{color:var(--ink);}
@@ -630,7 +638,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .crop-zoom-row input[type=range]{flex:1;accent-color:var(--accent);}
 
 .toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:2000;}
-.toast{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow-md);min-width:260px;animation:toastIn .2s ease;}
+.toast{display:flex;align-items:center;gap:10px;background:var(--navy);color:#fff;padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;box-shadow:var(--shadow-md);min-width:260px;animation:toastIn .2s ease;}
 .toast svg{width:16px;height:16px;stroke:#fff;flex:0 0 auto;}
 .toast.success{background:#0F3D22;}
 @keyframes toastIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
@@ -824,7 +832,7 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
 .pricing-row.total{border-top:1px solid var(--border-strong);margin-top:6px;padding-top:12px;font-weight:700;font-size:15px;}
 .markup-chip-row{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
 .markup-chip{padding:6px 12px;border-radius:20px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:600;}
-.markup-chip.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.markup-chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
 
 .confidential-note{display:flex;gap:8px;align-items:flex-start;background:var(--warning-soft);border:1px solid #FDE9C8;border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--warning);}
 .confidential-note svg{width:14px;height:14px;flex:0 0 auto;margin-top:1px;}
