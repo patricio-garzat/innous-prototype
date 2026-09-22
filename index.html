@@ -3856,7 +3856,7 @@ async function loadChatImagePreviews(){
     const cached = chatImageUrlCache.get(path);
     if(cached && cached.expiresAt>Date.now()){ applyImg(cached.url); continue; }
     const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
-    if(error || !data) continue;
+    if(error || !data){ console.error('[chat] could not get signed URL for', path, error); continue; }
     chatImageUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now()+280000 });
     applyImg(data.signedUrl);
   }
@@ -10459,14 +10459,18 @@ const App = {
         // sigue guardando tal cual en attachment_name, para mostrarlo.
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
         const path = `team/${STATE.innousUserId}/${Date.now()}-${safeName}`;
-        const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
-        if(upErr){ showToast(upErr.message); return; }
+        console.log('[team-chat] uploading attachment', { path, size: file.size, type: file.type });
+        const { data: upData, error: upErr } = await sb.storage.from('chat-files').upload(path, file);
+        if(upErr){ console.error('[team-chat] upload failed', upErr); showToast('No se pudo subir el archivo: '+upErr.message); return; }
+        console.log('[team-chat] upload ok', upData);
         attachmentPath = path; attachmentName = file.name;
       }
+      console.log('[team-chat] inserting message', { sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachmentPath, attachmentName });
       const { data, error } = await sb.from('innous_team_messages')
         .insert({ sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachment_path: attachmentPath, attachment_name: attachmentName })
         .select().single();
-      if(error){ showToast(error.message); return; }
+      if(error){ console.error('[team-chat] insert failed', error); showToast('No se pudo mandar el mensaje: '+error.message); return; }
+      console.log('[team-chat] insert ok', data);
       teamChatThread(ownerId).push(teamChatRowToJs(data));
       STATE.ui.chatJustSent = true;
       route();
