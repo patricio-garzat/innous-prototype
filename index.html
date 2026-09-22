@@ -1616,6 +1616,48 @@ async function refreshInnousTeam(){
     username: row.username||'', access: row.innous_access||'admin', photo: row.photo_url||null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
+/* ---- fix132: chat interno entre compañeros de INNOUS — mensajes
+   directos normales (con nombre y foto real, sin la confidencialidad que
+   sí aplica en el chat con clientes/proveedores). Tabla y llaves propias
+   (innous_team_messages, sender_id/recipient_id) — no reutiliza
+   messages_general, que está armada para "un cliente/proveedor + INNOUS
+   colectivo", no para dos personas de INNOUS entre sí. Guardado como
+   INNOUS_TEAM_CHATS[idDelOtro] = [...mensajes], igual que chatThread()
+   hace con entity.chats[nombreDeHilo] para el otro sistema de chat. */
+let INNOUS_TEAM_CHATS = {};
+function teamChatThread(peerId){
+  if(!INNOUS_TEAM_CHATS[peerId]) INNOUS_TEAM_CHATS[peerId] = [];
+  return INNOUS_TEAM_CHATS[peerId];
+}
+function teamChatRowToJs(row){
+  return { id: row.id, from: row.sender_id, text: row.text, ts: new Date(row.ts),
+    deliveredAt: row.delivered_at ? new Date(row.delivered_at) : null,
+    readAt: row.read_at ? new Date(row.read_at) : null };
+}
+async function refreshInnousTeamChats(){
+  if(STATE.role!=='INNOUS') return;
+  const { data, error } = await sb.from('innous_team_messages').select('*');
+  if(error){ console.error('refreshInnousTeamChats failed', error); return; }
+  (data||[]).forEach(row=>{
+    const peerId = row.sender_id===STATE.innousUserId ? row.recipient_id : row.sender_id;
+    const thread = teamChatThread(peerId);
+    const existing = thread.find(m=>m.id===row.id);
+    if(existing){
+      const next = teamChatRowToJs(row);
+      existing.deliveredAt = next.deliveredAt; existing.readAt = next.readAt;
+      return;
+    }
+    thread.push(teamChatRowToJs(row));
+    thread.sort((a,b)=>a.ts-b.ts);
+  });
+}
+async function markTeamChatThreadRead(msgs){
+  const toMark = msgs.filter(m=>m.from!==STATE.innousUserId && !m.readAt);
+  if(!toMark.length) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await sb.from('innous_team_messages').update({ read_at: nowIso, delivered_at: nowIso }).in('id', toMark.map(m=>m.id));
+  if(!error) toMark.forEach(m=>{ m.readAt = new Date(nowIso); if(!m.deliveredAt) m.deliveredAt = new Date(nowIso); });
+}
 /* Real RFQ, still just the submission + status-review slice (see the big
    comment above the SUPABASE_URL block) — supplier invitations, quotes,
    shortlist and orders are NOT in the database yet, so those nested
@@ -2158,6 +2200,7 @@ async function pollLiveUpdates(){
     if(STATE.role==='INNOUS') await refreshRealCustomersAndSuppliers();
     await refreshRealProjects();
     await refreshRealMessages();
+    if(STATE.role==='INNOUS') await refreshInnousTeamChats(); // fix132
     await refreshRealSettings(); // fix64 — readable by every role, not just INNOUS; see enterAppAsUser
     await refreshNotifications();
   }catch(err){
@@ -2340,6 +2383,9 @@ async function enterAppAsUser(user){
     await refreshRealProjects();
     await refreshRealMessages();
     await refreshInnousTeam();
+    // fix132: chat interno entre compañeros de INNOUS — ver
+    // refreshInnousTeamChats/ROUTES['innous/team-chat'].
+    await refreshInnousTeamChats();
   }
   // Settings (fix64) — the `settings` row is readable by every role (see
   // "todos pueden leer settings" in supabase-schema.sql), not just INNOUS,
@@ -2739,7 +2785,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -3924,6 +3970,7 @@ const NAV = {
     {id:'logistics', label:'Logística', icon:'truck', path:'#/innous/logistics'},
     {id:'analytics', label:'Analítica', icon:'bar-chart-3', path:'#/innous/analytics'},
     {id:'messages', label:'Mensajes', icon:'message-square', path:'#/innous/messages'},
+    {id:'team-chat', label:'Chat de Equipo', icon:'users', path:'#/innous/team-chat'},
     {id:'settings', label:'Configuración', icon:'settings', path:'#/innous/settings'},
   ],
   SUPPLIER: [
@@ -6978,6 +7025,52 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
         <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, 'innous', 'Aún no hay mensajes — di hola.')}<div id="chat-typing-bubble">${chatTypingBubbleHtml(active.key)}</div></div>
         ${chatComposeRowHtml(active.key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.personName}...`)}
         ` : emptyState('message-square','Aún no hay conversaciones','')}
+      </div>
+    </div>
+  </div>`;
+};
+
+/* ---- fix132: Chat de Equipo — mensajes directos entre compañeros de
+   INNOUS, con nombre y foto real (sin la confidencialidad de
+   cliente/proveedor). Mismo layout de dos columnas que Mensajes, tabla
+   y funciones propias (ver teamChatThread/refreshInnousTeamChats). */
+ROUTES['innous/team-chat'] = function(peerId){
+  if(peerId) STATE.ui.teamChatPeerId = peerId;
+  const others = INNOUS_TEAM.filter(t=>t.id!==STATE.innousUserId);
+  if(!STATE.ui.teamChatPeerId && others.length) STATE.ui.teamChatPeerId = others[0].id;
+  const active = others.find(t=>t.id===STATE.ui.teamChatPeerId);
+  const msgs = active ? teamChatThread(active.id) : [];
+  if(active) markTeamChatThreadRead(msgs);
+  return `
+  <div class="content-inner messages-shell ${peerId?'mobile-detail-open':''}">
+    <div class="page-header"><div><div class="page-title">Chat de Equipo</div><div class="page-subtitle">Mensajes directos con tus compañeros de INNOUS.</div></div></div>
+    <div class="chat-panel ${peerId?'mobile-detail-open':''}">
+      <div class="chat-list">
+        ${others.map(t=>{
+          const tMsgs = teamChatThread(t.id);
+          const last = tMsgs[tMsgs.length-1];
+          return `<div class="chat-list-item ${active&&active.id===t.id?'active':''}" onclick="navigate('#/innous/team-chat/${t.id}')">
+            ${avatarHtml(t.photo, initials(t.name), 'var(--navy)', 34)}
+            <div style="min-width:0;overflow:hidden;"><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${last?escAttr(last.text):'Aún sin mensajes'}</div></div>
+            ${unreadBadgeHtml(active&&active.id===t.id?0:unreadCount(tMsgs, STATE.innousUserId))}
+          </div>`;
+        }).join('') || emptyState('users','Aún no hay compañeros de equipo','')}
+      </div>
+      <div class="chat-thread">
+        ${active ? `
+        <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <button class="chat-back-btn" onclick="navigate('#/innous/team-chat')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            ${avatarHtml(active.photo, initials(active.name), 'var(--navy)', 40)}
+            <div style="min-width:0;"><div style="font-weight:700;">${escAttr(active.name)}</div><div class="td-sub">${escAttr(active.email||active.username||'')}</div></div>
+          </div>
+        </div>
+        <div class="chat-messages">${chatMessagesHtml(msgs, STATE.innousUserId, `Aún no hay mensajes con ${escAttr(active.name)} — di hola.`)}</div>
+        <div class="chat-input-row">
+          <input type="text" id="team-chat-input" placeholder="Mensaje para ${escAttr(active.name)}..." onkeydown="if(event.key==='Enter'){App.sendTeamChatMessage('${active.id}');}">
+          <button class="btn btn-primary" onclick="App.sendTeamChatMessage('${active.id}')"><i data-lucide="send"></i></button>
+        </div>
+        ` : emptyState('users','Aún no hay compañeros de equipo','Cuando haya más de una cuenta INNOUS, aparecen aquí para chatear.')}
       </div>
     </div>
   </div>`;
@@ -10314,6 +10407,22 @@ const App = {
     if(error || !data){ showToast('Could not open the file.'); return; }
     window.open(data.signedUrl, '_blank');
   },
+  // fix132: chat interno entre compañeros de INNOUS — mensajes directos
+  // simples (sin archivos/tarjetas, "un chat normal") a diferencia de
+  // sendChatMessage de abajo, que sí soporta eso para clientes/proveedores.
+  async sendTeamChatMessage(peerId){
+    const input = document.getElementById('team-chat-input');
+    const text = (input?.value||'').trim();
+    if(!text) return;
+    input.value = '';
+    const { data, error } = await sb.from('innous_team_messages')
+      .insert({ sender_id: STATE.innousUserId, recipient_id: peerId, text })
+      .select().single();
+    if(error){ showToast(error.message); return; }
+    teamChatThread(peerId).push(teamChatRowToJs(data));
+    STATE.ui.chatJustSent = true;
+    route();
+  },
   async sendChatMessage(key){
     const inputId = STATE.role==='CLIENT' ? 'client-chat-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-input' : 'innous-chat-input';
     const input = document.getElementById(inputId); const text = input.value.trim();
@@ -10453,6 +10562,9 @@ const App = {
 // linkGoogleAccount above; saveAccount itself now blocks just the
 // login-email part of that for viewer/editor (see its own fix130
 // comment), since that one wasn't meant to be self-service for them.
+// fix132: sendTeamChatMessage (Chat de Equipo) is the same story —
+// talking to a colleague isn't "business data" either, so every access
+// level can use it, same as saveAccount.
 const INNOUS_VIEWER_BLOCKED_METHODS = [
   'createSupplierAccount','createInnousTeammate','changeTeammateAccess',
   'removeInnousTeammate','saveInnousSettings','deleteCustomer','deleteSupplier','deleteRfq',
