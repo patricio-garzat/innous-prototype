@@ -1630,7 +1630,16 @@ function teamChatThread(peerId){
   return INNOUS_TEAM_CHATS[peerId];
 }
 function teamChatRowToJs(row){
+  // fix137: se me había olvidado mapear estos 4 campos aquí cuando amplié
+  // el chat de equipo para que aceptara fotos/adjuntos/tarjetas — la
+  // subida y el guardado en la base de datos SIEMPRE funcionaron bien
+  // (confirmado con una consulta directa a innous_team_messages), pero
+  // esta función los tiraba antes de que llegaran a chatMessagesHtml, que
+  // por eso nunca tenía nada que mostrar. Mismos 4 campos que
+  // messageRowToJs ya mapea para el chat de clientes/proveedores.
   return { id: row.id, from: row.sender_id, text: row.text, ts: new Date(row.ts),
+    attachmentPath: row.attachment_path||null, attachmentName: row.attachment_name||null,
+    cardType: row.card_type||null, cardProjectId: row.card_project_id||null,
     deliveredAt: row.delivered_at ? new Date(row.delivered_at) : null,
     readAt: row.read_at ? new Date(row.read_at) : null };
 }
@@ -3856,7 +3865,7 @@ async function loadChatImagePreviews(){
     const cached = chatImageUrlCache.get(path);
     if(cached && cached.expiresAt>Date.now()){ applyImg(cached.url); continue; }
     const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
-    if(error || !data){ console.error('[chat] could not get signed URL for', path, error); continue; }
+    if(error || !data) continue;
     chatImageUrlCache.set(path, { url: data.signedUrl, expiresAt: Date.now()+280000 });
     applyImg(data.signedUrl);
   }
@@ -10459,21 +10468,15 @@ const App = {
         // sigue guardando tal cual en attachment_name, para mostrarlo.
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
         const path = `team/${STATE.innousUserId}/${Date.now()}-${safeName}`;
-        console.log('[team-chat] uploading attachment', { path, size: file.size, type: file.type });
-        const { data: upData, error: upErr } = await sb.storage.from('chat-files').upload(path, file);
-        if(upErr){ console.error('[team-chat] upload failed', upErr); showToast('No se pudo subir el archivo: '+upErr.message); return; }
-        console.log('[team-chat] upload ok', upData);
+        const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
+        if(upErr){ showToast('No se pudo subir el archivo: '+upErr.message); return; }
         attachmentPath = path; attachmentName = file.name;
       }
-      console.log('[team-chat] inserting message | attachmentPath=', attachmentPath, '| attachmentName=', attachmentName, '| text=', JSON.stringify(text));
       const { data, error } = await sb.from('innous_team_messages')
         .insert({ sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachment_path: attachmentPath, attachment_name: attachmentName })
         .select().single();
-      if(error){ console.error('[team-chat] insert failed', error); showToast('No se pudo mandar el mensaje: '+error.message); return; }
-      console.log('[team-chat] insert ok | data.attachment_path=', data.attachment_path, '| data.attachment_name=', data.attachment_name, '| data.text=', JSON.stringify(data.text));
-      const jsRow = teamChatRowToJs(data);
-      console.log('[team-chat] mapped for render | attachmentPath=', jsRow.attachmentPath, '| attachmentName=', jsRow.attachmentName);
-      teamChatThread(ownerId).push(jsRow);
+      if(error){ showToast('No se pudo mandar el mensaje: '+error.message); return; }
+      teamChatThread(ownerId).push(teamChatRowToJs(data));
       STATE.ui.chatJustSent = true;
       route();
       return;
