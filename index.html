@@ -7044,6 +7044,7 @@ function innousTeamSectionHtml(){
             <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
           </select>` : innousAccessBadgeHtml(t.access)}
           ${isAdminOrAbove ? `<button type="button" class="btn btn-secondary btn-sm" onclick="App.openEditTeammateEmailModal('${t.id}','${escAttr(t.name)}','${escAttr(t.email)}')" title="Editar correo de inicio de sesión"><i data-lucide="mail"></i></button>` : ''}
+          ${isOwner ? `<button type="button" class="btn btn-secondary btn-sm" onclick="App.sendInnousTeammatePasswordReset('${t.id}')" title="Restablecer contraseña"><i data-lucide="key-round"></i></button>` : ''}
           ${isOwner ? `<button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);flex:0 0 auto;" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>` : ''}
         </div>
       ` : innousAccessBadgeHtml(t.access)}
@@ -8226,6 +8227,18 @@ const App = {
     const { error } = await sb.auth.resetPasswordForEmail(c.email, { redirectTo: window.location.origin + window.location.pathname });
     if(error){ showToast(error.message); return; }
     showToast(`Password reset link sent to ${c.email}`, 'success');
+  },
+  // fix131: mismo flujo otra vez, ahora para un compañero de INNOUS —
+  // exclusivo del owner (a diferencia de sendSupplierPasswordReset/
+  // sendClientPasswordReset, que cualquier admin puede usar), ver
+  // INNOUS_OWNER_ONLY_METHODS.
+  async sendInnousTeammatePasswordReset(id){
+    const t = INNOUS_TEAM.find(x=>x.id===id); if(!t) return;
+    if(!t.email){ showToast('Este compañero no tiene correo registrado.'); return; }
+    if(!confirm(`¿Enviar a ${t.email} un enlace para que "${t.name}" ponga una contraseña nueva?`)) return;
+    const { error } = await sb.auth.resetPasswordForEmail(t.email, { redirectTo: window.location.origin + window.location.pathname });
+    if(error){ showToast(error.message); return; }
+    showToast(`Enlace de restablecimiento enviado a ${t.email}`, 'success');
   },
   /* Unlike deleting a customer/supplier account, this really does erase the
      RFQ — there's no "keep it for history" case here, since an RFQ with no
@@ -10450,7 +10463,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
-  'sendChatCard','deleteChat','submitSignup',
+  'sendChatCard','deleteChat','submitSignup','sendInnousTeammatePasswordReset',
 ];
 // fix130: dos capas más sobre el candado de viewer de arriba, para los
 // dos niveles nuevos —
@@ -10465,7 +10478,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
 //    tiene permitidas — ver innous_send_rfq_to_suppliers/
 //    innous_authorize_project, mismas funciones SECURITY DEFINER que de
 //    verdad hacen cumplir esto, no solo la UI).
-const INNOUS_OWNER_ONLY_METHODS = ['createInnousTeammate','changeTeammateAccess','removeInnousTeammate'];
+const INNOUS_OWNER_ONLY_METHODS = ['createInnousTeammate','changeTeammateAccess','removeInnousTeammate','sendInnousTeammatePasswordReset'];
 const INNOUS_EDITOR_ALLOWED_METHODS = ['sendRfqToSuppliers','authorizeProject'];
 INNOUS_VIEWER_BLOCKED_METHODS.forEach(name=>{
   const original = App[name];
