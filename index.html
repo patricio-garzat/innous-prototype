@@ -7697,15 +7697,26 @@ const App = {
     if((d.capabilities||[]).length===0){ showToast('Selecciona al menos un servicio que ofrece.'); return; }
     try{
       const tempClient = createIsolatedAuthClient();
-      const { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup');
+      let { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup');
       if(error || !data.user){ showToast(error?.message || 'No se pudo crear la cuenta.'); return; }
       if(!data.session){
-        // Email confirmation is on for this project — the new user exists
-        // but isn't authenticated yet, so the self-insert calls below would
-        // fail RLS. Not expected (self-signup already relies on this being
-        // off), but fail loudly rather than leaving a half-created account.
-        showToast('La cuenta se creó pero requiere confirmación por correo — revisa la configuración de autenticación en Supabase.');
-        return;
+        // fix127: "Confirm email" está activo en este proyecto (fix119/120,
+        // para que los CLIENTES confirmen su correo al registrarse solos)
+        // — es una sola configuración para todo el proyecto, así que
+        // también afecta este signUp(), aunque aquí no aplica el mismo
+        // razonamiento (INNOUS ya está vigilando/verificando a este
+        // proveedor, no tiene caso pedirle que "confirme" nada). Se marca
+        // como confirmada de inmediato con la sesión de INNOUS (`sb`,
+        // NUNCA tempClient — mismo patrón que create_innous_teammate_profile),
+        // y luego sí se puede iniciar sesión normal para seguir con los
+        // inserts de siempre. El correo de confirmación igual le llega al
+        // proveedor (GoTrue ya lo mandó al procesar el signUp), pero para
+        // entonces su cuenta ya está activa — lo puede ignorar.
+        const { error: confirmErr } = await sb.rpc('innous_confirm_new_account', { p_user_id: data.user.id });
+        if(confirmErr){ showToast('No se pudo activar la cuenta nueva: '+confirmErr.message); return; }
+        const signInResult = await withTimeout(tempClient.auth.signInWithPassword({ email, password }), 12000, 'signin-after-confirm');
+        if(signInResult.error || !signInResult.data.session){ showToast(signInResult.error?.message || 'La cuenta se creó pero no se pudo iniciar sesión para terminar de configurarla.'); return; }
+        data = signInResult.data;
       }
       const { error: profileErr } = await tempClient.from('profiles').insert({ user_id: data.user.id, role: 'SUPPLIER' });
       if(profileErr){ showToast('Cuenta creada, pero falló el perfil: '+profileErr.message); return; }
@@ -7768,10 +7779,12 @@ const App = {
       const tempClient = createIsolatedAuthClient();
       const { data, error } = await withTimeout(tempClient.auth.signUp({ email, password }), 12000, 'signup-teammate');
       if(error || !data.user){ showToast(error?.message || 'No se pudo crear la cuenta.'); return; }
-      if(!data.session){
-        showToast('La cuenta se creó pero requiere confirmación por correo — revisa la configuración de autenticación en Supabase.');
-        return;
-      }
+      // fix127: a diferencia de createSupplierAccount, esto nunca dependió
+      // de que tempClient tuviera sesión — create_innous_teammate_profile
+      // corre con la sesión de INNOUS (`sb`), no con la del compañero
+      // nuevo (ver el comentario arriba de esta función). El toast de
+      // "requiere confirmación" que había aquí antes era una falsa alarma
+      // que bloqueaba una creación que en realidad sí funcionaba.
       const { error: profileErr } = await sb.rpc('create_innous_teammate_profile', {
         p_user_id: data.user.id, p_display_name: name, p_email: email, p_access: access,
       });
