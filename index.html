@@ -925,6 +925,11 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
+/* fix144: switch de idioma (EN/ES) para las pantallas de antes de
+   iniciar sesión — mismo tamaño/forma que .auth-switch de al lado, para
+   que no se sienta como un elemento distinto pegado ahí. */
+.auth-lang-toggle{font:inherit;font-size:12.5px;font-weight:700;letter-spacing:.3px;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;}
+.auth-lang-toggle:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
 .auth-main{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;align-items:center;justify-content:center;padding:clamp(8px,2vh,24px) 24px clamp(10px,2.5vh,40px);}
 .auth-narrow{width:100%;max-width:400px;}
 
@@ -2814,6 +2819,12 @@ function supplierRatingSummary(supplierId){
 }
 
 /* ---------- Global App State ---------- */
+// fix144: idioma de las pantallas de antes de iniciar sesión (landing/
+// login/signup/etc.) — a diferencia del resto del portal (que no se
+// traduce), aquí caen tanto clientes (inglés) como proveedores
+// (español) antes de que exista una cuenta con la que guardar una
+// preferencia, así que se recuerda en localStorage nada más.
+function loadAuthLang(){ try{ return localStorage.getItem('innous_auth_lang')==='es' ? 'es' : 'en'; }catch(e){ return 'en'; } }
 const STATE = {
   role: 'INNOUS', // CLIENT | INNOUS | SUPPLIER
   clientId: 'c1',
@@ -2822,7 +2833,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang() },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -4207,6 +4218,84 @@ function badgeForNav(id){
 /* Reuses the exact same inline SVG already sitting in the (possibly hidden)
    main topbar, instead of duplicating ~6KB of path data a second time. */
 function logoSvgMarkup(){ return document.querySelector('#app-shell .logo-svg')?.outerHTML || ''; }
+
+// fix144: diccionario de textos de las pantallas de antes de iniciar
+// sesión (landing/login/forgot-password/recovery/signup-check-email y
+// la parte del signup de cliente que no depende del rol) — NO cubre el
+// resto del portal (una vez adentro, cada quien ya ve su idioma de
+// siempre: proveedor=español, cliente=inglés) ni el modal legal (Aviso
+// de Privacidad/Términos), que se queda en español tal cual está
+// redactado hoy — traducir un documento legal palabra por palabra
+// tiene demasiado riesgo como para hacerlo sin que alguien lo revise.
+const AUTH_I18N = {
+  en: {
+    newHere:'New here?', alreadyHaveAccount:'Already have an account?',
+    createAccount:'Create Account', logIn:'Log In',
+    heroEyebrow:'Manufacturing Sourcing, Simplified',
+    heroTitlePre:'Optimizing Collaboration Between ', heroTitleGrad:'Mexico and the U.S.', heroTitlePost:' in the Metalworking Industry',
+    heroSub:'INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico — sourcing, quoting, production and logistics, all through a single point of contact.',
+    whyInnous:'Why INNOUS',
+    value1:'Vetted manufacturing partners, reviewed before they see an RFQ',
+    value2:'One point of contact from first quote to final shipment',
+    value3:'Full visibility — quoting, production, QC, and shipping in one place',
+    value4:'Confidential by design — suppliers never see your identity or price',
+    whatWeSource:'What We Source',
+    back:'Back',
+    loginTitle:'Log in', loginSub:'Welcome back to INNOUS.',
+    usernameOrEmail:'Username or Email', password:'Password',
+    forgotPassword:'Forgot your password?', orWord:'or', continueWithGoogle:'Continue with Google',
+    dontHaveAccount:"Don't have an account?", signUp:'Sign up',
+    forgotTitle:'Forgot your password?',
+    forgotSub:"Enter your username or email and we'll send you a link to set a new one.",
+    sendResetLink:'Send Reset Link',
+    checkEmailTitle:'Check your email',
+    forgotSentSub:"If an account exists for that username or email, we've sent a link to reset the password.",
+    backToLogin:'Back to Log In',
+    resetPasswordTitle:'Reset your password', resetPasswordSub:'Choose a new password for your INNOUS account.',
+    newPassword:'New Password', confirmPassword:'Confirm Password', savePassword:'Save Password',
+    signupCheckEmailTitle:'Check your email',
+    signupCheckEmailSub:(email)=>`We sent a link to <b>${email}</b> to confirm your account. Open it from this same device or browser to finish creating it.`,
+    signupClientTitle:'Create your client account',
+    signupClientSub:'Start sourcing verified manufacturing partners in Mexico.',
+    industry:'Industry', selectIndustry:'Select your industry',
+  },
+  es: {
+    newHere:'¿Nuevo aquí?', alreadyHaveAccount:'¿Ya tienes cuenta?',
+    createAccount:'Crear Cuenta', logIn:'Iniciar Sesión',
+    heroEyebrow:'Sourcing de Manufactura, Simplificado',
+    heroTitlePre:'Optimizando la Colaboración Entre ', heroTitleGrad:'México y Estados Unidos', heroTitlePost:' en la Industria Metalmecánica',
+    heroSub:'INNOUS conecta a compradores industriales de Estados Unidos con socios de manufactura verificados en México — sourcing, cotización, producción y logística, todo a través de un solo punto de contacto.',
+    whyInnous:'Por qué INNOUS',
+    value1:'Proveedores de manufactura verificados, revisados antes de ver una cotización (RFQ)',
+    value2:'Un solo punto de contacto, desde la primera cotización hasta el envío final',
+    value3:'Visibilidad total — cotización, producción, control de calidad y envío en un solo lugar',
+    value4:'Confidencial por diseño — los proveedores nunca ven tu identidad ni tu precio',
+    whatWeSource:'Lo Que Cotizamos',
+    back:'Atrás',
+    loginTitle:'Iniciar sesión', loginSub:'Bienvenido de nuevo a INNOUS.',
+    usernameOrEmail:'Usuario o Correo', password:'Contraseña',
+    forgotPassword:'¿Olvidaste tu contraseña?', orWord:'o', continueWithGoogle:'Continuar con Google',
+    dontHaveAccount:'¿No tienes cuenta?', signUp:'Regístrate',
+    forgotTitle:'¿Olvidaste tu contraseña?',
+    forgotSub:'Escribe tu usuario o correo y te mandaremos un link para poner una nueva.',
+    sendResetLink:'Enviar Link',
+    checkEmailTitle:'Revisa tu correo',
+    forgotSentSub:'Si existe una cuenta con ese usuario o correo, te mandamos un link para restablecer la contraseña.',
+    backToLogin:'Volver a Iniciar Sesión',
+    resetPasswordTitle:'Restablece tu contraseña', resetPasswordSub:'Elige una nueva contraseña para tu cuenta de INNOUS.',
+    newPassword:'Nueva Contraseña', confirmPassword:'Confirmar Contraseña', savePassword:'Guardar Contraseña',
+    signupCheckEmailTitle:'Revisa tu correo',
+    signupCheckEmailSub:(email)=>`Te mandamos un link a <b>${email}</b> para confirmar tu cuenta. Ábrelo desde este mismo dispositivo o navegador para terminar de crearla.`,
+    signupClientTitle:'Crea tu cuenta de cliente',
+    signupClientSub:'Empieza a buscar proveedores de manufactura verificados en México.',
+    industry:'Industria', selectIndustry:'Selecciona tu industria',
+  },
+};
+function at(key){ const d = AUTH_I18N[STATE.ui.authLang] || AUTH_I18N.en; return d[key] !== undefined ? d[key] : AUTH_I18N.en[key]; }
+function authLangToggleHtml(){
+  const isEs = STATE.ui.authLang==='es';
+  return `<button type="button" class="auth-lang-toggle" onclick="App.setAuthLang('${isEs?'en':'es'}')" aria-label="${isEs?'Switch to English':'Cambiar a español'}">${isEs?'EN':'ES'}</button>`;
+}
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
   if(STATE.authView==='recovery') root.innerHTML = renderRecoveryForm();
@@ -4228,14 +4317,14 @@ function renderSignupCheckEmail(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="mail-check"></i></div>
-          <div class="auth-card-title">Check your email</div>
-          <div class="auth-card-sub">We sent a link to <b>${escAttr(email)}</b> to confirm your account. Open it from this same device or browser to finish creating it.</div>
-          <button type="button" class="btn btn-secondary btn-block" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>Back</button>
+          <div class="auth-card-title">${at('signupCheckEmailTitle')}</div>
+          <div class="auth-card-sub">${at('signupCheckEmailSub')(escAttr(email))}</div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>${at('back')}</button>
         </div>
       </div>
     </div>
@@ -4257,17 +4346,17 @@ function renderRecoveryForm(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="key-round"></i></div>
-          <div class="auth-card-title">Reset your password</div>
-          <div class="auth-card-sub">Choose a new password for your INNOUS account.</div>
+          <div class="auth-card-title">${at('resetPasswordTitle')}</div>
+          <div class="auth-card-sub">${at('resetPasswordSub')}</div>
           <form onsubmit="return App.submitPasswordRecovery(event)">
-            <div class="form-group password-field"><label class="field-label">New Password</label>${pwFieldHtml('recovery-password', 'name="password" required autocomplete="new-password" minlength="8"')}</div>
-            <div class="form-group password-field"><label class="field-label">Confirm Password</label>${pwFieldHtml('recovery-confirm', 'name="confirm" required autocomplete="new-password" minlength="8"')}</div>
-            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>Save Password</button>
+            <div class="form-group password-field"><label class="field-label">${at('newPassword')}</label>${pwFieldHtml('recovery-password', 'name="password" required autocomplete="new-password" minlength="8"')}</div>
+            <div class="form-group password-field"><label class="field-label">${at('confirmPassword')}</label>${pwFieldHtml('recovery-confirm', 'name="confirm" required autocomplete="new-password" minlength="8"')}</div>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="check"></i>${at('savePassword')}</button>
           </form>
         </div>
       </div>
@@ -4286,14 +4375,14 @@ function renderForgotPasswordForm(){
     ${authTopbar()}
     <div class="auth-main">
       <div class="auth-narrow">
-        <div class="auth-back" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>Back</div>
+        <div class="auth-back" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>${at('back')}</div>
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="key-round"></i></div>
-          <div class="auth-card-title">Forgot your password?</div>
-          <div class="auth-card-sub">Enter your username or email and we'll send you a link to set a new one.</div>
+          <div class="auth-card-title">${at('forgotTitle')}</div>
+          <div class="auth-card-sub">${at('forgotSub')}</div>
           <form onsubmit="return App.submitForgotPassword(event)">
-            <div class="form-group"><label class="field-label">Username or Email</label><input type="text" name="login" required autocomplete="username"></div>
-            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="send"></i>Send Reset Link</button>
+            <div class="form-group"><label class="field-label">${at('usernameOrEmail')}</label><input type="text" name="login" required autocomplete="username"></div>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="send"></i>${at('sendResetLink')}</button>
           </form>
         </div>
       </div>
@@ -4308,14 +4397,14 @@ function renderForgotPasswordSent(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="mail-check"></i></div>
-          <div class="auth-card-title">Check your email</div>
-          <div class="auth-card-sub">If an account exists for that username or email, we've sent a link to reset the password.</div>
-          <button type="button" class="btn btn-secondary btn-block" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>Back to Log In</button>
+          <div class="auth-card-title">${at('checkEmailTitle')}</div>
+          <div class="auth-card-sub">${at('forgotSentSub')}</div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.goToLogin()"><i data-lucide="arrow-left"></i>${at('backToLogin')}</button>
         </div>
       </div>
     </div>
@@ -4327,7 +4416,8 @@ function authTopbar(){
   <div class="auth-topbar">
     <a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
     <div class="auth-topbar-actions">
-      ${STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">Already have an account?</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>Log In</b></a>` : `<span style="color:var(--ink-tertiary);">New here?</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>Create Account</b></a>`}
+      ${authLangToggleHtml()}
+      ${STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`}
     </div>
   </div>`;
 }
@@ -4357,24 +4447,24 @@ function renderLanding(){
     <div class="auth-main auth-main-landing">
       <div class="landing-grid">
         <div class="hero-wrap landing-hero-col" style="margin:0;">
-          <div class="hero-eyebrow"><span class="dot"></span>Manufacturing Sourcing, Simplified</div>
-          <div class="hero-title">Optimizing Collaboration Between <span class="grad">Mexico and the U.S.</span> in the Metalworking Industry</div>
-          <div class="hero-sub">INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico — sourcing, quoting, production and logistics, all through a single point of contact.</div>
+          <div class="hero-eyebrow"><span class="dot"></span>${at('heroEyebrow')}</div>
+          <div class="hero-title">${at('heroTitlePre')}<span class="grad">${at('heroTitleGrad')}</span>${at('heroTitlePost')}</div>
+          <div class="hero-sub">${at('heroSub')}</div>
           <div class="hero-actions">
-            <button class="btn btn-hero-primary" onclick="App.goToSignup()"><i data-lucide="user-plus"></i>Create Account</button>
-            <button class="btn btn-hero-ghost" onclick="App.goToLogin()"><i data-lucide="log-in"></i>Log In</button>
+            <button class="btn btn-hero-primary" onclick="App.goToSignup()"><i data-lucide="user-plus"></i>${at('createAccount')}</button>
+            <button class="btn btn-hero-ghost" onclick="App.goToLogin()"><i data-lucide="log-in"></i>${at('logIn')}</button>
           </div>
         </div>
         <div class="landing-info-card">
-          <div class="landing-info-title">Why INNOUS</div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">Vetted manufacturing partners, reviewed before they see an RFQ</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">One point of contact from first quote to final shipment</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">Full visibility — quoting, production, QC, and shipping in one place</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">Confidential by design — suppliers never see your identity or price</div></div>
+          <div class="landing-info-title">${at('whyInnous')}</div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">${at('value3')}</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">${at('value4')}</div></div>
           <div class="landing-info-divider"></div>
-          <div class="landing-caps-label">What We Source</div>
+          <div class="landing-caps-label">${at('whatWeSource')}</div>
           <div class="landing-process-row">
-            ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${p}</span>`).join('')}
+            ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${STATE.ui.authLang==='es'?procES(p):p}</span>`).join('')}
           </div>
         </div>
       </div>
@@ -4390,9 +4480,21 @@ function renderLanding(){
    'SUPPLIER' from this UI anymore) but the picker screen itself is gone. */
 function renderSignupForm(){
   const role = STATE.signupRole;
-  const es = role==='SUPPLIER';
+  // fix144: 'es' sigue siendo la bandera que decide el TEXTO de este
+  // formulario (como ya era desde antes) — ahora también es cierto
+  // cuando el visitante prendió el switch de idioma en la landing, no
+  // solo cuando el rol es SUPPLIER. Pero la ESTRUCTURA del formulario
+  // (cuántos pasos hay, qué campos pide cada uno) sigue dependiendo
+  // nada más de isSupplierRole — ese rol ya ni siquiera se alcanza
+  // desde el signup público (App.goToSignup fuerza CLIENT; el registro
+  // de proveedores lo hace INNOUS internamente en #/innous/new-supplier,
+  // una pantalla aparte que no pasa por aquí), pero se deja tal cual
+  // por si algún día se reactiva.
+  const isSupplierRole = role==='SUPPLIER';
+  const langES = STATE.ui.authLang==='es';
+  const es = isSupplierRole || langES;
   const step = STATE.ui.signupStep||0;
-  const totalSteps = es ? 4 : 3;
+  const totalSteps = isSupplierRole ? 4 : 3;
   const lastStep = totalSteps-1;
   const show = (i)=> i===step ? '' : 'style="display:none;"';
   const navBtns = (i, submit)=> `
@@ -4408,7 +4510,7 @@ function renderSignupForm(){
       <div class="signup-step-title">${es?'Empresa y contacto':'Company & contact'}</div>
       <div class="form-group"><label class="field-label">${es?'Nombre de la empresa':'Company name'}</label><input type="text" name="company" required></div>
       <div class="form-group"><label class="field-label">${es?'Nombre de contacto':'Contact name'}</label><input type="text" name="contact" required></div>
-      <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${es?'+52 ...':'(555) 555-0100'}"></div>
+      <div class="form-group"><label class="field-label">${es?'Teléfono':'Phone'}</label><input type="tel" name="phone" required placeholder="${isSupplierRole?'+52 ...':'(555) 555-0100'}"></div>
       <div class="form-group"><label class="field-label">Email</label><input type="email" name="email" required></div>
       ${navBtns(0,false)}
     </div>`;
@@ -4417,26 +4519,26 @@ function renderSignupForm(){
     <div class="signup-step" data-step="1" ${show(1)}>
       <div class="signup-step-title">${es?'Ubicación y experiencia':'Location & industry'}</div>
       <div class="form-row">
-        <div class="form-group"><label class="field-label">${es?'Ciudad':'City'}</label><input type="text" name="city" required placeholder="${es?'ej. Monterrey':'e.g. Detroit'}"></div>
-        <div class="form-group"><label class="field-label">${es?'Estado':'State'}</label><input type="text" name="state" required placeholder="${es?'ej. Nuevo León':'e.g. MI'}"></div>
+        <div class="form-group"><label class="field-label">${es?'Ciudad':'City'}</label><input type="text" name="city" required placeholder="${isSupplierRole?(es?'ej. Monterrey':'e.g. Monterrey'):(es?'ej. Detroit':'e.g. Detroit')}"></div>
+        <div class="form-group"><label class="field-label">${es?'Estado':'State'}</label><input type="text" name="state" required placeholder="${isSupplierRole?(es?'ej. Nuevo León':'e.g. Nuevo León'):(es?'ej. MI':'e.g. MI')}"></div>
       </div>
-      ${es ? `
+      ${isSupplierRole ? `
       <div class="form-row">
         <div class="form-group"><label class="field-label">Años operando</label><input type="number" name="yearsOperating" min="0" required></div>
         <div class="form-group"><label class="field-label">Cantidad de operadores</label><input type="number" name="operators" min="0" required></div>
       </div>
       ` : `
-      <div class="form-group"><label class="field-label">Industry</label>
+      <div class="form-group"><label class="field-label">${at('industry')}</label>
         <select name="industry" required>
-          <option value="" disabled selected>Select your industry</option>
+          <option value="" disabled selected>${at('selectIndustry')}</option>
           ${INDUSTRIES.map(i=>`<option value="${i}">${i}</option>`).join('')}
         </select>
       </div>
       `}
-      ${navBtns(1, !es && 1===lastStep)}
+      ${navBtns(1, !isSupplierRole && 1===lastStep)}
     </div>`;
 
-  const stepCapabilities = es ? `
+  const stepCapabilities = isSupplierRole ? `
     <div class="signup-step" data-step="2" ${show(2)}>
       <div class="signup-step-title">Capacidades</div>
       <div class="form-group">
@@ -4473,11 +4575,11 @@ function renderSignupForm(){
     <div class="auth-mesh"></div>
     ${authTopbar()}
     <div class="auth-main">
-      <div class="auth-narrow" style="max-width:${es?'520px':'400px'};">
+      <div class="auth-narrow" style="max-width:${isSupplierRole?'520px':'400px'};">
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="user-plus"></i></div>
-          <div class="auth-card-title">${es?'Crea tu cuenta de proveedor':'Create your client account'}</div>
-          <div class="auth-card-sub">${es?'Empieza a recibir RFQs de clientes en Estados Unidos.':'Start sourcing verified manufacturing partners in Mexico.'}</div>
+          <div class="auth-card-title">${isSupplierRole?'Crea tu cuenta de proveedor':at('signupClientTitle')}</div>
+          <div class="auth-card-sub">${isSupplierRole?'Empieza a recibir RFQs de clientes en Estados Unidos.':at('signupClientSub')}</div>
           ${stepDotsHtml(totalSteps, step)}
           <form id="signup-form" onsubmit="return App.submitSignup(event)">
             ${stepCompany}
@@ -4499,22 +4601,22 @@ function renderLoginForm(){
     ${authTopbar()}
     <div class="auth-main">
       <div class="auth-narrow">
-        <div class="auth-back" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>Back</div>
+        <div class="auth-back" onclick="App.backToLanding()"><i data-lucide="arrow-left"></i>${at('back')}</div>
         <div class="auth-card">
           <div class="auth-card-icon"><i data-lucide="log-in"></i></div>
-          <div class="auth-card-title">Log in</div>
-          <div class="auth-card-sub">Welcome back to INNOUS.</div>
+          <div class="auth-card-title">${at('loginTitle')}</div>
+          <div class="auth-card-sub">${at('loginSub')}</div>
           <form onsubmit="return App.submitLogin(event)">
-            <div class="form-group"><label class="field-label">Username or Email</label><input type="text" name="login" required autocomplete="username"></div>
-            <div class="form-group password-field"><label class="field-label">Password</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}
-              <div style="text-align:right;margin-top:6px;"><a onclick="App.goToForgotPassword()" style="font-size:12.5px;color:var(--accent-ink);cursor:pointer;">Forgot your password?</a></div>
+            <div class="form-group"><label class="field-label">${at('usernameOrEmail')}</label><input type="text" name="login" required autocomplete="username"></div>
+            <div class="form-group password-field"><label class="field-label">${at('password')}</label>${pwFieldHtml('login-password', 'name="password" required autocomplete="current-password"')}
+              <div style="text-align:right;margin-top:6px;"><a onclick="App.goToForgotPassword()" style="font-size:12.5px;color:var(--accent-ink);cursor:pointer;">${at('forgotPassword')}</a></div>
             </div>
-            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>Log In</button>
+            <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>${at('logIn')}</button>
           </form>
-          <div class="auth-or-divider"><span>or</span></div>
-          <button type="button" class="btn btn-secondary btn-block" onclick="App.signInWithGoogle()">${GOOGLE_G_ICON_SVG}Continue with Google</button>
+          <div class="auth-or-divider"><span>${at('orWord')}</span></div>
+          <button type="button" class="btn btn-secondary btn-block" onclick="App.signInWithGoogle()">${GOOGLE_G_ICON_SVG}${at('continueWithGoogle')}</button>
         </div>
-        <div class="auth-switch">Don't have an account? <a onclick="App.goToSignup()">Sign up</a></div>
+        <div class="auth-switch">${at('dontHaveAccount')} <a onclick="App.goToSignup()">${at('signUp')}</a></div>
       </div>
     </div>
     ${authFooterLinks()}
@@ -7874,6 +7976,11 @@ const App = {
   goToSignup(){ App.pickSignupRole('CLIENT'); },
   backToLanding(){ STATE.authView='landing'; STATE.signupRole=null; renderAuthRoot(); },
   pickSignupRole(role){ STATE.signupRole=role; STATE.authView='signup'; STATE.ui.signupStep=0; renderAuthRoot(); },
+  setAuthLang(lang){
+    STATE.ui.authLang = lang==='es' ? 'es' : 'en';
+    try{ localStorage.setItem('innous_auth_lang', STATE.ui.authLang); }catch(e){}
+    renderAuthRoot();
+  },
   async submitSignup(e){
     e.preventDefault();
     const f = new FormData(e.target);
