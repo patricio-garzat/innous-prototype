@@ -4697,7 +4697,7 @@ function route(){
   const el = document.getElementById('app-content');
   const samePage = (hash === lastRoutedHash);
   const prevScroll = el.scrollTop;
-  const isChatKey = (key==='innous/messages' || key==='client/messages' || key==='supplier/messages');
+  const isChatKey = (key==='innous/messages' || key==='client/messages' || key==='supplier/messages' || key==='innous/team-chat');
   // Captured BEFORE the innerHTML swap below destroys this node — route()
   // reruns on every 12s poll tick and every realtime message event, not
   // just on send/switch, so without this a person who'd scrolled up to
@@ -7063,7 +7063,10 @@ ROUTES['innous/team-chat'] = function(peerId){
   const active = others.find(t=>t.id===STATE.ui.teamChatPeerId);
   const msgs = active ? teamChatThread(active.id) : [];
   const key = active ? 'team:'+active.id : null;
-  if(active){ ensureTypingChannel(key); markTeamChatThreadRead(msgs); }
+  // updateTypingBubbleDom (los "..." animados) solo pinta si esto
+  // coincide con el hilo que de verdad está en pantalla — mismo patrón
+  // que ROUTES['innous/messages'] ya usa.
+  if(active){ STATE.ui.activeChatKey = key; ensureTypingChannel(key); markTeamChatThreadRead(msgs); }
   return `
   <div class="content-inner messages-shell ${peerId?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Chat de Equipo</div><div class="page-subtitle">Mensajes directos con tus compañeros de INNOUS.</div></div></div>
