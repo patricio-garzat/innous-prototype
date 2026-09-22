@@ -926,27 +926,19 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 }
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 .auth-topbar .logo-svg{height:clamp(40px,8vh,88px);}
-/* fix146: en el home, el logo debe alinearse con el borde izquierdo del
-   texto del hero de abajo (.landing-grid, centrado con max-width:1180px
-   dentro de .auth-main) en vez de con el padding fijo de 40px que usa
-   el resto de las pantallas de acceso (login/signup, con una tarjeta
-   angosta que no necesita alinearse con nada). .auth-topbar-wide mete
-   ese mismo max-width/centrado adentro del topbar solo para el home —
-   fix147 le quitó el logo (ahora vive en .landing-brand-band, arriba
-   de todo) así que aquí solo quedan los botones, alineados a la
-   derecha.
-   fix147: franja azul (mismo degradado navy→accent que ya se usaba en
-   botones/dividers) arriba de todo el home, con el logo en blanco
-   adentro — referencia que dio el usuario: la barra de color del home
-   de FRISA. El logo reutiliza el mismo SVG de siempre; las dos clases
-   de relleno (innous-logo-dark/innous-logo-blue) se fuerzan a blanco
-   nada más dentro de esta franja para que haya contraste. */
+/* fix147/148: en el home, logo + switch de idioma/Log In viven juntos
+   dentro de una franja azul (mismo degradado navy→accent que ya se
+   usaba en botones/dividers) arriba de todo — referencia que dio el
+   usuario: la barra de color del home de FRISA. El resto de las
+   pantallas de acceso (login/signup, con una tarjeta angosta) siguen
+   con el .auth-topbar de siempre, sin esta franja. El logo reutiliza
+   el mismo SVG de siempre; las dos clases de relleno
+   (innous-logo-dark/innous-logo-blue) se fuerzan a blanco nada más
+   dentro de esta franja para que haya contraste. */
 .landing-brand-band{flex:0 0 auto;position:relative;z-index:1;background:linear-gradient(90deg,var(--navy),var(--accent-ink));}
-.landing-brand-band-inner{max-width:1180px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;}
-.landing-brand-band .logo-svg{height:30px;width:auto;display:block;}
+.landing-brand-band-inner{max-width:1180px;margin:0 auto;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;}
+.landing-brand-band .logo-svg{height:clamp(52px,7vh,72px);width:auto;display:block;}
 .landing-brand-band .logo-svg .innous-logo-dark,.landing-brand-band .logo-svg .innous-logo-blue{fill:#fff;}
-.auth-topbar.auth-topbar-wide{display:block;padding-left:24px;padding-right:24px;}
-.auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:flex-end;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
@@ -4438,6 +4430,21 @@ function renderForgotPasswordSent(){
     ${authFooterLinks()}
   </div>`;
 }
+// fix148: el switch de idioma/Log In-Create Account vive DENTRO de la
+// misma franja azul que el logo (no en un renglón aparte debajo) — el
+// usuario lo pidió explícitamente tras ver fix147 con las dos filas
+// separadas. onDark cambia nada más el color del texto suelto
+// ("¿Ya tienes cuenta?"/"¿Nuevo aquí?", que normalmente usa un gris
+// apagado que no se leería sobre el azul) — los dos botones/pills ya
+// son blancos de por sí, esos se ven bien en cualquier fondo.
+function authTopbarActionsHtml(onDark){
+  const mutedColor = onDark ? 'rgba(255,255,255,.82)' : 'var(--ink-tertiary)';
+  return `
+    <div class="auth-topbar-actions">
+      ${authLangToggleHtml()}
+      ${STATE.authView!=='login' ? `<span style="color:${mutedColor};">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:${mutedColor};">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`}
+    </div>`;
+}
 // fix147: franja azul de marca arriba del todo, solo en el home — ver
 // el comentario junto a .landing-brand-band en el CSS.
 function landingBrandBandHtml(){
@@ -4445,19 +4452,12 @@ function landingBrandBandHtml(){
   <div class="landing-brand-band">
     <div class="landing-brand-band-inner">
       <a href="#" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
+      ${authTopbarActionsHtml(true)}
     </div>
   </div>`;
 }
-function authTopbar(wide){
-  const actions = `
-    <div class="auth-topbar-actions">
-      ${authLangToggleHtml()}
-      ${STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`}
-    </div>`;
-  // fix147: en el home el logo ya vive en landingBrandBandHtml() (la
-  // franja azul de arriba), así que aquí (wide) solo van los botones.
-  if(wide) return `<div class="auth-topbar auth-topbar-wide"><div class="auth-topbar-inner">${actions}</div></div>`;
-  return `<div class="auth-topbar"><a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>${actions}</div>`;
+function authTopbar(){
+  return `<div class="auth-topbar"><a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>${authTopbarActionsHtml()}</div>`;
 }
 function authFooterLinks(){
   const year = new Date().getFullYear();
@@ -4486,7 +4486,6 @@ function renderLanding(){
   <div class="auth-shell">
     <div class="auth-mesh"></div>
     ${landingBrandBandHtml()}
-    ${authTopbar(true)}
     <div class="auth-main auth-main-landing">
       <div class="landing-grid">
         <div class="hero-wrap landing-hero-col" style="margin:0;">
