@@ -2833,7 +2833,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang() },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -6739,13 +6739,32 @@ function settingsBillingInfoSection(){
 // The modal opened by a row click above — one account's contact + billing
 // forms together, so both are one click away instead of split across two
 // separate cards on a page.
+// fix145: fila de foto arriba de los formularios del modal — antes
+// INNOUS no tenía forma de cambiar la foto de un cliente/proveedor ya
+// dado de alta (solo se ponía una vez, al crear la cuenta de
+// proveedor). Reutiliza el mismo cropper 1:1 de siempre
+// (App.openCropModal), guardando en un draft nuevo (customerPhotoDrafts/
+// supplierPhotoDrafts) hasta que se le da "Guardar Cambios".
+function accountInfoPhotoRowHtml(type, id, photo, initialsText){
+  const draft = (type==='customer' ? STATE.ui.customerPhotoDrafts : STATE.ui.supplierPhotoDrafts)[id];
+  const shown = draft!==undefined ? draft : photo;
+  const inputId = `account-info-photo-input-${type}-${id}`;
+  return `
+  <div class="account-photo-row" style="margin-bottom:16px;">
+    ${avatarHtml(shown, initialsText, 'var(--navy)', 64)}
+    <div>
+      <input type="file" id="${inputId}" accept="image/*" style="display:none;" onchange="App.onAccountInfoPhotoSelected('${type}','${id}',this)">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('${inputId}').click()"><i data-lucide="camera"></i>Cambiar foto</button>
+    </div>
+  </div>`;
+}
 function accountInfoModalHtml(){
   const { type, id } = STATE.ui.accountInfoModal || {};
   if(type==='customer'){
     const c = CUSTOMERS.find(x=>x.id===id); if(!c) return '';
     return `
     <div class="modal-header"><h3>${c.company}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${customerCompanySection(c)}${customerContactSection(c)}${customerBillingSection(c)}
+    <div class="modal-body">${accountInfoPhotoRowHtml('customer', c.id, c.photo, initials(c.company))}${customerCompanySection(c)}${customerContactSection(c)}${customerBillingSection(c)}
       <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveCustomerAccount('${c.id}')"><i data-lucide="save"></i>Guardar Cambios</button></div>
     </div>`;
   }
@@ -6753,7 +6772,7 @@ function accountInfoModalHtml(){
     const s = SUPPLIERS.find(x=>x.id===id); if(!s) return '';
     return `
     <div class="modal-header"><h3>${s.name}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="modal-body">${supplierCompanySection(s)}${supplierContactSection(s)}${supplierCapabilitiesSection(s)}${supplierBillingSection(s)}
+    <div class="modal-body">${accountInfoPhotoRowHtml('supplier', s.id, s.photo, initials(s.name))}${supplierCompanySection(s)}${supplierContactSection(s)}${supplierCapabilitiesSection(s)}${supplierBillingSection(s)}
       <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" onclick="App.saveSupplierAccount('${s.id}')"><i data-lucide="save"></i>Guardar Cambios</button></div>
     </div>`;
   }
@@ -8921,6 +8940,18 @@ const App = {
     reader.onload = ()=> App.openCropModal(reader.result, 'innous-logo');
     reader.readAsDataURL(file);
   },
+  // fix145: same picker, for INNOUS changing an EXISTING client/supplier's
+  // photo from the Datos de la Empresa/Contacto modal (accountInfoModalHtml)
+  // — target:'edit-customer:<id>'/'edit-supplier:<id>' tells saveCrop/
+  // cancelCrop to write into customerPhotoDrafts/supplierPhotoDrafts and
+  // reopen that same modal instead of the (self-service) Account modal.
+  onAccountInfoPhotoSelected(type, id, input){
+    const file = input.files && input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=> App.openCropModal(reader.result, `edit-${type}:${id}`);
+    reader.readAsDataURL(file);
+  },
   // Toggles one value in/out of a checkbox-list field on the new-supplier
   // draft (capabilities/certs) — same "array of selected values" shape
   // App.submitSignup used to build from FormData.getAll().
@@ -9054,7 +9085,12 @@ const App = {
     const target = STATE.ui.cropState?.target || 'account';
     STATE.ui.cropState = null;
     document.onmousemove = null; document.onmouseup = null; document.ontouchmove = null; document.ontouchend = null;
-    if(target==='new-supplier' || target==='innous-logo') closeModal(); else App.openAccountModal();
+    if(target==='new-supplier' || target==='innous-logo') closeModal();
+    else if(target.startsWith('edit-customer:') || target.startsWith('edit-supplier:')){
+      const [type, id] = [target.startsWith('edit-customer:')?'customer':'supplier', target.split(':')[1]];
+      App.openAccountInfoModal(type, id);
+    }
+    else App.openAccountModal();
   },
   saveCrop(){
     const c = STATE.ui.cropState;
@@ -9082,6 +9118,11 @@ const App = {
       STATE.ui.settingsDraft.logoUrl = dataUrl;
       closeModal();
       route();
+    } else if(target.startsWith('edit-customer:') || target.startsWith('edit-supplier:')){
+      const isCustomer = target.startsWith('edit-customer:');
+      const id = target.split(':')[1];
+      (isCustomer ? STATE.ui.customerPhotoDrafts : STATE.ui.supplierPhotoDrafts)[id] = dataUrl;
+      App.openAccountInfoModal(isCustomer?'customer':'supplier', id);
     } else {
       if(!STATE.ui.accountDraft) STATE.ui.accountDraft = {name:'', company:'', photo:null};
       STATE.ui.accountDraft.photo = dataUrl;
@@ -9771,21 +9812,24 @@ const App = {
     const cd = STATE.ui.customerCompanyDrafts[id] || {};
     const kd = STATE.ui.customerContactDrafts[id] || {};
     const bd = STATE.ui.customerBillingDrafts[id] || {};
+    const photoDraft = STATE.ui.customerPhotoDrafts[id];
     // company is required (not-null in the DB) — an empty field means
     // "didn't change it", not "blank it out".
     const next = {
       company: (cd.company||'').trim()||c.company, city: (cd.city||'').trim(),
       contact: (kd.contact||'').trim(), position: (kd.position||'').trim(), phone: (kd.phone||'').trim(), email: (kd.email||'').trim(),
       address: (bd.address||'').trim(),
+      photo: photoDraft!==undefined ? photoDraft : c.photo,
     };
     if(isRealAccountId(id)){
       const { error } = await sb.from('customers').update({
         company: next.company, city: next.city, contact: next.contact, position: next.position,
-        phone: next.phone, email: next.email, address: next.address,
+        phone: next.phone, email: next.email, address: next.address, photo_url: next.photo,
       }).eq('user_id', id);
       if(error){ showToast(error.message); return; }
     }
     Object.assign(c, next);
+    delete STATE.ui.customerPhotoDrafts[id];
     showToast('Cambios guardados', 'success');
     STATE.ui.accountInfoModal = null;
     closeModal();
@@ -9824,6 +9868,7 @@ const App = {
     const kd = STATE.ui.supplierContactDrafts[id] || {};
     const pd = STATE.ui.supplierCapabilitiesDrafts[id] || {};
     const bd = STATE.ui.supplierBillingDrafts[id] || {};
+    const photoDraft = STATE.ui.supplierPhotoDrafts[id];
     // name is required (not-null in the DB) — an empty field means
     // "didn't change it", not "blank it out".
     // username is unique across suppliers (DB-enforced) — like name, an
@@ -9837,13 +9882,14 @@ const App = {
       certs: pd.certs!==undefined ? pd.certs : (s.certs||[]),
       machines: pd.machines!==undefined ? pd.machines.split(',').map(x=>x.trim()).filter(Boolean) : (s.machines||[]),
       legalName: (bd.legalName||'').trim(), rfc: (bd.rfc||'').trim(), address: (bd.address||'').trim(),
+      photo: photoDraft!==undefined ? photoDraft : s.photo,
     };
     if(next.username && !/^[a-z0-9._-]{3,32}$/.test(next.username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
     if(isRealAccountId(id)){
       const { error } = await sb.from('suppliers').update({
         name: next.name, city: next.city, contact_name: next.contactName, position: next.position,
         phone: next.phone, email: next.email, username: next.username||null, capabilities: next.capabilities, certs: next.certs,
-        machines: next.machines, legal_name: next.legalName, rfc: next.rfc, address: next.address,
+        machines: next.machines, legal_name: next.legalName, rfc: next.rfc, address: next.address, photo_url: next.photo,
       }).eq('user_id', id);
       if(error){
         const msg = /duplicate key|unique constraint/i.test(error.message) ? 'Ese nombre de usuario ya está en uso por otro proveedor.' : error.message;
@@ -9851,6 +9897,7 @@ const App = {
       }
     }
     Object.assign(s, next);
+    delete STATE.ui.supplierPhotoDrafts[id];
     showToast('Cambios guardados', 'success');
     STATE.ui.accountInfoModal = null;
     closeModal();
