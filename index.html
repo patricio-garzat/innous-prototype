@@ -958,53 +958,46 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .btn-hero-ghost{background:var(--surface);color:var(--ink);border:1.5px solid var(--border-strong);transition:border-color .15s,transform .15s,background .15s;}
 .btn-hero-ghost:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
 
-.how-it-works{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:clamp(20px,6vh,84px);border-top:1px solid var(--border);}
-.how-step{padding:clamp(12px,3vh,30px) 22px 4px;}
-.how-step + .how-step{border-left:1px solid var(--border);}
-.how-step-num{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:12px;color:var(--accent-ink);letter-spacing:0.5px;margin-bottom:14px;}
-.how-step-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:15px;margin-bottom:8px;color:var(--ink);}
-.how-step-sub{font-size:13px;color:var(--ink-tertiary);line-height:1.6;max-width:260px;margin:0 auto;}
-@media(max-width:640px){
-  .how-it-works{grid-template-columns:1fr;border-top:none;margin-top:56px;}
-  .how-step{border-top:1px solid var(--border);padding:24px 2px 2px;text-align:left;}
-  .how-step + .how-step{border-left:none;}
-  .how-step-sub{max-width:none;}
-}
-/* Short viewports (common with browser toolbars/bookmark bars eating height,
-   and virtually all phones in portrait once the stacked 1-column layout
-   below kicks in): the "how it works" strip is purely decorative — hide it
-   rather than ever let the landing page need scrolling to show the
-   Create Account/Log In CTAs. */
-@media(max-height:800px){
-  .how-it-works{display:none;}
-}
-@media(max-width:640px) and (max-height:920px){
-  .how-it-works{display:none;}
+/* fix141: la página completa (hero + info) debe caber en una sola
+   pantalla, sin scroll — de ahí las dos columnas en vez del apilado
+   vertical de antes (fix140), que obligaba a bajar la página para ver
+   el resto. .landing-hero-col es .hero-wrap alineado a la izquierda
+   dentro de esa rejilla (en vez de centrado como en login/signup, que
+   siguen usando .hero-wrap solo); en pantallas angostas vuelve a
+   centrarse y apilarse, donde el scroll ya es normal de cualquier forma. */
+.landing-grid{display:grid;grid-template-columns:1.1fr 0.9fr;gap:clamp(32px,5vw,64px);align-items:center;max-width:1180px;width:100%;margin:0 auto;}
+.landing-hero-col{text-align:left;}
+.landing-hero-col .hero-title,.landing-hero-col .hero-sub{margin-left:0;margin-right:0;}
+.landing-hero-col .hero-actions{justify-content:flex-start;}
+.landing-info-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 24px 56px -22px rgba(0,56,101,0.22);position:relative;overflow:hidden;}
+.landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
+.landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
+.landing-value-row{display:flex;align-items:center;gap:12px;padding:7px 0;}
+.landing-value-row .value-icon{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+.landing-value-row .value-icon svg{width:15px;height:15px;stroke:var(--accent-ink);}
+.landing-value-text{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.4;}
+.landing-info-divider{border-top:1px solid var(--border);margin:14px 0 16px;}
+.landing-caps-label{font-family:'Ubuntu',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--ink-tertiary);margin-bottom:10px;}
+.landing-process-row{display:flex;flex-wrap:wrap;gap:7px;}
+.landing-process-chip{font-size:11.5px;font-weight:600;color:var(--ink-secondary);background:var(--surface-alt);border:1px solid var(--border);border-radius:100px;padding:5px 11px;}
+@media(max-width:900px){
+  .landing-grid{grid-template-columns:1fr;max-width:520px;gap:32px;}
+  .landing-hero-col{text-align:center;}
+  .landing-hero-col .hero-title,.landing-hero-col .hero-sub{margin-left:auto;margin-right:auto;}
+  .landing-hero-col .hero-actions{justify-content:center;}
+  /* fix142: apilado en 1 columna casi siempre es más alto que la
+     pantalla del celular. .auth-main normalmente centra verticalmente
+     (align-items:center), pero cuando el contenido es más alto que el
+     viewport eso lo empuja fuera de la parte de arriba SIN que se pueda
+     hacer scroll hasta allá (el truco de "centrar" dentro de un
+     contenedor con scroll dejaba la mitad de arriba del hero
+     inalcanzable) — aquí sí toca que haya scroll normal, empezando
+     desde arriba. */
+  .auth-main-landing{align-items:flex-start;padding-top:28px;}
 }
 @media(max-height:640px){
   .hero-sub{display:none;}
 }
-
-/* fix140: landing page, below the hero — unlike .how-it-works above (kept
-   hidden on short viewports so the CTA never needs a scroll to reach),
-   this is meant to be scrolled to on purpose, so it's never hidden by a
-   height media query. .auth-main already has overflow-y:auto for
-   exactly this. */
-.landing-section{max-width:920px;margin:0 auto;padding-top:clamp(32px,7vh,72px);border-top:1px solid var(--border);}
-.landing-eyebrow{font-family:'Ubuntu',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:10px;text-align:center;}
-.landing-section-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:clamp(20px,3vw,27px);letter-spacing:-0.5px;color:var(--ink);text-align:center;margin-bottom:10px;}
-.landing-section-sub{font-size:14.5px;color:var(--ink-secondary);text-align:center;max-width:520px;margin:0 auto clamp(22px,4.5vh,42px);line-height:1.65;}
-.value-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;text-align:left;}
-.value-icon{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin-bottom:14px;}
-.value-icon svg{width:17px;height:17px;stroke:var(--accent-ink);}
-.value-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14.5px;margin-bottom:6px;color:var(--ink);}
-.value-sub{font-size:13px;color:var(--ink-tertiary);line-height:1.6;}
-@media(max-width:820px){.value-grid{grid-template-columns:1fr 1fr;}}
-@media(max-width:560px){.value-grid{grid-template-columns:1fr;}}
-.landing-process-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;}
-.landing-process-chip{font-family:'Ubuntu',sans-serif;font-size:13px;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:9px 18px;}
-.landing-about{max-width:660px;margin:0 auto;text-align:center;font-size:14.5px;color:var(--ink-secondary);line-height:1.8;}
-.landing-about strong{color:var(--ink);}
 
 .role-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%;max-width:620px;}
 .role-pick-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:30px 24px;text-align:left;transition:border-color .15s,box-shadow .15s,transform .15s;position:relative;}
@@ -4356,51 +4349,42 @@ function stepDotsHtml(total, current){
   for(let i=0;i<total;i++) out += `<span class="step-dot ${i===current?'active':(i<current?'done':'')}"></span>`;
   return out+'</div>';
 }
+// fix141: rediseñado a dos columnas para que quepa todo en una sola
+// pantalla, sin scroll (referencia que dio el usuario: el portal de
+// FRISA, que también mete todo en una sola vista — logo/branding a un
+// lado, información + acceso al otro). Columna izquierda = lo mismo de
+// siempre (hero + botones); columna derecha = una tarjeta compacta con
+// por qué INNOUS y qué se puede cotizar, para que quien entra sepa de
+// qué trata el portal sin tener que bajar la página. En pantallas
+// angostas (celular) SÍ se permite scroll — .auth-main ya tenía
+// overflow-y:auto — porque ahí ya nada cabe de lado a lado de cualquier
+// forma.
 function renderLanding(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
     ${authTopbar()}
-    <div class="auth-main" style="align-items:flex-start;padding-top:clamp(20px,6vh,64px);">
-      <div class="hero-wrap">
-        <div class="hero-eyebrow"><span class="dot"></span>Manufacturing Sourcing, Simplified</div>
-        <div class="hero-title">Optimizing Collaboration Between <span class="grad">Mexico and the U.S.</span> in the Metalworking Industry</div>
-        <div class="hero-sub">INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico — sourcing, quoting, production and logistics, all through a single point of contact.</div>
-        <div class="hero-actions">
-          <button class="btn btn-hero-primary" onclick="App.goToSignup()"><i data-lucide="user-plus"></i>Create Account</button>
-          <button class="btn btn-hero-ghost" onclick="App.goToLogin()"><i data-lucide="log-in"></i>Log In</button>
-        </div>
-        <div class="how-it-works">
-          <div class="how-step"><div class="how-step-num">01</div><div class="how-step-title">Request a Quote</div><div class="how-step-sub">Tell us what you need built — process, quantity, drawings. Takes a few minutes.</div></div>
-          <div class="how-step"><div class="how-step-num">02</div><div class="how-step-title">Compare Options</div><div class="how-step-sub">We source and vet manufacturing partners, then bring you the best 5 quotes.</div></div>
-          <div class="how-step"><div class="how-step-num">03</div><div class="how-step-title">Track to Delivery</div><div class="how-step-sub">Select an option and follow production from confirmation to shipping.</div></div>
-        </div>
-
-        <div class="landing-section">
-          <div class="landing-eyebrow">How We're Different</div>
-          <div class="landing-section-title">A sourcing partner, not a directory</div>
-          <div class="landing-section-sub">You're not left comparing suppliers on your own. INNOUS manages the relationship on both sides, from first quote to final shipment.</div>
-          <div class="value-grid">
-            <div class="value-card"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="value-title">Vetted Partners Only</div><div class="value-sub">Every manufacturer in our network is reviewed for quality systems, equipment, and delivery history before they ever see an RFQ.</div></div>
-            <div class="value-card"><div class="value-icon"><i data-lucide="user"></i></div><div class="value-title">One Point of Contact</div><div class="value-sub">You work with INNOUS, not five suppliers with five different processes, languages, and time zones.</div></div>
-            <div class="value-card"><div class="value-icon"><i data-lucide="eye"></i></div><div class="value-title">Full Visibility</div><div class="value-sub">Track your order through quoting, production, quality inspection, and shipping — all from one dashboard.</div></div>
-            <div class="value-card"><div class="value-icon"><i data-lucide="lock"></i></div><div class="value-title">Confidential by Design</div><div class="value-sub">Suppliers never see your identity or your final price — only what they need to quote the job.</div></div>
+    <div class="auth-main auth-main-landing">
+      <div class="landing-grid">
+        <div class="hero-wrap landing-hero-col" style="margin:0;">
+          <div class="hero-eyebrow"><span class="dot"></span>Manufacturing Sourcing, Simplified</div>
+          <div class="hero-title">Optimizing Collaboration Between <span class="grad">Mexico and the U.S.</span> in the Metalworking Industry</div>
+          <div class="hero-sub">INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico — sourcing, quoting, production and logistics, all through a single point of contact.</div>
+          <div class="hero-actions">
+            <button class="btn btn-hero-primary" onclick="App.goToSignup()"><i data-lucide="user-plus"></i>Create Account</button>
+            <button class="btn btn-hero-ghost" onclick="App.goToLogin()"><i data-lucide="log-in"></i>Log In</button>
           </div>
         </div>
-
-        <div class="landing-section">
-          <div class="landing-eyebrow">Capabilities</div>
-          <div class="landing-section-title">Metal parts, built in Mexico</div>
-          <div class="landing-section-sub">From short-run prototypes to production volumes, sourced across our network of manufacturing partners.</div>
+        <div class="landing-info-card">
+          <div class="landing-info-title">Why INNOUS</div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">Vetted manufacturing partners, reviewed before they see an RFQ</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">One point of contact from first quote to final shipment</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">Full visibility — quoting, production, QC, and shipping in one place</div></div>
+          <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">Confidential by design — suppliers never see your identity or price</div></div>
+          <div class="landing-info-divider"></div>
+          <div class="landing-caps-label">What We Source</div>
           <div class="landing-process-row">
             ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${p}</span>`).join('')}
-          </div>
-        </div>
-
-        <div class="landing-section">
-          <div class="landing-eyebrow">About INNOUS</div>
-          <div class="landing-about">
-            <p>Sourcing manufacturing across the border usually means juggling several suppliers, several quotes, and several sets of paperwork — often in a different language and time zone than your own team. <strong>INNOUS handles that coordination</strong> so you don't have to: one request becomes a shortlist of vetted options, and one team stays accountable through delivery.</p>
           </div>
         </div>
       </div>
