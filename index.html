@@ -10450,7 +10450,15 @@ const App = {
       input.value = ''; delete STATE.ui.chatFileDrafts[key];
       let attachmentPath = null, attachmentName = null;
       if(file){
-        const path = `team/${STATE.innousUserId}/${Date.now()}-${file.name}`;
+        // fix134: Supabase Storage rechaza (400) rutas con espacios/
+        // caracteres especiales — un nombre de captura de pantalla de Mac
+        // típico ("Screenshot 2026-09-14 at 9.20.28 a.m..png", con un
+        // espacio angosto entre la hora y "a.m.") tronaba la subida en
+        // silencio, sin avisar. Mismo patrón que ya usa submitRfq para
+        // esto (safeName) — el nombre de verdad (con espacios y todo) se
+        // sigue guardando tal cual en attachment_name, para mostrarlo.
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        const path = `team/${STATE.innousUserId}/${Date.now()}-${safeName}`;
         const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
         if(upErr){ showToast(upErr.message); return; }
         attachmentPath = path; attachmentName = file.name;
@@ -10476,7 +10484,10 @@ const App = {
     if(isReal){
       let attachmentPath = null, attachmentName = null;
       if(file){
-        const path = `${ownerType}/${ownerId}/${Date.now()}-${file.name}`;
+        // fix134: mismo arreglo que el branch de Chat de Equipo arriba —
+        // ver ese comentario para el porqué.
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+        const path = `${ownerType}/${ownerId}/${Date.now()}-${safeName}`;
         const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
         if(upErr){ showToast(upErr.message); return; }
         attachmentPath = path; attachmentName = file.name;
