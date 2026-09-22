@@ -7009,6 +7009,7 @@ function innousTeamSectionHtml(){
             <option value="admin" ${t.access==='admin'?'selected':''}>Admin</option>
             <option value="viewer" ${t.access==='viewer'?'selected':''}>Viewer</option>
           </select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="App.openEditTeammateEmailModal('${t.id}','${escAttr(t.name)}','${escAttr(t.email)}')" title="Editar correo de inicio de sesión"><i data-lucide="mail"></i></button>
           <button type="button" class="btn btn-secondary btn-sm" style="color:var(--danger);flex:0 0 auto;" onclick="App.removeInnousTeammate('${t.id}','${escAttr(t.name)}')" title="Eliminar cuenta"><i data-lucide="trash-2"></i></button>
         </div>
       ` : `<span class="badge ${t.access==='admin'?'badge-blue':'badge-gray'}" style="flex:0 0 auto;"><span class="dot ${t.access==='admin'?'dot-blue':'dot-gray'}"></span>${t.access==='admin'?'Admin':'Viewer'}</span>`}
@@ -7052,6 +7053,24 @@ function newTeammateModalHtml(){
     </div>
   </div>
   <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeNewTeammateModal()">Cancelar</button><button class="btn btn-primary" onclick="App.createInnousTeammate()"><i data-lucide="user-plus"></i>Crear cuenta</button></div>
+  `;
+}
+// fix129: admin cambia el correo de inicio de sesión de OTRO compañero
+// (ver App.changeTeammateEmail) — queda activo de inmediato, sin
+// confirmación pendiente, y le llega un aviso a los dos correos
+// (viejo y nuevo). Solo el nombre/correo actual se pasan al abrir; el
+// resto (a quién exactamente se le cambia) lo maneja innous_change_teammate_email
+// del lado del servidor, checando is_innous_admin() ahí también — este
+// modal no es la única barrera.
+function editTeammateEmailModalHtml(){
+  const d = STATE.ui.editTeammateEmailDraft;
+  return `
+  <div class="modal-header"><h3>Editar Correo — ${escAttr(d.name)}</h3><button class="modal-close" onclick="App.closeEditTeammateEmailModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="field-hint" style="margin-bottom:12px;">Este es el correo con el que ${escAttr(d.name)} inicia sesión — el cambio queda activo de inmediato, no necesita confirmarlo. Le va a llegar un aviso tanto al correo viejo como al nuevo.</div>
+    <div class="form-group"><label class="field-label">Correo Nuevo</label><input type="email" value="${escAttr(d.newEmail)}" oninput="STATE.ui.editTeammateEmailDraft.newEmail=this.value"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeEditTeammateEmailModal()">Cancelar</button><button class="btn btn-primary" onclick="App.changeTeammateEmail()"><i data-lucide="mail"></i>Guardar Correo Nuevo</button></div>
   `;
 }
 ROUTES['innous/settings'] = function(){
@@ -7855,6 +7874,28 @@ const App = {
     if(error){ showToast(error.message); return; }
     await refreshInnousTeam();
     showToast('Cuenta eliminada', 'success');
+    route();
+  },
+  openEditTeammateEmailModal(userId, name, currentEmail){
+    STATE.ui.editTeammateEmailDraft = { userId, name, newEmail: currentEmail||'' };
+    openModal(editTeammateEmailModalHtml());
+  },
+  closeEditTeammateEmailModal(){ STATE.ui.editTeammateEmailDraft = null; closeModal(); },
+  // fix129: ver el comentario junto a innous_change_teammate_email en
+  // supabase-fix129-admin-cambia-correo-equipo.sql para el porqué de una
+  // función SECURITY DEFINER en vez de sb.auth.updateUser (que solo puede
+  // cambiar el correo de la sesión que llama, nunca el de alguien más).
+  async changeTeammateEmail(){
+    const d = STATE.ui.editTeammateEmailDraft;
+    const newEmail = (d.newEmail||'').trim().toLowerCase();
+    if(!newEmail || !newEmail.includes('@')){ showToast('Escribe un correo válido.'); return; }
+    if(!confirm(`¿Cambiar el correo de inicio de sesión de "${d.name}" a ${newEmail}? Queda activo de inmediato.`)) return;
+    const { error } = await sb.rpc('innous_change_teammate_email', { p_user_id: d.userId, p_new_email: newEmail });
+    if(error){ showToast(error.message); return; }
+    STATE.ui.editTeammateEmailDraft = null;
+    closeModal();
+    await refreshInnousTeam();
+    showToast('Correo actualizado — ya puede iniciar sesión con el nuevo', 'success');
     route();
   },
   // fix75: clients still log in with email only, but suppliers now log in
