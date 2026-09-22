@@ -2106,7 +2106,7 @@ function startChatRealtime(){
     : STATE.role==='SUPPLIER' ? `owner_id=eq.${STATE.supplierId}`
     : undefined; // INNOUS sees every conversation — no filter
   const isOnMessagesPageNotTyping = ()=>{
-    const onMessagesPage = /^#\/(client|innous|supplier)\/messages/.test(location.hash);
+    const onMessagesPage = /^#\/(client|innous|supplier)\/messages|^#\/innous\/team-chat/.test(location.hash);
     const active = document.activeElement;
     const isTyping = active && ['INPUT','TEXTAREA'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
     return onMessagesPage && !isTyping;
@@ -2126,6 +2126,22 @@ function startChatRealtime(){
     // animation flag, so a status change alone never replays that.
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async ()=>{
       await refreshRealMessages();
+      if(isOnMessagesPageNotTyping()) route();
+    })
+    // fix132: Chat de Equipo — mismo canal, tabla aparte. Sin filter (a
+    // diferencia de messages_general arriba): RLS de innous_team_messages
+    // ya solo entrega filas donde participa este usuario, así que no hace
+    // falta un filter=eq. aquí tampoco.
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'innous_team_messages' }, async (payload)=>{
+      const row = payload.new;
+      if(row && STATE.role==='INNOUS' && (row.sender_id===STATE.innousUserId || row.recipient_id===STATE.innousUserId)){
+        delete STATE.ui.typingPeers['team:'+(row.sender_id===STATE.innousUserId?row.recipient_id:row.sender_id)];
+      }
+      await refreshInnousTeamChats();
+      if(isOnMessagesPageNotTyping()){ STATE.ui.chatJustReceived = true; route(); }
+    })
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'innous_team_messages' }, async ()=>{
+      await refreshInnousTeamChats();
       if(isOnMessagesPageNotTyping()) route();
     })
     .subscribe();
@@ -7032,15 +7048,22 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
 
 /* ---- fix132: Chat de Equipo — mensajes directos entre compañeros de
    INNOUS, con nombre y foto real (sin la confidencialidad de
-   cliente/proveedor). Mismo layout de dos columnas que Mensajes, tabla
-   y funciones propias (ver teamChatThread/refreshInnousTeamChats). */
+   cliente/proveedor). Mismas funciones que Mensajes de verdad, no una
+   copia parecida: chatComposeRowHtml/chatMessagesHtml/chatCardHtml/
+   ensureTypingChannel de ahí mismo, con key='team:<idDelOtro>' — ver el
+   branch ownerType==='team' dentro de sendChatMessage/sendChatCard/
+   renderShareCardOptions. Solo la tabla de datos es propia
+   (innous_team_messages, ver teamChatThread/refreshInnousTeamChats),
+   porque messages_general está armada para "un cliente/proveedor +
+   INNOUS colectivo", no para dos personas de INNOUS entre sí. */
 ROUTES['innous/team-chat'] = function(peerId){
   if(peerId) STATE.ui.teamChatPeerId = peerId;
   const others = INNOUS_TEAM.filter(t=>t.id!==STATE.innousUserId);
   if(!STATE.ui.teamChatPeerId && others.length) STATE.ui.teamChatPeerId = others[0].id;
   const active = others.find(t=>t.id===STATE.ui.teamChatPeerId);
   const msgs = active ? teamChatThread(active.id) : [];
-  if(active) markTeamChatThreadRead(msgs);
+  const key = active ? 'team:'+active.id : null;
+  if(active){ ensureTypingChannel(key); markTeamChatThreadRead(msgs); }
   return `
   <div class="content-inner messages-shell ${peerId?'mobile-detail-open':''}">
     <div class="page-header"><div><div class="page-title">Chat de Equipo</div><div class="page-subtitle">Mensajes directos con tus compañeros de INNOUS.</div></div></div>
@@ -7049,9 +7072,10 @@ ROUTES['innous/team-chat'] = function(peerId){
         ${others.map(t=>{
           const tMsgs = teamChatThread(t.id);
           const last = tMsgs[tMsgs.length-1];
+          const lastPreview = last ? (last.text || (last.attachmentName ? `📎 ${last.attachmentName}` : (last.cardType ? '📋 Compartido' : ''))) : 'Aún sin mensajes';
           return `<div class="chat-list-item ${active&&active.id===t.id?'active':''}" onclick="navigate('#/innous/team-chat/${t.id}')">
             ${avatarHtml(t.photo, initials(t.name), 'var(--navy)', 34)}
-            <div style="min-width:0;overflow:hidden;"><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${last?escAttr(last.text):'Aún sin mensajes'}</div></div>
+            <div style="min-width:0;overflow:hidden;"><div style="font-weight:600;font-size:13px;">${escAttr(t.name)}</div><div class="td-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(lastPreview)}</div></div>
             ${unreadBadgeHtml(active&&active.id===t.id?0:unreadCount(tMsgs, STATE.innousUserId))}
           </div>`;
         }).join('') || emptyState('users','Aún no hay compañeros de equipo','')}
@@ -7064,12 +7088,10 @@ ROUTES['innous/team-chat'] = function(peerId){
             ${avatarHtml(active.photo, initials(active.name), 'var(--navy)', 40)}
             <div style="min-width:0;"><div style="font-weight:700;">${escAttr(active.name)}</div><div class="td-sub">${escAttr(active.email||active.username||'')}</div></div>
           </div>
+          <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
         </div>
-        <div class="chat-messages">${chatMessagesHtml(msgs, STATE.innousUserId, `Aún no hay mensajes con ${escAttr(active.name)} — di hola.`)}</div>
-        <div class="chat-input-row">
-          <input type="text" id="team-chat-input" placeholder="Mensaje para ${escAttr(active.name)}..." onkeydown="if(event.key==='Enter'){App.sendTeamChatMessage('${active.id}');}">
-          <button class="btn btn-primary" onclick="App.sendTeamChatMessage('${active.id}')"><i data-lucide="send"></i></button>
-        </div>
+        <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, STATE.innousUserId, `Aún no hay mensajes con ${escAttr(active.name)} — di hola.`)}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
+        ${chatComposeRowHtml(key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.name}...`)}
         ` : emptyState('users','Aún no hay compañeros de equipo','Cuando haya más de una cuenta INNOUS, aparecen aquí para chatear.')}
       </div>
     </div>
@@ -10407,28 +10429,38 @@ const App = {
     if(error || !data){ showToast('Could not open the file.'); return; }
     window.open(data.signedUrl, '_blank');
   },
-  // fix132: chat interno entre compañeros de INNOUS — mensajes directos
-  // simples (sin archivos/tarjetas, "un chat normal") a diferencia de
-  // sendChatMessage de abajo, que sí soporta eso para clientes/proveedores.
-  async sendTeamChatMessage(peerId){
-    const input = document.getElementById('team-chat-input');
-    const text = (input?.value||'').trim();
-    if(!text) return;
-    input.value = '';
-    const { data, error } = await sb.from('innous_team_messages')
-      .insert({ sender_id: STATE.innousUserId, recipient_id: peerId, text })
-      .select().single();
-    if(error){ showToast(error.message); return; }
-    teamChatThread(peerId).push(teamChatRowToJs(data));
-    STATE.ui.chatJustSent = true;
-    route();
-  },
   async sendChatMessage(key){
     const inputId = STATE.role==='CLIENT' ? 'client-chat-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-input' : 'innous-chat-input';
     const input = document.getElementById(inputId); const text = input.value.trim();
     const file = STATE.ui.chatFileDrafts[key];
     if(!text && !file) return;
     const [ownerType, ownerId, ...rest] = key.split(':'); const threadName = rest.join(':') || 'General';
+    // fix132: Chat de Equipo — mensajes directos entre dos compañeros de
+    // INNOUS, misma función que el resto (attachments/tarjetas incluidos)
+    // pero apuntando a innous_team_messages en vez de messages_general,
+    // que está armada para "un cliente/proveedor + INNOUS colectivo", no
+    // para dos personas de INNOUS entre sí (ver el comentario de
+    // supabase-fix132-chat-equipo-innous.sql).
+    if(ownerType==='team'){
+      const peer = INNOUS_TEAM.find(t=>t.id===ownerId);
+      if(!peer){ showToast('Este compañero ya no existe.'); route(); return; }
+      input.value = ''; delete STATE.ui.chatFileDrafts[key];
+      let attachmentPath = null, attachmentName = null;
+      if(file){
+        const path = `team/${STATE.innousUserId}/${Date.now()}-${file.name}`;
+        const { error: upErr } = await sb.storage.from('chat-files').upload(path, file);
+        if(upErr){ showToast(upErr.message); return; }
+        attachmentPath = path; attachmentName = file.name;
+      }
+      const { data, error } = await sb.from('innous_team_messages')
+        .insert({ sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachment_path: attachmentPath, attachment_name: attachmentName })
+        .select().single();
+      if(error){ showToast(error.message); return; }
+      teamChatThread(ownerId).push(teamChatRowToJs(data));
+      STATE.ui.chatJustSent = true;
+      route();
+      return;
+    }
     const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
     if(!owner){ showToast('This account no longer exists.'); route(); return; }
     input.value = ''; delete STATE.ui.chatFileDrafts[key];
@@ -10479,7 +10511,7 @@ const App = {
         <div class="form-group"><label class="field-label">${es?'Qué':'What'}</label>
           <select id="share-card-type" onchange="App.renderShareCardOptions('${key}')">
             <option value="rfq">RFQ</option>
-            ${ownerType==='client' ? `<option value="quote">${es?'Cotización Formal':'Formal Quote'}</option>` : `<option value="po">${es?'Orden de Compra':'Purchase Order'}</option>`}
+            ${ownerType==='team' ? `<option value="quote">Cotización Formal</option><option value="po">Orden de Compra</option>` : ownerType==='client' ? `<option value="quote">${es?'Cotización Formal':'Formal Quote'}</option>` : `<option value="po">${es?'Orden de Compra':'Purchase Order'}</option>`}
           </select>
         </div>
         <div class="form-group"><label class="field-label">${es?'Cuál':'Which one'}</label><select id="share-card-project"></select></div>
@@ -10491,7 +10523,12 @@ const App = {
   renderShareCardOptions(key){
     const [ownerType, ownerId] = key.split(':');
     const cardType = document.getElementById('share-card-type').value;
-    const list = ownerType==='client'
+    // fix132: Chat de Equipo ve TODOS los RFQs/cotizaciones/órdenes de
+    // compra, sin filtrar por cliente/proveedor — es INNOUS hablando con
+    // INNOUS, no hay nadie de quien esconder nada aquí.
+    const list = ownerType==='team'
+      ? PROJECTS.filter(p=>(cardType!=='quote' || p.order) && (cardType!=='po' || (p.order && p.innousAuthorizedAt)))
+      : ownerType==='client'
       ? PROJECTS.filter(p=>p.customerId===ownerId && (cardType!=='quote' || p.order))
       : PROJECTS.filter(p=>p.invitedSupplierIds.includes(ownerId) && (cardType!=='po' || (p.order && p.selectedSupplierId===ownerId && p.innousAuthorizedAt)));
     document.getElementById('share-card-project').innerHTML = list.map(p=>`<option value="${p.id}">${p.id} — ${escAttr(p.projectName)}</option>`).join('') || `<option value="">${STATE.role!=='CLIENT'?'Aún no hay ninguno disponible':'None available yet'}</option>`;
@@ -10504,6 +10541,18 @@ const App = {
   },
   async sendChatCard(key, cardType, projectId){
     const [ownerType, ownerId, ...rest] = key.split(':'); const threadName = rest.join(':') || 'General';
+    if(ownerType==='team'){
+      const peer = INNOUS_TEAM.find(t=>t.id===ownerId); if(!peer) return;
+      closeModal();
+      const { data, error } = await sb.from('innous_team_messages')
+        .insert({ sender_id: STATE.innousUserId, recipient_id: ownerId, text:'', card_type:cardType, card_project_id:projectId })
+        .select().single();
+      if(error){ showToast(error.message); return; }
+      teamChatThread(ownerId).push(teamChatRowToJs(data));
+      STATE.ui.chatJustSent = true;
+      route();
+      return;
+    }
     const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
     if(!owner) return;
     closeModal();
