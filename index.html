@@ -10465,13 +10465,15 @@ const App = {
         console.log('[team-chat] upload ok', upData);
         attachmentPath = path; attachmentName = file.name;
       }
-      console.log('[team-chat] inserting message', { sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachmentPath, attachmentName });
+      console.log('[team-chat] inserting message | attachmentPath=', attachmentPath, '| attachmentName=', attachmentName, '| text=', JSON.stringify(text));
       const { data, error } = await sb.from('innous_team_messages')
         .insert({ sender_id: STATE.innousUserId, recipient_id: ownerId, text, attachment_path: attachmentPath, attachment_name: attachmentName })
         .select().single();
       if(error){ console.error('[team-chat] insert failed', error); showToast('No se pudo mandar el mensaje: '+error.message); return; }
-      console.log('[team-chat] insert ok', data);
-      teamChatThread(ownerId).push(teamChatRowToJs(data));
+      console.log('[team-chat] insert ok | data.attachment_path=', data.attachment_path, '| data.attachment_name=', data.attachment_name, '| data.text=', JSON.stringify(data.text));
+      const jsRow = teamChatRowToJs(data);
+      console.log('[team-chat] mapped for render | attachmentPath=', jsRow.attachmentPath, '| attachmentName=', jsRow.attachmentName);
+      teamChatThread(ownerId).push(jsRow);
       STATE.ui.chatJustSent = true;
       route();
       return;
