@@ -5232,6 +5232,19 @@ ROUTES['client/rate'] = function(id){
    attachment shows it as a small file chip, clickable to open (via a
    signed URL — see App.openChatFile) once it's a real uploaded file; a
    demo/local-only one just shows the filename. ---- */
+// fix138: route() replaces #app-content's whole innerHTML on every
+// render, including right after sending a message — the compose <input>
+// that had focus a moment ago is a literally different DOM node now (a
+// fresh one with the same id took its place), and a freshly-created
+// element is never focused on its own, so typing another message meant
+// clicking back into the box every single time. Called right after the
+// route() that follows a successful send, across all 3 chat systems
+// (client/supplier/innous Mensajes AND Chat de Equipo, which reuses the
+// same 'innous-chat-input' id).
+function refocusChatInput(){
+  const id = STATE.role==='CLIENT' ? 'client-chat-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-input' : 'innous-chat-input';
+  document.getElementById(id)?.focus();
+}
 function chatMessagesHtml(msgs, mineFrom, emptyText){
   // One-shot "just sent"/"just received" flags (fix65, extended by fix66
   // for realtime) — set right before the one render that should show the
@@ -10479,6 +10492,7 @@ const App = {
       teamChatThread(ownerId).push(teamChatRowToJs(data));
       STATE.ui.chatJustSent = true;
       route();
+      refocusChatInput();
       return;
     }
     const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
@@ -10509,10 +10523,12 @@ const App = {
       await refreshRealMessages();
       STATE.ui.chatJustSent = true; // see chatMessagesHtml — animates only the bubble this send just added
       route();
+      refocusChatInput();
     } else {
       chatThread(owner, threadName).push({from:fromRole, text, attachmentPath:null, attachmentName: file?file.name:null, ts:new Date()});
       STATE.ui.chatJustSent = true;
       route();
+      refocusChatInput();
       if(fromRole!=='innous'){
         const reply = fromRole==='client' ? 'Thanks for the note — our team is on it and will follow up shortly.' : 'Entendido, gracias por la actualización.';
         setTimeout(()=>{ chatThread(owner, threadName).push({from:'innous', text:reply, ts:new Date()}); if(location.hash.includes('/messages')) route(); }, 900);
@@ -10574,6 +10590,7 @@ const App = {
       teamChatThread(ownerId).push(teamChatRowToJs(data));
       STATE.ui.chatJustSent = true;
       route();
+      refocusChatInput();
       return;
     }
     const owner = ownerType==='client' ? CUSTOMERS.find(c=>c.id===ownerId) : SUPPLIERS.find(s=>s.id===ownerId);
@@ -10590,10 +10607,12 @@ const App = {
       await refreshRealMessages();
       STATE.ui.chatJustSent = true;
       route();
+      refocusChatInput();
     } else {
       chatThread(owner, threadName).push({from:fromRole, text:'', cardType, cardProjectId:projectId, ts:new Date()});
       STATE.ui.chatJustSent = true;
       route();
+      refocusChatInput();
     }
   },
   async deleteChat(type, id, threadName){
