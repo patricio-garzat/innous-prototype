@@ -10362,7 +10362,17 @@ async function boot(){
     } else {
       document.getElementById('app-shell').style.display = 'none';
       document.getElementById('auth-root').style.display = '';
-      renderAuthRoot();
+      // fix126: deep link para el botón de "Crear cuenta" del landing page
+      // en Wix (portal.innous.com/#/signup) — manda directo al formulario
+      // de registro de cliente en vez de aterrizar en el landing y que la
+      // persona tenga que buscarle. Solo aplica sin sesión activa (arriba,
+      // "session && session.user" siempre gana primero).
+      if(location.hash==='#/signup' || location.hash==='#signup'){
+        history.replaceState(null,'',location.pathname+location.search);
+        App.pickSignupRole('CLIENT');
+      } else {
+        renderAuthRoot();
+      }
     }
     clearTimeout(slowTimer);
     hideBootLoading();
