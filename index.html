@@ -949,7 +949,11 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    que no se sienta como un elemento distinto pegado ahí. */
 .auth-lang-toggle{font:inherit;font-size:12.5px;font-weight:700;letter-spacing:.3px;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;}
 .auth-lang-toggle:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
-.auth-main{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;align-items:center;justify-content:center;padding:clamp(8px,2vh,24px) 24px clamp(10px,2.5vh,40px);}
+/* fix154: en el home, el bloque de contenido quedaba pegado a la
+   franja azul de abajo (fix152) — más aire arriba y, sobre todo,
+   abajo, para que se sienta centrado entre topbar y footer en vez de
+   recargado hacia el fondo. */
+.auth-main{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;align-items:center;justify-content:center;padding:clamp(16px,3vh,32px) 24px clamp(20px,3.5vh,48px);}
 .auth-narrow{width:100%;max-width:400px;}
 
 .hero-wrap{width:100%;max-width:900px;margin:0 auto;text-align:center;}
