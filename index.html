@@ -7646,7 +7646,10 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
    renderShareCardOptions. Solo la tabla de datos es propia
    (innous_team_messages, ver teamChatThread/refreshInnousTeamChats),
    porque messages_general está armada para "un cliente/proveedor +
-   INNOUS colectivo", no para dos personas de INNOUS entre sí. */
+   INNOUS colectivo", no para dos personas de INNOUS entre sí.
+   fix189: igual que Mensajes, también se puede borrar la conversación
+   completa (App.deleteChat, branch type==='team') — antes no había ni
+   botón ni política de DELETE del lado del servidor para esta tabla. */
 ROUTES['innous/team-chat'] = function(peerId){
   if(peerId) STATE.ui.teamChatPeerId = peerId;
   const others = INNOUS_TEAM.filter(t=>t.id!==STATE.innousUserId);
@@ -7682,7 +7685,10 @@ ROUTES['innous/team-chat'] = function(peerId){
             ${avatarHtml(active.photo, initials(active.name), 'var(--navy)', 40)}
             <div style="min-width:0;"><div style="font-weight:700;">${escAttr(active.name)}</div><div class="td-sub">${escAttr(active.email||active.username||'')}</div></div>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
+          <div style="display:flex;gap:6px;flex:0 0 auto;">
+            <button class="btn btn-secondary btn-sm" onclick="App.openChatBgModal()" title="Personalizar chat"><i data-lucide="palette"></i></button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--danger);" onclick="App.deleteChat('team','${active.id}','${escAttr(active.name)}')" title="Eliminar chat"><i data-lucide="trash-2"></i></button>
+          </div>
         </div>
         <div class="chat-messages ${chatBgClass()}">${chatMessagesHtml(msgs, STATE.innousUserId, `Aún no hay mensajes con ${escAttr(active.name)} — di hola.`)}<div id="chat-typing-bubble">${chatTypingBubbleHtml(key)}</div></div>
         ${chatComposeRowHtml(key, 'innous-chat-input', 'innous-chat-file-input', `Mensaje para ${active.name}...`)}
@@ -11709,7 +11715,25 @@ const App = {
       refocusChatInput();
     }
   },
+  // fix189: el Chat de Equipo no tenía forma de borrar una conversación —
+  // no hay "thread_name" ahí (una sola conversación continua por
+  // compañero, en innous_team_messages, no messages_general), así que es
+  // una rama aparte en vez de reusar el resto de la función tal cual.
+  // `threadName` aquí se repropone como el nombre del compañero, nada
+  // más para el texto del confirm().
   async deleteChat(type, id, threadName){
+    if(type==='team'){
+      if(!confirm(`¿Eliminar la conversación con ${threadName}? Esto no se puede deshacer.`)) return;
+      const myId = STATE.innousUserId;
+      const { error } = await sb.from('innous_team_messages').delete()
+        .or(`and(sender_id.eq.${myId},recipient_id.eq.${id}),and(sender_id.eq.${id},recipient_id.eq.${myId})`);
+      if(error){ showToast(error.message); return; }
+      delete INNOUS_TEAM_CHATS[id];
+      if(STATE.ui.activeChatKey==='team:'+id) STATE.ui.activeChatKey = null;
+      showToast('Chat eliminado', 'success');
+      navigate('#/innous/team-chat');
+      return;
+    }
     const owner = type==='client' ? CUSTOMERS.find(c=>c.id===id) : SUPPLIERS.find(s=>s.id===id);
     if(!owner) return;
     if(!confirm(`¿Eliminar el chat "${threadName}"? Esto no se puede deshacer.`)) return;
