@@ -7873,10 +7873,13 @@ function supplierRfqMiniTable(list){
 
 /* ---- Supplier Available RFQs ---- */
 ROUTES['supplier/rfqs'] = function(){
-  // fix177: un proyecto completado ya no se queda aquí — se mueve a "Mis
-  // Proyectos" (con su propio filtro de Activos/Completados), que es
-  // donde tiene sentido verlo una vez que ya se entregó.
-  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  // fix178: en cuanto un proyecto se decide (ganado o no), ya no se queda
+  // aquí — un proyecto GANADO se mueve por completo a "Mis Proyectos" (con
+  // su propio filtro de Activos/Completados/Todos), que es donde tiene
+  // sentido verlo de ahí en adelante. 'customer_review' se queda porque
+  // todavía no se decide nada — el cliente sigue eligiendo entre las
+  // cotizaciones del shortlist.
+  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Proyectos Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
