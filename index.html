@@ -522,9 +522,13 @@ textarea{resize:vertical;min-height:90px;}
 /* fix147: las letras de abajo estaban muy chicas y pegadas al borde
    (8px de aire) — más tamaño, más aire, y una segunda línea de
    copyright/razón social debajo de los links legales. */
-.auth-footer-links{flex:0 0 auto;position:relative;z-index:1;text-align:center;padding:16px 20px calc(20px + env(safe-area-inset-bottom,0px));font-size:12px;color:var(--ink-tertiary);line-height:1.7;}
-.auth-footer-links a{color:inherit;text-decoration:underline;cursor:pointer;margin:0 2px;}
-.auth-footer-copyright{font-size:11px;color:var(--ink-tertiary);opacity:.75;margin-top:2px;}
+/* fix152: el usuario pidió que esta barra de abajo (antes fondo
+   plano) sea azul — mismo degradado navy→accent que ya se usa en
+   botones/dividers. Los textos pasan a blanco/blanco-semitransparente
+   para que se sigan leyendo bien encima. */
+.auth-footer-links{flex:0 0 auto;position:relative;z-index:1;text-align:center;padding:16px 20px calc(20px + env(safe-area-inset-bottom,0px));font-size:12px;color:rgba(255,255,255,.85);line-height:1.7;background:linear-gradient(90deg,var(--navy),var(--accent-ink));}
+.auth-footer-links a{color:#fff;text-decoration:underline;cursor:pointer;margin:0 2px;}
+.auth-footer-copyright{font-size:11px;color:rgba(255,255,255,.68);margin-top:2px;}
 .signup-legal-accept{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;}
 .signup-legal-accept input[type=checkbox]{width:auto;margin-top:3px;flex:0 0 auto;}
 .signup-legal-accept label{font-size:12px;color:var(--ink-tertiary);line-height:1.55;}
