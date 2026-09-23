@@ -2872,6 +2872,28 @@ function recalcSupplierMetrics(supplierId){
   s.quality = Math.round(qualityCount/completed.length*100);
   s.projects = completed.length;
 }
+// fix180: mismo cálculo que recalcSupplierMetrics de arriba, pero sin
+// mutar nada — para poder mostrar el detalle exacto ("9 de 10 pedidos
+// entregados a tiempo") en vez de solo el porcentaje ya redondeado que
+// vive en s.onTime/s.quality. Usado tanto en el Desempeño del proveedor
+// como en su ficha dentro de INNOUS, para que ambos lados vean el mismo
+// desglose.
+function supplierMetricsDetail(supplierId){
+  const completed = PROJECTS.filter(p=>p.selectedSupplierId===supplierId && p.status==='completed' && p.order);
+  let onTimeCount=0, qualityCount=0;
+  completed.forEach(p=>{
+    const dm = p.order.milestones.find(m=>m.key==='delivered');
+    const deliveredOn = dm && dm.date ? new Date(dm.date) : new Date();
+    if(deliveredOn <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
+    if(p.order.quality.status==='approved') qualityCount++;
+  });
+  const total = completed.length;
+  return {
+    total, onTimeCount, qualityCount,
+    onTimePct: total ? Math.round(onTimeCount/total*100) : 0,
+    qualityPct: total ? Math.round(qualityCount/total*100) : 0,
+  };
+}
 // fix128: el Rating que se ve por todos lados (tarjetas de proveedor,
 // comparación de cotizaciones, su ficha) ya NO sale del cálculo objetivo
 // de arriba (onTime/quality) — sale ÚNICAMENTE de lo que de verdad
@@ -2915,6 +2937,60 @@ function supplierRatingSummary(supplierId){
     clientCount: clientRatings.length, clientOntime: avg(clientRatings,'ontime'), clientQuality: avg(clientRatings,'quality'),
     innousCount: innousRatings.length, innousCommunication: avg(innousRatings,'communication'), innousOntime: avg(innousRatings,'ontime'), innousQuality: avg(innousRatings,'quality'),
   };
+}
+// fix180: bloque de "desempeño" compartido entre el Desempeño del
+// proveedor y su ficha dentro de INNOUS — separa clarísimo las
+// Métricas Automáticas (se calculan solas, comparando fechas de entrega
+// e inspección de calidad — nadie opina) de la Calificación de
+// Estrellas (100% la reseña real que dejan el cliente e INNOUS después
+// de cada pedido). Antes vivían mezcladas en un solo grid de 4 KPIs sin
+// explicar por qué, por ejemplo, 100% a tiempo no significa 5 estrellas
+// — son dos cosas distintas por diseño, esto solo lo deja claro.
+function performanceOverviewHtml(s){
+  const md = supplierMetricsDetail(s.id);
+  const metricsIsNew = md.total===0;
+  const rs = supplierRatingSummary(s.id);
+  const ratingIsNew = rs.clientCount===0 && rs.innousCount===0;
+  return `
+  <div class="card card-pad" style="margin-bottom:16px;background:var(--surface-alt);">
+    <div class="section-sub">Dos tipos de número, y es normal que no coincidan: las <strong>Métricas Automáticas</strong> se calculan solas (fechas de entrega, resultado de inspección) — la <strong>Calificación de Estrellas</strong> es 100% la opinión real que dejaron el cliente e INNOUS después de cada pedido, a mano.</div>
+  </div>
+  <div class="section-title" style="margin-bottom:2px;"><i data-lucide="calculator" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Métricas Automáticas</div>
+  <div class="field-hint" style="margin-bottom:10px;">Se calculan solas — nadie las escribe a mano.</div>
+  ${metricsIsNew ? stageBanner('Aún no hay pedidos completados — estas métricas se calculan en cuanto se entregue el primero.', 'info') : ''}
+  <div class="grid grid-2" style="margin-bottom:20px;">
+    ${kpiCard('Entregas a Tiempo', metricsIsNew?'—':md.onTimePct+'%', metricsIsNew?'sin historial aún':`${md.onTimeCount} de ${md.total} pedidos a tiempo`,'clock')}
+    ${kpiCard('Índice de Calidad', metricsIsNew?'—':md.qualityPct+'%', metricsIsNew?'sin historial aún':`${md.qualityCount} de ${md.total} aprobados en inspección`,'shield-check')}
+  </div>
+  <div class="section-title" style="margin-bottom:2px;"><i data-lucide="star" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Calificación de Estrellas</div>
+  <div class="field-hint" style="margin-bottom:10px;">100% reseña real — nunca se calcula sola.</div>
+  <div class="card card-pad" style="margin-bottom:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+      <div class="section-sub" style="max-width:420px;">La opinión de tu cliente y de INNOUS después de cada pedido entregado — cada quien califica lo suyo, y esta calificación es el promedio de ambos.</div>
+      <div style="text-align:right;">
+        <div style="font-size:28px;font-weight:700;">${ratingIsNew?'—':s.rating.toFixed(1)}</div>
+        <div class="td-sub">${ratingIsNew?'sin calificaciones aún':'de 5.0'}</div>
+      </div>
+    </div>
+    ${ratingIsNew ? `<div style="margin-top:12px;">${emptyState('star','Aún no hay calificaciones','Aparecen aquí en cuanto el cliente o INNOUS califiquen un pedido entregado.')}</div>` : `
+    <hr class="divider">
+    <div class="grid grid-2">
+      <div>
+        <div class="info-item-label">Cliente (${rs.clientCount} pedido${rs.clientCount===1?'':'s'})</div>
+        ${rs.clientCount ? `
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.clientOntime)}</div>
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.clientQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
+      </div>
+      <div>
+        <div class="info-item-label">INNOUS (${rs.innousCount} pedido${rs.innousCount===1?'':'s'})</div>
+        ${rs.innousCount ? `
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Comunicación</span>${stars(rs.innousCommunication)}</div>
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempos</span>${stars(rs.innousOntime)}</div>
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.innousQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
+      </div>
+    </div>`}
+  </div>
+  `;
 }
 
 /* ---------- Global App State ---------- */
@@ -6795,7 +6871,6 @@ ROUTES['innous/supplier'] = function(id){
   const s = SUPPLIERS.find(x=>x.id===id); if(!s) return emptyState('search','Proveedor no encontrado','');
   const proj = PROJECTS.filter(p=>p.invitedSupplierIds.includes(s.id));
   const won = PROJECTS.filter(p=>p.selectedSupplierId===s.id).length;
-  const rs = supplierRatingSummary(s.id);
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/innous/suppliers">Proveedores</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${s.name}</span></div>
@@ -6806,30 +6881,18 @@ ROUTES['innous/supplier'] = function(id){
         <button class="btn btn-primary" onclick="App.startChat('supplier','${s.id}')"><i data-lucide="message-square"></i>Enviar Mensaje</button>
         <button class="btn btn-danger" onclick="App.deleteSupplier('${s.id}')"><i data-lucide="trash-2"></i>Eliminar Cuenta</button>
       </div></div>
-    <div class="grid grid-4" style="margin-bottom:20px;">
-      ${kpiCard('Rating', s.rating?s.rating.toFixed(1):'—', 'de 5.0', 'star')}
-      ${kpiCard('A Tiempo', s.onTime+'%', 'desempeño de entrega', 'clock')}
-      ${kpiCard('Calidad', s.quality+'%', 'tasa de aceptación', 'shield-check')}
-      ${kpiCard('Proyectos Ganados', won, 'de '+proj.length+' invitados', 'trophy')}
-    </div>
-    ${(rs.clientCount||rs.innousCount) ? `
+    ${performanceOverviewHtml(s)}
+    <div class="section-title" style="margin-bottom:2px;"><i data-lucide="briefcase" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Actividad Comercial</div>
+    <div class="field-hint" style="margin-bottom:10px;">Qué tan seguido gana los proyectos a los que se le invita.</div>
     <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Calificaciones Post-Entrega</div>
-      <div class="section-sub">Retroalimentación después de cada pedido entregado — humano, separado de los indicadores automáticos de arriba.</div>
-      <div class="grid grid-2" style="margin-top:12px;">
-        <div>
-          <div class="info-item-label">Cliente (${rs.clientCount} pedido${rs.clientCount===1?'':'s'})</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.clientOntime)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.clientQuality)}</div>
-        </div>
-        <div>
-          <div class="info-item-label">Innous (${rs.innousCount} pedido${rs.innousCount===1?'':'s'})</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Comunicación</span>${stars(rs.innousCommunication)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempos</span>${stars(rs.innousOntime)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.innousQuality)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div class="section-sub">Invitado a ${proj.length} RFQ${proj.length===1?'':'s'}.</div>
+        <div style="text-align:right;">
+          <div style="font-size:28px;font-weight:700;">${won}</div>
+          <div class="td-sub">proyectos ganados</div>
         </div>
       </div>
-    </div>` : ''}
+    </div>
     <div class="card card-pad" style="margin-bottom:16px;">
       <div class="section-title">Información de Contacto</div>
       <div class="info-grid" style="margin-top:12px;">
@@ -8459,41 +8522,20 @@ ROUTES['supplier/performance'] = function(){
   const submitted = invited.filter(p=>{const q=supplierQuoteFor(p); return q&&q.status==='submitted';});
   const won = invited.filter(supplierWon);
   const winRate = submitted.length? Math.round(won.length/submitted.length*100):0;
-  const metricsIsNew = s.projects===0;
-  // fix128: el Rating ya no depende de tener pedidos completados — depende
-  // de que alguien (cliente o INNOUS) lo haya calificado, así que su
-  // propio "sin historial" se checa aparte del de % a tiempo/% de calidad.
-  const rs = supplierRatingSummary(s.id);
-  const ratingIsNew = rs.clientCount===0 && rs.innousCount===0;
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Desempeño</div><div class="page-subtitle">Tu historial dentro de la plataforma INNOUS</div></div></div>
-    ${metricsIsNew ? stageBanner('Aún no tienes pedidos completados — tu % a tiempo y % de calidad se calculan automáticamente en cuanto entregues tu primer pedido, y tu calificación en cuanto tu cliente o INNOUS te califiquen.', 'info') : ''}
-    <div class="grid grid-4" style="margin-bottom:20px;">
-      ${kpiCard('Calificación General', ratingIsNew?'—':s.rating, ratingIsNew?'sin calificaciones aún':'de 5.0','star')}
-      ${kpiCard('Entregas a Tiempo', metricsIsNew?'—':s.onTime+'%', metricsIsNew?'sin historial aún':'en todos los pedidos','clock')}
-      ${kpiCard('Índice de Calidad', metricsIsNew?'—':s.quality+'%', metricsIsNew?'sin historial aún':'tasa de aceptación','shield-check')}
-      ${kpiCard('Tasa de Éxito', winRate+'%', submitted.length+' cotizaciones enviadas','target')}
-    </div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div class="section-title">Calificaciones Post-Entrega</div>
-      <div class="section-sub">Lo que tu cliente y INNOUS calificaron después de cada pedido entregado — de aquí sale tu Calificación General de arriba.</div>
-      ${ratingIsNew ? `<div style="margin-top:12px;">${emptyState('star','Aún no tienes calificaciones','Aparecen aquí en cuanto tu cliente o INNOUS califiquen un pedido entregado.')}</div>` : `
-      <div class="grid grid-2" style="margin-top:12px;">
-        <div>
-          <div class="info-item-label">Cliente (${rs.clientCount} pedido${rs.clientCount===1?'':'s'})</div>
-          ${rs.clientCount ? `
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.clientOntime)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.clientQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
+    ${performanceOverviewHtml(s)}
+    <div class="section-title" style="margin-bottom:2px;"><i data-lucide="briefcase" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Actividad Comercial</div>
+    <div class="field-hint" style="margin-bottom:10px;">Qué tan seguido tu cotización termina ganando el proyecto.</div>
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div class="section-sub">${submitted.length} cotización${submitted.length===1?'':'es'} enviada${submitted.length===1?'':'s'} · ${won.length} ganada${won.length===1?'':'s'}.</div>
+        <div style="text-align:right;">
+          <div style="font-size:28px;font-weight:700;">${winRate}%</div>
+          <div class="td-sub">tasa de éxito</div>
         </div>
-        <div>
-          <div class="info-item-label">Innous (${rs.innousCount} pedido${rs.innousCount===1?'':'s'})</div>
-          ${rs.innousCount ? `
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Comunicación</span>${stars(rs.innousCommunication)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempos</span>${stars(rs.innousOntime)}</div>
-          <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.innousQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
-        </div>
-      </div>`}
+      </div>
     </div>
     <div class="card card-pad">
       <div class="section-title">Proyectos Completados</div>
