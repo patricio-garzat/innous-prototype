@@ -8302,7 +8302,16 @@ function supplierQuoteStatusBadge(p){
   if(p.selectedSupplierId===STATE.supplierId && !p.innousAuthorizedAt) return '<span class="badge badge-blue">En Revisión</span>';
   if(p.status==='completed') return '<span class="badge badge-purple">Completada</span>';
   if(supplierWon(p)) return '<span class="badge badge-green">Ganada</span>';
-  if(p.status==='customer_review'||p.shortlist.length===0) return '<span class="badge badge-blue">En Revisión</span>';
+  // fix179: era "p.status==='customer_review' || p.shortlist.length===0" —
+  // p.shortlist SIEMPRE sale vacío en una sesión de proveedor (no hay
+  // política de SELECT para proveedor en la tabla shortlist, solo
+  // cliente/INNOUS), así que esa condición era efectivamente
+  // "true" sin importar nada, y una cotización perdida se quedaba
+  // diciendo "En Revisión" para siempre en vez de caer al "Rechazada" de
+  // abajo. Se reemplaza por la lista real de estatus donde el proyecto
+  // TODAVÍA no se decide — una vez que pasa a awarded/in_production (y
+  // este proveedor no ganó), ya se sabe que se rechazó.
+  if(['sourcing','quotes_received','customer_review'].includes(p.status)) return '<span class="badge badge-blue">En Revisión</span>';
   return '<span class="badge badge-gray">Rechazada</span>';
 }
 /* ---- Supplier Active Orders ---- */
