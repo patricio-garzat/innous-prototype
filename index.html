@@ -2457,7 +2457,7 @@ async function enterAppAsUser(user){
   const sessionOk = await claimOrRenewSession(user.id);
   if(!sessionOk){
     await sb.auth.signOut();
-    showToast('Ya hay una sesión activa con esta cuenta en otro dispositivo. Ciérrala primero para entrar aquí.');
+    showToast('Ya hay una sesión activa con esta cuenta en otro dispositivo o pestaña. Si se te cortó la conexión hace un momento, esa sesión se libera sola en menos de un minuto — intenta de nuevo en unos segundos.');
     document.getElementById('app-shell').style.display = 'none';
     document.getElementById('auth-root').style.display = '';
     renderAuthRoot();
@@ -6470,7 +6470,7 @@ function shortlistPreview(p){
 }
 function sentShortlistReadonlySection(p){
   return `
-  <div class="card card-pad">
+  <div class="card card-pad" style="margin-bottom:20px;">
     <div class="section-title">Shortlist Enviado al Cliente</div>
     <div class="section-sub">Esperando la decisión de ${customerName(p.customerId)}. La identidad de los proveedores y el desglose de costos nunca se le muestran al cliente — este detalle de precios solo es visible dentro de INNOUS.</div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Proveedor</th><th>Costo del Proveedor (MXN)</th><th>Tipo de Cambio</th><th>Costo del Proveedor (USD)</th><th>Markup</th><th>Margen de INNOUS</th><th>Precio al Cliente</th><th>Tiempo de Entrega</th><th>Badge</th></tr></thead><tbody>
@@ -6585,7 +6585,7 @@ function purchaseOrderDetailsSection(p){
   const isConfirmed = purchaseOrderDetailsComplete(p);
   const upd = (field)=>`App.updatePoDetailDraft('${p.id}','${field}',this.value)`;
   return `
-  <div class="card card-pad" style="margin-top:20px;">
+  <div class="card card-pad" style="margin-top:20px;margin-bottom:20px;">
     <div class="section-title">Detalles de la Orden de Compra</div>
     <div class="section-sub">Lo que necesita la Orden de Compra formal del proveedor — llénalo y guárdalo antes de poder autorizar y enviarle el proyecto.</div>
     ${!isConfirmed ? stageBanner('Requerido — guarda esto antes de que se habilite "Autorizar y Notificar al Proveedor".', 'action') : ''}
@@ -8097,7 +8097,7 @@ function targetPriceHistorySection(p, q, role){
   const title = role==='CLIENT' ? 'Negotiation History' : 'Historial de la Negociación';
   const supplierLabel = role==='INNOUS' ? ` — ${supplierName(q.supplierId)}` : '';
   return `
-  <div class="card card-pad" style="margin-top:16px;">
+  <div class="card card-pad" style="margin-top:16px;margin-bottom:16px;">
     <div class="section-title">${title}${supplierLabel}</div>
     ${steps.map(s=>`
       <div class="pricing-row" style="align-items:flex-start;">
