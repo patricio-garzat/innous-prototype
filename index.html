@@ -2232,9 +2232,7 @@ function startChatRealtime(){
     : undefined; // INNOUS sees every conversation — no filter
   const isOnMessagesPageNotTyping = ()=>{
     const onMessagesPage = /^#\/(client|innous|supplier)\/messages|^#\/innous\/team-chat/.test(location.hash);
-    const active = document.activeElement;
-    const isTyping = active && ['INPUT','TEXTAREA'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
-    return onMessagesPage && !isTyping;
+    return onMessagesPage && !isActivelyComposingChatMessage();
   };
   chatRealtimeChannel = sb.channel('messages_general_'+(STATE.innousUserId||STATE.clientId||STATE.supplierId))
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages_general', ...(filter?{filter}:{}) }, async (payload)=>{
@@ -2283,6 +2281,28 @@ function stopChatRealtime(){
    thread) and just broadcast/listen on it; {self:false} keeps a sender
    from receiving its own ping back. */
 let typingChannel = null, typingChannelKey = null, typingChannelReady = false, typingSendThrottleAt = 0;
+// fix190: el cuadro de escribir se queda enfocado después de mandar un
+// mensaje (o nada más por haber dado clic ahí), así que "¿hay algo
+// enfocado?" (lo que pollLiveUpdates/isOnMessagesPageNotTyping usaban
+// hasta ahora) casi siempre salía true — un mensaje nuevo del otro lado
+// se guardaba bien (refreshRealMessages ya corría) pero la pantalla
+// nunca se refrescaba para mostrarlo, hasta que alguna otra acción
+// (mandar tu propio mensaje) forzara un route(). lastChatKeystrokeAt
+// guarda cuándo fue la ÚLTIMA tecla de verdad (no solo "está enfocado")
+// — ver isActivelyComposingChatMessage() más abajo.
+let lastChatKeystrokeAt = 0;
+const CHAT_INPUT_IDS = ['innous-chat-input','client-chat-input','supplier-chat-input'];
+// Solo bloquea el re-render si de verdad hay algo que se perdería: texto
+// sin enviar en el cuadro (nunca se guarda en STATE, así que un route()
+// sí lo borra — ver el comentario junto a chatComposeRowHtml) o una
+// tecla presionada hace un instante (todavía podría estar a media
+// palabra). Enfocado-pero-quieto-y-vacío ya no cuenta como "escribiendo".
+function isActivelyComposingChatMessage(){
+  const active = document.activeElement;
+  if(!active || !CHAT_INPUT_IDS.includes(active.id)) return false;
+  if(active.value && active.value.trim()) return true;
+  return (Date.now() - lastChatKeystrokeAt) < 2500;
+}
 // Patches just the "•••" typing bubble in place instead of going through a
 // full route() (fix76). A peer's typing ping can land as often as every
 // ~2s while they're mid-message — running that through route() (a full
@@ -2353,7 +2373,17 @@ async function pollLiveUpdates(){
   // (now slightly stale) page as-is until their next click/nav, when
   // route() runs anyway and picks up everything this just fetched.
   const active = document.activeElement;
-  const isTyping = active && ['INPUT','TEXTAREA','SELECT'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
+  // fix190: el cuadro de chat es un caso aparte — se queda enfocado después
+  // de mandar un mensaje (o nada más por haber dado clic ahí), así que
+  // "¿está enfocado?" solo, sin más, bloqueaba el refresh para siempre y
+  // los mensajes nuevos nunca aparecían solos. isActivelyComposingChatMessage
+  // solo cuenta como "escribiendo" si de verdad hay texto sin mandar o una
+  // tecla presionada hace un instante. El resto de los formularios de la
+  // app se quedan exactamente igual que antes (cualquier input/textarea/
+  // select enfocado sigue bloqueando el refresh, sin cambios).
+  const isTyping = active && CHAT_INPUT_IDS.includes(active.id)
+    ? isActivelyComposingChatMessage()
+    : active && ['INPUT','TEXTAREA','SELECT'].includes(active.tagName) && document.getElementById('app-content')?.contains(active);
   // Same idea for an open Ajustes accordion section (fix49): route() fully
   // replaces #app-content's innerHTML, so a brand-new .settings-panel node
   // is created every tick — its CSS "slide/fade in" entrance animation
@@ -11483,6 +11513,11 @@ const App = {
   // runs once per render of an open thread, so this is normally already
   // there by the time anyone's typed anything).
   notifyTyping(key){
+    // fix190: esto marca "tecleaste hace un instante" (lastChatKeystrokeAt)
+    // sin importar el throttle de abajo — el throttle es nada más para no
+    // saturar al OTRO lado con pings, no debe afectar si ESTE lado se
+    // considera "escribiendo" para efectos de no perderse un re-render.
+    lastChatKeystrokeAt = Date.now();
     if(!typingChannel || typingChannelKey!==key || !typingChannelReady) return;
     const now = Date.now();
     if(now - typingSendThrottleAt < 2000) return;
