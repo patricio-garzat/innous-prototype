@@ -1865,6 +1865,20 @@ function quoteRowToJs(row){
     validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
     submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
     rating: s?.rating||0, onTime: s?.onTime||0,
+    // fix161: target-price counter-offer negotiation. A CLIENT session can
+    // now see this one row (see the new RLS policy in
+    // supabase-fix161-target-price-counter-offer.sql) but only ever for
+    // its own negotiation-stage rows, and even then it must never learn
+    // the supplier's raw MXN ask or the markup/rate that produced
+    // targetCounterUsd — same confidentiality rule projectRowToJs already
+    // applies to the original target_price_* columns.
+    targetCounterMxn: STATE.role==='CLIENT' ? null : (row.target_counter_mxn ?? null),
+    targetCounterNote: row.target_counter_note || '',
+    targetCounterUsd: row.target_counter_usd ?? null,
+    targetCounterMarkupPct: STATE.role==='CLIENT' ? null : (row.target_counter_markup_pct ?? null),
+    targetCounterExchangeRate: STATE.role==='CLIENT' ? null : (row.target_counter_exchange_rate ?? null),
+    clientCounterUsd: row.client_counter_usd ?? null,
+    clientCounterMxn: STATE.role==='CLIENT' ? null : (row.client_counter_mxn ?? null),
   };
 }
 /* Shortlist entry — the client's copy comes from shortlist_client_view,
@@ -1969,6 +1983,20 @@ async function refreshRealProjects(){
       if(p && !p.invitedSupplierIds.includes(row.supplier_id)) p.invitedSupplierIds.push(row.supplier_id);
     });
     (quotes||[]).forEach(row=>{
+      const p = findProject(row.project_id); if(!p) return;
+      const q = quoteRowToJs(row);
+      const qi = p.supplierQuotes.findIndex(x=>x.supplierId===q.supplierId);
+      if(qi>-1) p.supplierQuotes[qi]=q; else p.supplierQuotes.push(q);
+    });
+  }
+  // fix161: a CLIENT never had any reason to read supplier_quotes before
+  // (no SELECT policy existed for that role at all) — now they do, but
+  // only for their own target-price negotiation rows, thanks to the new
+  // RLS policy added alongside this feature. Nothing else about this
+  // table becomes visible to a client session.
+  if(STATE.role==='CLIENT'){
+    const { data: negotiations } = await sb.from('supplier_quotes').select('*');
+    (negotiations||[]).forEach(row=>{
       const p = findProject(row.project_id); if(!p) return;
       const q = quoteRowToJs(row);
       const qi = p.supplierQuotes.findIndex(x=>x.supplierId===q.supplierId);
@@ -2896,7 +2924,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -5232,6 +5260,7 @@ ROUTES['client/rfq'] = function(id){
     ${p.status==='rejected' ? rejectedRfqBanner(p,'client') : `
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
+    ${targetPriceNegotiationSection(p)}
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Project Information</div>
@@ -5258,6 +5287,50 @@ ROUTES['client/rfq'] = function(id){
     </div>
   </div>`;
 };
+// fix161: target-price counter-offer negotiation, client side. Only ever
+// non-empty for a project with an active negotiation (see the new RLS
+// policy in supabase-fix161-target-price-counter-offer.sql — a client
+// session's p.supplierQuotes only ever contains rows that reached this
+// point). Everything here is USD-only, on purpose: q.targetCounterMxn/
+// clientCounterMxn/targetCounterMarkupPct/targetCounterExchangeRate are
+// all nulled out for a CLIENT session in quoteRowToJs, so there's
+// nothing to accidentally leak even if this function tried to.
+function targetPriceNegotiationSection(p){
+  const negotiations = (p.supplierQuotes||[]).filter(q=>q.status==='target_client_review'||q.status==='target_client_countered');
+  if(!negotiations.length) return '';
+  return negotiations.map(q=>{
+    const draftKey = p.id+':'+q.supplierId;
+    const draft = STATE.ui.clientCounterDrafts[draftKey];
+    if(q.status==='target_client_countered'){
+      return `
+      <div class="card card-pad" style="margin-bottom:20px;">
+        <div class="section-title">Your Final Counter-Offer Was Sent</div>
+        <div class="section-sub" style="margin-top:6px;">You sent your final counter-offer of ${fmtMoney(q.clientCounterUsd)}. The supplier can now only accept or decline it — this negotiation only allows one counter-offer per side. We'll notify you as soon as they respond.</div>
+      </div>`;
+    }
+    return `
+    <div class="card card-pad" style="margin-bottom:20px;">
+      <div class="section-title">New Price Offer From a Supplier</div>
+      <div class="section-sub" style="margin-top:6px;">A supplier proposed a different price for this RFQ instead of your target price. You can accept it, send one final counter-offer, or decline it outright — each side only gets one counter-offer in this negotiation.</div>
+      <div style="margin:18px 0;"><div class="field-label">Proposed Price</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMoney(q.targetCounterUsd)}</div>${q.targetCounterNote?`<div class="field-hint" style="margin-top:6px;">Supplier's note: "${q.targetCounterNote}"</div>`:''}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="App.respondTargetCounter('${p.id}','${q.supplierId}','accept')"><i data-lucide="check-circle"></i>Accept ${fmtMoney(q.targetCounterUsd)}</button>
+        ${draft ? '' : `<button class="btn btn-secondary" onclick="App.openClientCounterForm('${p.id}','${q.supplierId}')"><i data-lucide="repeat"></i>Send Final Counter-Offer</button>`}
+        <button class="btn btn-secondary" onclick="App.respondTargetCounter('${p.id}','${q.supplierId}','reject')">Decline</button>
+      </div>
+      ${draft ? `
+      <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
+        <div class="field-label">Your Final Counter-Offer (USD)</div>
+        <input type="number" min="0" step="0.01" value="${escAttr(draft.usd)}" style="max-width:220px;margin-top:6px;" oninput="App.updateClientCounterDraft('${p.id}','${q.supplierId}',this.value)" placeholder="0.00">
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button class="btn btn-primary" onclick="App.submitClientCounter('${p.id}','${q.supplierId}')"><i data-lucide="send"></i>Send Final Counter-Offer</button>
+          <button class="btn btn-secondary" onclick="App.cancelClientCounterForm('${p.id}','${q.supplierId}')">Cancel</button>
+        </div>
+        <div class="field-hint" style="margin-top:8px;">This is your one and only counter-offer — after this, the supplier can only accept or decline it.</div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
 function infoItem(label,val){ return `<div><div class="info-item-label">${label}</div><div class="info-item-val">${val}</div></div>`; }
 // Shared line-items renderer for the 3 RFQ detail pages (fix37). A pre-fix37
 // row (or a demo project, which never goes through projectRowToJs) has no
@@ -5942,7 +6015,27 @@ function targetPriceSourcingSection(p){
       <div><div class="field-label">Margen de INNOUS (MXN)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
     </div>
     <div class="field-hint" style="margin-top:10px;">Los proveedores solo ven el Presupuesto en MXN — nunca el target price, tu markup %, ni este margen.</div>
+    ${targetPriceNegotiationStatusInnous(p)}
   </div>`;
+}
+// fix161: la conversión de ida y vuelta de la negociación es automática
+// (misma markup/tipo de cambio ya bloqueados arriba — nadie tiene que
+// re-teclear nada), así que INNOUS no da clic en nada aquí — esto es
+// puramente para que INNOUS vea en qué va cada negociación sin tener
+// que adivinar por qué un proveedor invitado ya no está en 'pending'.
+function targetPriceNegotiationStatusInnous(p){
+  const rows = (p.supplierQuotes||[]).filter(q=>['target_client_review','target_client_countered'].includes(q.status));
+  if(!rows.length) return '';
+  return `
+  <hr class="divider">
+  <div class="field-label" style="margin-bottom:8px;">Negociación en Curso</div>
+  ${rows.map(q=>{
+    if(q.status==='target_client_review'){
+      return `<div class="pricing-row"><span>${supplierName(q.supplierId)} contraofertó ${fmtMXN(q.targetCounterMxn)} (${fmtMoney(q.targetCounterUsd)} para el cliente)</span><span class="badge badge-blue">Esperando al cliente</span></div>`;
+    }
+    return `<div class="pricing-row"><span>${supplierName(q.supplierId)} — el cliente contraofertó ${fmtMoney(q.clientCounterUsd)} (${fmtMXN(q.clientCounterMxn)} para el proveedor)</span><span class="badge badge-amber">Esperando al proveedor (última vuelta)</span></div>`;
+  }).join('')}
+  `;
 }
 function supplierMatchingSection(p){
   // Only relevant while INNOUS could still be inviting suppliers — once the RFQ
@@ -7670,12 +7763,16 @@ ROUTES['supplier/rfq'] = function(id){
   else if(declined) headerBadge = '<span class="badge badge-gray">No Asignado</span>';
   else if(submitted && isTargetPrice) headerBadge = '<span class="badge badge-green">Aceptado</span>';
   else if(submitted) headerBadge = '<span class="badge badge-green">Cotización Enviada</span>';
+  else if(q?.status==='target_client_review') headerBadge = '<span class="badge badge-blue">Esperando al Cliente</span>';
+  else if(q?.status==='target_client_countered') headerBadge = '<span class="badge badge-amber">Contraoferta Final Pendiente</span>';
   return `
   <div class="content-inner" style="max-width:900px;">
     <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${headerBadge}</div>
-    ${declined ? stageBanner('Otro proveedor aceptó este proyecto al precio fijo antes que tú. Ya no está disponible.', 'info')
-      : (isTargetPrice && submitted && !p.innousAuthorizedAt) ? stageBanner('Aceptaste el precio fijo — INNOUS está finalizando los detalles del pedido antes de liberarlo.', 'info')
+    ${declined ? stageBanner('Otro proveedor aceptó este proyecto al precio fijo antes que tú, o la negociación de target price se cerró. Ya no está disponible.', 'info')
+      : (isTargetPrice && submitted && !p.innousAuthorizedAt) ? stageBanner('Aceptaste el precio — INNOUS está finalizando los detalles del pedido antes de liberarlo.', 'info')
+      : q?.status==='target_client_review' ? stageBanner('Mandaste tu contraoferta — esperando respuesta del cliente.', 'info')
+      : q?.status==='target_client_countered' ? stageBanner('El cliente mandó su contraoferta final — decide si la aceptas.', 'action')
       : stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'?'success':(submitted?'info':'action'))}
     <div class="grid grid-2" style="margin-bottom:20px;">
       <div class="card card-pad">
@@ -7698,35 +7795,82 @@ ROUTES['supplier/rfq'] = function(id){
         })()}</div>
       </div>
     </div>
-    ${isTargetPrice ? targetPriceSupplierSection(p, q, declined, submitted) : (submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p))}
+    ${isTargetPrice ? targetPriceSupplierSection(p, q) : (submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p))}
   </div>`;
 };
 // Target-price RFQs replace the normal quote form entirely: the supplier
 // only ever sees the fixed MXN budget INNOUS already computed (never the
-// client's raw USD target price or INNOUS's markup %) and picks
-// Accept/Decline — no unit-price negotiation, since the whole point of a
-// target price is that the client already set the number.
-function targetPriceSupplierSection(p, q, declined, submitted){
-  if(declined){
-    return `<div class="card card-pad"><div class="section-title">Proyecto No Asignado</div><div class="section-sub" style="margin-top:6px;">Otro proveedor aceptó este proyecto al precio fijo antes que tú. Gracias por tu interés — te seguiremos invitando a nuevos RFQs según tus capacidades.</div></div>`;
+// client's raw USD target price or INNOUS's markup %). Since fix161 there
+// are 5 states to render here instead of just pending/submitted/declined —
+// see the comment at the top of supabase-fix161-target-price-counter-offer.sql
+// for the full negotiation shape (each side only ever gets ONE
+// counter-offer, total, across the whole negotiation).
+function targetPriceSupplierSection(p, q){
+  const status = q?.status || 'pending';
+  if(status==='declined'){
+    return `<div class="card card-pad"><div class="section-title">Proyecto No Asignado</div><div class="section-sub" style="margin-top:6px;">${q.clientCounterUsd!=null ? 'Rechazaste la contraoferta final del cliente, o el cliente rechazó tu contraoferta — este proyecto ya no está disponible para ti.' : 'Otro proveedor aceptó este proyecto al precio fijo antes que tú. Gracias por tu interés — te seguiremos invitando a nuevos RFQs según tus capacidades.'}</div></div>`;
   }
-  if(submitted){
+  if(status==='submitted'){
     // supplierWon() (and therefore the Order page) only unlocks once INNOUS
     // authorizes the project (see App.authorizeProject) — same gate every
     // other awarded supplier goes through, target price or not. Until then
     // this card is the only confirmation the supplier gets.
     const authorized = !!p.innousAuthorizedAt;
-    return `<div class="card card-pad"><div class="section-title">Aceptaste Este Proyecto</div><div class="section-sub" style="margin-top:6px;">Confirmaste el precio fijo de ${fmtMXN(p.targetPriceSupplierBudgetMxn)}. ${authorized ? 'El proyecto es tuyo — consulta los siguientes pasos en tu pedido.' : 'INNOUS está finalizando los detalles del pedido — te notificaremos en cuanto esté listo para producción.'}</div>${authorized ? `<button class="btn btn-secondary" style="margin-top:14px;" onclick="navigate('#/supplier/order/${p.id}')">Ver Orden</button>` : ''}</div>`;
+    const finalMxn = q.quotedTotal ?? p.targetPriceSupplierBudgetMxn;
+    return `<div class="card card-pad"><div class="section-title">Aceptaste Este Proyecto</div><div class="section-sub" style="margin-top:6px;">Confirmaste el precio de ${fmtMXN(finalMxn)}. ${authorized ? 'El proyecto es tuyo — consulta los siguientes pasos en tu pedido.' : 'INNOUS está finalizando los detalles del pedido — te notificaremos en cuanto esté listo para producción.'}</div>${authorized ? `<button class="btn btn-secondary" style="margin-top:14px;" onclick="navigate('#/supplier/order/${p.id}')">Ver Orden</button>` : ''}</div>`;
   }
+  // El cliente ya vio tu contraoferta y no ha respondido todavía — ya
+  // usaste tu única oportunidad de contraofertar en este RFQ.
+  if(status==='target_client_review'){
+    return `
+    <div class="card card-pad">
+      <div class="section-title">Esperando Respuesta del Cliente</div>
+      <div class="section-sub" style="margin-top:6px;">Mandaste una contraoferta — el cliente la está revisando. Puede aceptarla, mandarte una última contraoferta, o rechazarla. Ya usaste tu única oportunidad de contraofertar en este RFQ, así que no puedes volver a hacerlo.</div>
+      <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:14px;">
+        ${infoItem('Tu Contraoferta (MXN)', fmtMXN(q.targetCounterMxn))}
+        ${infoItem('Equivalente para el Cliente (USD)', fmtMoney(q.targetCounterUsd))}
+      </div>
+      ${q.targetCounterNote ? `<div class="field-hint" style="margin-top:10px;">Tu nota: "${q.targetCounterNote}"</div>` : ''}
+    </div>`;
+  }
+  // El cliente contraofertó de vuelta — esta es la última vuelta: solo
+  // Aceptar o Rechazar, ya no hay opción de volver a contraofertar.
+  if(status==='target_client_countered'){
+    return `
+    <div class="card card-pad">
+      <div class="section-title">Contraoferta Final del Cliente</div>
+      <div class="section-sub" style="margin-top:6px;">El cliente respondió a tu contraoferta con esta última propuesta. Esta es la última vuelta de la negociación — si rechazas, el proyecto se cierra para ti y no podrás volver a contraofertar.</div>
+      <div style="margin:18px 0;"><div class="field-label">Contraoferta Final (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(q.clientCounterMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(q.clientCounterMxn)} + IVA (16%) · equivalente a ${fmtMoney(q.clientCounterUsd)} para el cliente</div></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" onclick="App.respondFinalCounter('${p.id}','accept')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(q.clientCounterMxn)}</button>
+        <button class="btn btn-secondary" onclick="App.respondFinalCounter('${p.id}','reject')">Rechazar Definitivamente</button>
+      </div>
+    </div>`;
+  }
+  // status === 'pending' — estado inicial: Aceptar / Rechazar / Contraofertar.
+  const draft = STATE.ui.targetCounterDrafts[p.id];
   return `
   <div class="card card-pad">
     <div class="section-title">Precio Fijo del Cliente</div>
-    <div class="section-sub" style="margin-top:6px;">El cliente ya fijó el presupuesto para este proyecto. El primer proveedor que acepte se queda con el proyecto de inmediato — no hay comparación de cotizaciones.</div>
+    <div class="section-sub" style="margin-top:6px;">El cliente ya fijó el presupuesto para este proyecto. El primer proveedor que acepte se queda con el proyecto de inmediato — no hay comparación de cotizaciones. Si el precio no te funciona, puedes mandar UNA contraoferta en vez de rechazar de una vez — pero solo tienes esa única oportunidad en todo el RFQ.</div>
     <div style="margin:18px 0;"><div class="field-label">Precio Fijo (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(p.targetPriceSupplierBudgetMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(p.targetPriceSupplierBudgetMxn)} + IVA (16%)</div></div>
-    <div style="display:flex;gap:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="App.acceptTargetPrice('${p.id}')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(p.targetPriceSupplierBudgetMxn)}</button>
+      ${draft ? '' : `<button class="btn btn-secondary" onclick="App.openTargetCounterForm('${p.id}')"><i data-lucide="repeat"></i>Contraofertar</button>`}
       <button class="btn btn-secondary" onclick="App.declineTargetPrice('${p.id}')">No Puedo con Este Precio</button>
     </div>
+    ${draft ? `
+    <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
+      <div class="field-label">Tu Contraoferta — Subtotal en MXN (sin IVA)</div>
+      <input type="number" min="0" step="0.01" value="${escAttr(draft.mxn)}" style="max-width:220px;margin-top:6px;" oninput="App.updateTargetCounterDraft('${p.id}','mxn',this.value)" placeholder="0.00">
+      <div class="field-label" style="margin-top:12px;">Nota para INNOUS/el cliente (opcional)</div>
+      <textarea rows="2" style="margin-top:6px;" oninput="App.updateTargetCounterDraft('${p.id}','note',this.value)" placeholder="Por qué necesitas un precio distinto…">${escAttr(draft.note)}</textarea>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="btn btn-primary" onclick="App.submitTargetCounter('${p.id}')"><i data-lucide="send"></i>Enviar Contraoferta</button>
+        <button class="btn btn-secondary" onclick="App.cancelTargetCounterForm('${p.id}')">Cancelar</button>
+      </div>
+      <div class="field-hint" style="margin-top:8px;">Recuerda: solo puedes contraofertar una vez en todo este RFQ.</div>
+    </div>` : ''}
   </div>`;
 }
 // Shown wherever the supplier needs to see their own submitted quote in
@@ -10216,6 +10360,39 @@ const App = {
     showToast(`Order created — ${p.id}`, 'success');
     navigate('#/client/order/'+pid);
   },
+  // fix161: target-price counter-offer negotiation, client side.
+  // action: 'accept' | 'counter' | 'reject' — 'counter' is the client's
+  // one and only chance to counter-offer, enforced server-side
+  // (client_respond_target_counter raises if this row isn't in
+  // 'target_client_review' anymore).
+  async respondTargetCounter(pid, sid, action, counterUsd){
+    const { error } = await sb.rpc('client_respond_target_counter', { p_project_id: pid, p_supplier_id: sid, p_action: action, p_counter_usd: counterUsd ?? null });
+    if(error){ showToast(error.message); await refreshRealProjects(); route(); return; }
+    delete STATE.ui.clientCounterDrafts[pid+':'+sid];
+    await refreshRealProjects();
+    if(action==='accept'){ showToast('Order created!', 'success'); navigate('#/client/order/'+pid); return; }
+    showToast(action==='reject' ? "You declined the supplier's counter-offer." : 'Final counter-offer sent.', 'success');
+    route();
+  },
+  openClientCounterForm(pid, sid){
+    STATE.ui.clientCounterDrafts[pid+':'+sid] = { usd:'' };
+    route();
+  },
+  cancelClientCounterForm(pid, sid){
+    delete STATE.ui.clientCounterDrafts[pid+':'+sid];
+    route();
+  },
+  updateClientCounterDraft(pid, sid, val){
+    const key = pid+':'+sid;
+    if(!STATE.ui.clientCounterDrafts[key]) STATE.ui.clientCounterDrafts[key] = { usd:'' };
+    STATE.ui.clientCounterDrafts[key].usd = val;
+  },
+  async submitClientCounter(pid, sid){
+    const draft = STATE.ui.clientCounterDrafts[pid+':'+sid];
+    const usd = parseFloat(draft?.usd);
+    if(!usd || usd<=0){ showToast('Enter a price greater than zero.'); return; }
+    await App.respondTargetCounter(pid, sid, 'counter', usd);
+  },
   /* Deliberate gap between "client picked a supplier" and "supplier finds
      out" — see rfqStageMessage()/orderStageMessage()/supplierOrders() for
      the other half of this: everywhere the supplier's own portal would
@@ -10323,6 +10500,43 @@ const App = {
       if(error){ showToast(error.message); return; }
     }
     showToast('Rechazaste este proyecto.', 'success');
+    route();
+  },
+  // fix161: target-price counter-offer negotiation, supplier side. Only
+  // reveals the mini-form (an entry in this draft map) — nothing is sent
+  // to the server until App.submitTargetCounter, which is the one call
+  // that actually spends the supplier's single counter-offer.
+  openTargetCounterForm(pid){
+    STATE.ui.targetCounterDrafts[pid] = { mxn:'', note:'' };
+    route();
+  },
+  cancelTargetCounterForm(pid){
+    delete STATE.ui.targetCounterDrafts[pid];
+    route();
+  },
+  updateTargetCounterDraft(pid, field, val){
+    if(!STATE.ui.targetCounterDrafts[pid]) STATE.ui.targetCounterDrafts[pid] = { mxn:'', note:'' };
+    STATE.ui.targetCounterDrafts[pid][field] = val;
+  },
+  async submitTargetCounter(pid){
+    const draft = STATE.ui.targetCounterDrafts[pid];
+    const mxn = parseFloat(draft?.mxn);
+    if(!mxn || mxn<=0){ showToast('Escribe un precio mayor a cero.'); return; }
+    const { error } = await sb.rpc('supplier_counter_target_price', { p_project_id: pid, p_counter_mxn: mxn, p_note: (draft.note||'').trim()||null });
+    if(error){ showToast(error.message); return; }
+    delete STATE.ui.targetCounterDrafts[pid];
+    await refreshRealProjects();
+    showToast('Contraoferta enviada — esperando respuesta del cliente.', 'success');
+    route();
+  },
+  // The supplier's final accept/reject to the client's last counter-offer
+  // (q.status==='target_client_countered') — no counter option here on
+  // purpose, this is the last step of the negotiation either way.
+  async respondFinalCounter(pid, action){
+    const { error } = await sb.rpc('supplier_respond_final_counter', { p_project_id: pid, p_action: action });
+    if(error){ showToast(error.message); await refreshRealProjects(); route(); return; }
+    await refreshRealProjects();
+    showToast(action==='accept' ? '¡Aceptaste la contraoferta final!' : 'Rechazaste la contraoferta final.', 'success');
     route();
   },
 
@@ -10972,6 +11186,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'saveSupplierAccount','onSupplierCsfSelected','deleteSupplierCsf','addToShortlist',
   'removeFromShortlist','sendQuotesToCustomer','confirmSelectQuote','authorizeProject',
   'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
+  'submitTargetCounter','respondFinalCounter','respondTargetCounter',
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
   'sendChatCard','deleteChat','submitSignup','sendInnousTeammatePasswordReset',
