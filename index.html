@@ -6207,6 +6207,7 @@ function supplierResponsesSection(p){
             <span class="badge ${badge[0]}">${badge[1]}</span>
           </div>
           <div class="td-sub" style="margin-top:6px;">${s?s.city:'—'}</div>
+          ${declined ? `<button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%;" onclick="App.reopenSupplierQuote(event,'${p.id}','${sid}')"><i data-lucide="rotate-ccw"></i>Reabrir para Cotizar</button>` : ''}
         </div>`;
       }).join('')}
     </div>
@@ -10881,6 +10882,21 @@ const App = {
     showToast('Rechazaste este proyecto.', 'success');
     route();
   },
+  // fix171: INNOUS le da otra oportunidad a un proveedor que rechazó
+  // (a propósito o por accidente) mientras el RFQ sigue abierto — este
+  // botón solo aparece en supplierResponsesSection mientras nadie haya
+  // ganado el proyecto todavía (esa sección deja de mostrarse en cuanto
+  // se adjudica), así que no hay riesgo de reabrir a alguien después de
+  // que otro proveedor ya se quedó con el proyecto — el RPC igual lo
+  // vuelve a checar por su cuenta.
+  async reopenSupplierQuote(e, pid, sid){
+    if(e) e.stopPropagation();
+    const { error } = await sb.rpc('innous_reopen_supplier_quote', { p_project_id: pid, p_supplier_id: sid });
+    if(error){ showToast(error.message); return; }
+    await refreshRealProjects();
+    showToast('Proveedor reabierto — puede volver a cotizar.', 'success');
+    route();
+  },
   // fix161: target-price counter-offer negotiation, supplier side. Only
   // reveals the mini-form (an entry in this draft map) — nothing is sent
   // to the server until App.submitTargetCounter, which is the one call
@@ -11566,7 +11582,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'removeFromShortlist','sendQuotesToCustomer','confirmSelectQuote','authorizeProject',
   'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
   'submitTargetCounter','respondFinalCounter','respondTargetCounter',
-  'innousReviewSupplierCounter','innousReviewClientCounter',
+  'innousReviewSupplierCounter','innousReviewClientCounter','reopenSupplierQuote',
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
   'sendChatCard','deleteChat','submitSignup','sendInnousTeammatePasswordReset',
@@ -11585,7 +11601,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
 //    innous_authorize_project, mismas funciones SECURITY DEFINER que de
 //    verdad hacen cumplir esto, no solo la UI).
 const INNOUS_OWNER_ONLY_METHODS = ['createInnousTeammate','changeTeammateAccess','removeInnousTeammate','sendInnousTeammatePasswordReset'];
-const INNOUS_EDITOR_ALLOWED_METHODS = ['sendRfqToSuppliers','authorizeProject','innousReviewSupplierCounter','innousReviewClientCounter'];
+const INNOUS_EDITOR_ALLOWED_METHODS = ['sendRfqToSuppliers','authorizeProject','innousReviewSupplierCounter','innousReviewClientCounter','reopenSupplierQuote'];
 INNOUS_VIEWER_BLOCKED_METHODS.forEach(name=>{
   const original = App[name];
   if(typeof original !== 'function') return;
