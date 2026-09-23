@@ -2932,7 +2932,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -7873,7 +7873,10 @@ function supplierRfqMiniTable(list){
 
 /* ---- Supplier Available RFQs ---- */
 ROUTES['supplier/rfqs'] = function(){
-  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  // fix177: un proyecto completado ya no se queda aquí — se mueve a "Mis
+  // Proyectos" (con su propio filtro de Activos/Completados), que es
+  // donde tiene sentido verlo una vez que ya se entregó.
+  const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Proyectos Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
@@ -8301,13 +8304,29 @@ function supplierQuoteStatusBadge(p){
 }
 /* ---- Supplier Active Orders ---- */
 function supplierOrders(){ return PROJECTS.filter(p=>supplierWon(p) && p.order); }
+// fix177: un pedido completado ya no desaparece de "Mis Proyectos" (antes
+// solo vivía en "Proyectos Disponibles", ver ROUTES['supplier/rfqs']) —
+// ahora se queda aquí, con un filtro Activos/Completados/Todos para no
+// amontonar los dos juntos por default.
 ROUTES['supplier/orders'] = function(){
-  const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const filter = STATE.ui.supplierOrdersFilter || 'active';
+  const all = supplierOrders();
+  const activeCount = all.filter(p=>p.status!=='completed').length;
+  const completedCount = all.filter(p=>p.status==='completed').length;
+  const orders = all.filter(p=>filter==='completed' ? p.status==='completed' : filter==='all' ? true : p.status!=='completed')
+    .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const emptyTitle = filter==='completed' ? 'Sin pedidos completados' : filter==='all' ? 'Aún no tienes pedidos' : 'Aún no tienes pedidos activos';
+  const emptyText = filter==='completed' ? 'Los pedidos entregados y calificados aparecerán aquí.' : 'Los pedidos aparecerán aquí cuando un cliente seleccione tu cotización.';
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Mis Proyectos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div></div>
-    <div class="grid grid-2">
-      ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','Aún no tienes pedidos activos','Los pedidos aparecerán aquí cuando un cliente seleccione tu cotización.')}</div>`}
+    <div class="page-header"><div><div class="page-title">Mis Proyectos</div><div class="page-subtitle">${orders.length} pedido${orders.length===1?'':'s'} ${filter==='completed'?'completado(s)':filter==='all'?'en total':'en curso'}</div></div></div>
+    <div class="markup-chip-row">
+      <button type="button" class="markup-chip ${filter==='active'?'active':''}" onclick="App.setSupplierOrdersFilter('active')">Activos (${activeCount})</button>
+      <button type="button" class="markup-chip ${filter==='completed'?'active':''}" onclick="App.setSupplierOrdersFilter('completed')">Completados (${completedCount})</button>
+      <button type="button" class="markup-chip ${filter==='all'?'active':''}" onclick="App.setSupplierOrdersFilter('all')">Todos</button>
+    </div>
+    <div class="grid grid-2" style="margin-top:14px;">
+      ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package',emptyTitle,emptyText)}</div>`}
     </div>
   </div>`;
 };
@@ -9788,6 +9807,9 @@ const App = {
     if(error || !data){ showToast('No se pudo abrir el documento.'); return; }
     openFileSmart(data.signedUrl, path);
   },
+  // fix177: Activos/Completados/Todos en "Mis Proyectos" — puro estado de
+  // vista local, nada que persistir.
+  setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
   // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
   // App.deleteSupplierCsf. Quita el archivo real de Storage Y la entrada
