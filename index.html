@@ -2022,12 +2022,14 @@ async function refreshRealProjects(){
     });
   }
   if(STATE.role==='CLIENT' || STATE.role==='INNOUS' || STATE.role==='SUPPLIER'){
-    // fix81/fix128 — a client's own RLS on order_ratings only ever returns
-    // their own (rater='client') row on their own projects; a supplier's
-    // (fix128) returns both raters but only on their own projects; INNOUS's
-    // returns every rating, both raters, across every project. Either way
-    // this one shared query is already correctly scoped per role, same as
-    // the shortlist fetch above.
+    // fix81/fix128/fix192 — a client's own RLS on order_ratings only ever
+    // returns their own (rater='client') row on their own projects; a
+    // supplier's returns nothing at all (fix192 dropped the SELECT policy
+    // fix128 had given them — the supplier only ever sees their blended
+    // suppliers.rating, never the raw per-rater rows); INNOUS's returns
+    // every rating, both raters, across every project. Either way this
+    // one shared query is already correctly scoped per role, same as the
+    // shortlist fetch above.
     const { data: ratings } = await sb.from('order_ratings').select('*');
     (ratings||[]).forEach(row=>{
       const p = findProject(row.project_id); if(!p) return;
@@ -2909,12 +2911,16 @@ function recalcSupplierMetrics(supplierId){
 // (order_ratings, fix81 — ver supplierRatingSummary). Si solo uno de los
 // dos ha calificado, el Rating es nada más ese lado — no se le resta
 // puntos a un proveedor por el otro lado no haber calificado todavía.
+// fix192: el cliente ahora solo califica Calidad (una sola dimensión) e
+// INNOUS solo Comunicación + Tiempo de Entrega (dos) — antes cada lado
+// calificaba las tres, con bastante traslape. clientAvg ya no necesita
+// promediar nada (una sola dimensión), innousAvg promedia las dos suyas.
 function recalcSupplierRating(supplierId){
   const s = SUPPLIERS.find(x=>x.id===supplierId);
   if(!s) return;
   const rs = supplierRatingSummary(supplierId);
-  const clientAvg = rs.clientCount ? (rs.clientOntime + rs.clientQuality) / 2 : null;
-  const innousAvg = rs.innousCount ? (rs.innousCommunication + rs.innousOntime + rs.innousQuality) / 3 : null;
+  const clientAvg = rs.clientCount ? rs.clientQuality : null;
+  const innousAvg = rs.innousCount ? (rs.innousCommunication + rs.innousOntime) / 2 : null;
   const parts = [clientAvg, innousAvg].filter(v=>v!=null);
   s.rating = parts.length ? Math.round(parts.reduce((a,b)=>a+b,0)/parts.length*10)/10 : 0;
 }
@@ -2942,8 +2948,8 @@ function supplierRatingSummary(supplierId){
   const innousRatings = rated.map(p=>p.ratings.innous).filter(Boolean);
   const avg = (list, key) => list.length ? Math.round(list.reduce((sum,r)=>sum+r[key],0)/list.length*10)/10 : 0;
   return {
-    clientCount: clientRatings.length, clientOntime: avg(clientRatings,'ontime'), clientQuality: avg(clientRatings,'quality'),
-    innousCount: innousRatings.length, innousCommunication: avg(innousRatings,'communication'), innousOntime: avg(innousRatings,'ontime'), innousQuality: avg(innousRatings,'quality'),
+    clientCount: clientRatings.length, clientQuality: avg(clientRatings,'quality'),
+    innousCount: innousRatings.length, innousCommunication: avg(innousRatings,'communication'), innousOntime: avg(innousRatings,'ontime'),
   };
 }
 // fix181: el usuario pidió quitar por completo las "calificaciones
@@ -2956,36 +2962,52 @@ function supplierRatingSummary(supplierId){
 // cuando INNOUS anda invitando proveedores a cotizar, y en el export a
 // Excel), nada más se quitan de esta sección de calificación, que ahora
 // es solo la reseña humana.
+// fix192: dos cambios —
+//  1) El cliente ahora solo califica Calidad, e INNOUS solo Comunicación
+//     y Tiempo de Entrega (antes cada quien calificaba las tres, con
+//     traslape).
+//  2) Al PROVEEDOR ya no se le muestra el desglose de quién calificó
+//     qué — nada más ve su calificación global de este pedido, sin saber
+//     si vino del cliente o de INNOUS. INNOUS (la ficha del proveedor
+//     dentro de su propio portal) sigue viendo el desglose completo, le
+//     sirve para saber qué está fallando y con quién. Del lado del
+//     servidor, el proveedor ya ni siquiera tiene permiso de SELECT
+//     sobre order_ratings (supabase-fix192-*.sql le quita el que fix128
+//     le había dado) — así que "isNew" no puede depender de
+//     rs.clientCount/innousCount (siempre saldrían 0 en su propia
+//     sesión, aunque sí haya calificaciones). s.rating (suppliers.rating,
+//     tabla aparte, el proveedor sí la puede leer) es la señal correcta
+//     para los dos lados: nunca es 0 salvo que de verdad nadie haya
+//     calificado (las estrellas van de 1 a 5).
 function performanceOverviewHtml(s){
   const rs = supplierRatingSummary(s.id);
-  const ratingIsNew = rs.clientCount===0 && rs.innousCount===0;
+  const ratingIsNew = !s.rating;
+  const hideBreakdown = STATE.role==='SUPPLIER';
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
       <div>
         <div class="section-title">Calificación</div>
-        <div class="section-sub" style="max-width:420px;">100% la opinión real de tu cliente y de INNOUS después de cada pedido entregado — cada quien califica lo suyo, y esta calificación es el promedio de ambos.</div>
+        <div class="section-sub" style="max-width:420px;">${hideBreakdown ? '100% la opinión real de tu cliente y de INNOUS después de cada pedido entregado — esta es tu calificación global.' : '100% la opinión real del cliente y de INNOUS después de cada pedido entregado — el proveedor solo ve el número global, nunca este desglose.'}</div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:28px;font-weight:700;">${ratingIsNew?'—':s.rating.toFixed(1)}</div>
         <div class="td-sub">${ratingIsNew?'sin calificaciones aún':'de 5.0'}</div>
       </div>
     </div>
-    ${ratingIsNew ? `<div style="margin-top:12px;">${emptyState('star','Aún no hay calificaciones','Aparecen aquí en cuanto el cliente o INNOUS califiquen un pedido entregado.')}</div>` : `
+    ${ratingIsNew ? `<div style="margin-top:12px;">${emptyState('star','Aún no hay calificaciones','Aparecen aquí en cuanto el cliente o INNOUS califiquen un pedido entregado.')}</div>` : hideBreakdown ? '' : `
     <hr class="divider">
     <div class="grid grid-2">
       <div>
         <div class="info-item-label">Cliente (${rs.clientCount} pedido${rs.clientCount===1?'':'s'})</div>
         ${rs.clientCount ? `
-        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.clientOntime)}</div>
         <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.clientQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
       </div>
       <div>
         <div class="info-item-label">INNOUS (${rs.innousCount} pedido${rs.innousCount===1?'':'s'})</div>
         ${rs.innousCount ? `
         <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Comunicación</span>${stars(rs.innousCommunication)}</div>
-        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempos</span>${stars(rs.innousOntime)}</div>
-        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Calidad</span>${stars(rs.innousQuality)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
+        <div class="rating-card-row" style="padding:4px 0;"><span class="td-sub">Tiempo de Entrega</span>${stars(rs.innousOntime)}</div>` : `<div class="td-sub" style="padding:4px 0;">Aún sin calificar</div>`}
       </div>
     </div>`}
   </div>
@@ -5601,10 +5623,14 @@ function orderCard(p){
 // ---- Post-delivery rating, client side (fix81/fix82) — the client never
 // knows who the supplier is (see the confidentiality note at the top of
 // this file), so this is deliberately framed as rating the DELIVERY, not
-// "the supplier": on-time and quality only, no comment field required, one
-// tap per star. Once submitted the picker is gone for good, replaced by a
-// plain read-only confirmation — rating an order is a one-time "how'd it
-// go", not a setting to keep fiddling with.
+// "the supplier". fix192: el cliente ahora solo califica Calidad — Tiempo
+// de Entrega se quitó de su lado (INNOUS es quien ve/controla la logística
+// de principio a fin, así que es quien está en mejor posición para
+// calificar eso — ver innousRatingCardHtml más abajo). Sin campo de
+// comentario, un tap por estrella. Una vez enviada, el picker desaparece
+// para siempre y se reemplaza por una confirmación de solo lectura —
+// calificar un pedido es un "cómo te fue" de una sola vez, no algo que se
+// quede ajustando.
 function clientRatingCardHtml(p){
   if(p.status!=='completed') return '';
   const already = p.ratings.client;
@@ -5612,18 +5638,16 @@ function clientRatingCardHtml(p){
     return `
     <div class="card card-pad" style="margin-top:20px;">
       <div class="section-title">Your Rating</div>
-      <div class="rating-card-row"><span class="rating-card-row-label">On-Time Delivery</span>${stars(already.ontime)}</div>
       <div class="rating-card-row"><span class="rating-card-row-label">Quality</span>${stars(already.quality)}</div>
       <div class="section-sub" style="margin-top:6px;">Thanks for the feedback!</div>
     </div>`;
   }
-  if(!STATE.ui.clientRatingDrafts[p.id]) STATE.ui.clientRatingDrafts[p.id] = {ontime:0, quality:0, comment:''};
+  if(!STATE.ui.clientRatingDrafts[p.id]) STATE.ui.clientRatingDrafts[p.id] = {quality:0, comment:''};
   const d = STATE.ui.clientRatingDrafts[p.id];
   return `
   <div class="card card-pad" style="margin-top:20px;">
     <div class="section-title">Rate This Delivery</div>
-    <div class="section-sub">Just two quick taps — how did this delivery go?</div>
-    <div class="rating-card-row"><span class="rating-card-row-label">On-Time Delivery</span>${starPickerHtml(d.ontime, `App.setClientRatingDraft('${p.id}','ontime',__N__)`)}</div>
+    <div class="section-sub">One quick tap — how was the quality of what you received?</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Quality</span>${starPickerHtml(d.quality, `App.setClientRatingDraft('${p.id}','quality',__N__)`)}</div>
     <textarea placeholder="Anything else? (optional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.clientRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
     <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitClientRating('${p.id}')"><i data-lucide="star"></i>Submit Rating</button>
@@ -7350,6 +7374,10 @@ ROUTES['innous/orders'] = function(){
 // aggregated on the supplier's own profile (see supplierRatingSummary) to
 // help decide who to invite to future RFQs. Once submitted the picker is
 // gone for good — same one-time "how'd it go" as the client's.
+// fix192: INNOUS ya solo califica Comunicación y Tiempo de Entrega —
+// Calidad se le quitó de este lado, ahora es 100% del cliente (ver
+// clientRatingCardHtml arriba), que es quien de verdad recibe la pieza y
+// puede juzgar eso.
 function innousRatingCardHtml(p){
   if(p.status!=='completed') return '';
   const already = p.ratings.innous;
@@ -7358,20 +7386,18 @@ function innousRatingCardHtml(p){
     <div class="card card-pad" style="margin-top:20px;">
       <div class="section-title">Calificación de ${supplierName(p.selectedSupplierId)}</div>
       <div class="rating-card-row"><span class="rating-card-row-label">Comunicación</span>${stars(already.communication)}</div>
-      <div class="rating-card-row"><span class="rating-card-row-label">Tiempos</span>${stars(already.ontime)}</div>
-      <div class="rating-card-row"><span class="rating-card-row-label">Calidad</span>${stars(already.quality)}</div>
+      <div class="rating-card-row"><span class="rating-card-row-label">Tiempo de Entrega</span>${stars(already.ontime)}</div>
       <div class="section-sub" style="margin-top:6px;">Calificación guardada.</div>
     </div>`;
   }
-  if(!STATE.ui.innousRatingDrafts[p.id]) STATE.ui.innousRatingDrafts[p.id] = {communication:0, ontime:0, quality:0, comment:''};
+  if(!STATE.ui.innousRatingDrafts[p.id]) STATE.ui.innousRatingDrafts[p.id] = {communication:0, ontime:0, comment:''};
   const d = STATE.ui.innousRatingDrafts[p.id];
   return `
   <div class="card card-pad" style="margin-top:20px;">
     <div class="section-title">Calificar a ${supplierName(p.selectedSupplierId)}</div>
     <div class="section-sub">Tu evaluación interna de este proveedor en este pedido — alimenta su ficha.</div>
     <div class="rating-card-row"><span class="rating-card-row-label">Comunicación</span>${starPickerHtml(d.communication, `App.setInnousRatingDraft('${p.id}','communication',__N__)`)}</div>
-    <div class="rating-card-row"><span class="rating-card-row-label">Tiempos</span>${starPickerHtml(d.ontime, `App.setInnousRatingDraft('${p.id}','ontime',__N__)`)}</div>
-    <div class="rating-card-row"><span class="rating-card-row-label">Calidad</span>${starPickerHtml(d.quality, `App.setInnousRatingDraft('${p.id}','quality',__N__)`)}</div>
+    <div class="rating-card-row"><span class="rating-card-row-label">Tiempo de Entrega</span>${starPickerHtml(d.ontime, `App.setInnousRatingDraft('${p.id}','ontime',__N__)`)}</div>
     <textarea placeholder="Notas internas (opcional)" style="margin-top:6px;width:100%;min-height:52px;" oninput="STATE.ui.innousRatingDrafts['${p.id}'].comment=this.value">${escAttr(d.comment)}</textarea>
     <button class="btn btn-primary" style="margin-top:10px;" onclick="App.submitInnousRating('${p.id}')"><i data-lucide="star"></i>Guardar Calificación</button>
   </div>`;
@@ -11286,23 +11312,23 @@ const App = {
   },
   /* ---- Post-delivery ratings (fix81) ---- */
   setClientRatingDraft(pid, field, value){
-    if(!STATE.ui.clientRatingDrafts[pid]) STATE.ui.clientRatingDrafts[pid] = {ontime:0, quality:0, comment:''};
+    if(!STATE.ui.clientRatingDrafts[pid]) STATE.ui.clientRatingDrafts[pid] = {quality:0, comment:''};
     STATE.ui.clientRatingDrafts[pid][field] = value;
     route();
   },
   async submitClientRating(pid){
     const p = findProject(pid); if(!p) return;
     const d = STATE.ui.clientRatingDrafts[pid];
-    if(!d || !d.ontime || !d.quality){ showToast('Please rate both categories.'); return; }
+    if(!d || !d.quality){ showToast('Please rate the quality.'); return; }
     const comment = (d.comment||'').trim()||null;
     if(!p.isDemo){
       const { error } = await sb.from('order_ratings').upsert(
-        { project_id: pid, rater:'client', ontime_stars:d.ontime, quality_stars:d.quality, comment, updated_at:new Date().toISOString() },
+        { project_id: pid, rater:'client', quality_stars:d.quality, comment, updated_at:new Date().toISOString() },
         { onConflict:'project_id,rater' }
       );
       if(error){ showToast(error.message); return; }
     }
-    p.ratings.client = { ontime:d.ontime, quality:d.quality, communication:0, comment:comment||'', ts:new Date() };
+    p.ratings.client = { quality:d.quality, comment:comment||'', ts:new Date() };
     // fix128: el Rating del proveedor depende de esto ahora — se
     // recalcula y se guarda en cuanto entra una calificación nueva,
     // nunca se queda esperando a que algo más lo dispare.
@@ -11317,23 +11343,23 @@ const App = {
     else route();
   },
   setInnousRatingDraft(pid, field, value){
-    if(!STATE.ui.innousRatingDrafts[pid]) STATE.ui.innousRatingDrafts[pid] = {communication:0, ontime:0, quality:0, comment:''};
+    if(!STATE.ui.innousRatingDrafts[pid]) STATE.ui.innousRatingDrafts[pid] = {communication:0, ontime:0, comment:''};
     STATE.ui.innousRatingDrafts[pid][field] = value;
     route();
   },
   async submitInnousRating(pid){
     const p = findProject(pid); if(!p) return;
     const d = STATE.ui.innousRatingDrafts[pid];
-    if(!d || !d.communication || !d.ontime || !d.quality){ showToast('Califica las tres categorías.'); return; }
+    if(!d || !d.communication || !d.ontime){ showToast('Califica las dos categorías.'); return; }
     const comment = (d.comment||'').trim()||null;
     if(!p.isDemo){
       const { error } = await sb.from('order_ratings').upsert(
-        { project_id: pid, rater:'innous', communication_stars:d.communication, ontime_stars:d.ontime, quality_stars:d.quality, comment, updated_at:new Date().toISOString() },
+        { project_id: pid, rater:'innous', communication_stars:d.communication, ontime_stars:d.ontime, comment, updated_at:new Date().toISOString() },
         { onConflict:'project_id,rater' }
       );
       if(error){ showToast(error.message); return; }
     }
-    p.ratings.innous = { communication:d.communication, ontime:d.ontime, quality:d.quality, comment:comment||'', ts:new Date() };
+    p.ratings.innous = { communication:d.communication, ontime:d.ontime, comment:comment||'', ts:new Date() };
     // fix128: mismo motivo que en submitClientRating de arriba.
     if(p.selectedSupplierId){ recalcSupplierRating(p.selectedSupplierId); await persistSupplierMetrics(p.selectedSupplierId); }
     delete STATE.ui.innousRatingDrafts[pid];
