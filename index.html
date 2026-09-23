@@ -7141,7 +7141,8 @@ ROUTES['innous/quote'] = function(pid, sid){
         ${infoItem('Costo del Proveedor (MXN)', fmtMXN(p.targetPriceSupplierBudgetMxn))}
         ${infoItem('Margen de INNOUS (USD)', p.order?fmtMoney(p.order.customerPrice-p.order.supplierCost):'—')}
       </div>
-    </div>` : shortlisted ? `
+    </div>
+    ${targetPriceHistorySection(p, q, 'INNOUS')}` : shortlisted ? `
     <div class="card card-pad">
       <div class="section-title">Lo que Vio el Cliente</div>
       <div class="section-sub">Exactamente el precio y tiempo de entrega que vio ${customerName(p.customerId)} para esta opción — la identidad del proveedor, el costo y el margen de INNOUS nunca fueron parte de esto.</div>
@@ -7245,6 +7246,7 @@ ROUTES['innous/order'] = function(id){
         <button class="btn btn-secondary" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Cliente</button>
         <button class="btn btn-secondary" onclick="App.startChat('supplier','${p.selectedSupplierId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Proveedor</button>
         <button class="btn btn-secondary" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Orden de Compra (PDF)</button>
+        ${p.targetPriceUsd?`<button class="btn btn-secondary" onclick="App.openNegotiationHistoryModal('${p.id}')"><i data-lucide="history"></i>Historial de Negociación</button>`:''}
         ${innousCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Deshacer Última Actualización</button>`:''}
         ${nextStatus?`<button class="btn btn-primary" onclick="App.advanceOrderStatus('${p.id}')"><i data-lucide="arrow-right"></i>Marcar como: ${orderStatusLabelFor(p, nextStatus)}</button>`:''}</div>
     </div>
@@ -7912,7 +7914,14 @@ function targetPriceMargin(costMxn, priceUsd, rate){
 // tabla de auditoría aparte, la fila de supplier_quotes ya trae todo
 // el rastro (target_counter_*/client_counter_*).
 function targetPriceHistorySection(p, q, role){
-  if(!q || (q.targetCounterMxn==null && q.targetCounterUsd==null && q.clientCounterUsd==null && q.clientCounterMxn==null)) return '';
+  // fix169: antes esto se escondía por completo si nunca hubo ninguna
+  // contraoferta (el caso más común — la mayoría acepta el precio fijo
+  // original tal cual). Ahora siempre muestra al menos el precio
+  // original + el resultado, para que el botón de Historial de
+  // Negociación de INNOUS (ver App.openNegotiationHistoryModal) nunca
+  // se sienta vacío — sigue sin aparecer del todo en RFQs que no son de
+  // target price (p.targetPriceUsd nulo).
+  if(!q || !p.targetPriceUsd) return '';
   const steps = [];
   if(role==='INNOUS'){
     steps.push({ label:'Target Price Original', detail:`${fmtMoney(p.targetPriceUsd)} para el cliente → ${fmtMXN(p.targetPriceSupplierBudgetMxn)} para el proveedor (markup ${p.targetPriceMarkupPct}%, TC ${p.targetPriceExchangeRate})`,
@@ -7958,6 +7967,22 @@ function targetPriceHistorySection(p, q, role){
         <span>${s.label}${s.note?` — "${s.note}"`:''}</span>
         <span style="text-align:right;">${s.detail}${s.margin?`<br><span style="color:var(--success);font-size:12px;">Margen: ${fmtMoney(s.margin.marginUsd)} / ${fmtMXN(s.margin.marginMxn)} (${s.margin.marginPct.toFixed(1)}%)</span>`:''}</span>
       </div>`).join('')}
+  </div>`;
+}
+// fix169: el historial de negociación de INNOUS (targetPriceSourcingSection,
+// arriba) solo se renderiza mientras el RFQ está en 'sourcing'/'under_review'
+// — en cuanto alguien acepta y el proyecto pasa a 'awarded', esa sección
+// entera desaparece y con ella el historial. Este modal es la forma de
+// seguir viéndolo después: se abre desde el botón "Historial de Negociación"
+// en la página de Pedido (ROUTES['innous/order']).
+function negotiationHistoryModalHtml(pid){
+  const p = findProject(pid);
+  const q = p && (p.supplierQuotes||[]).find(x=>x.supplierId===p.selectedSupplierId);
+  const body = p ? targetPriceHistorySection(p, q, 'INNOUS') : '';
+  return `
+  <div class="modal-header"><h3>Historial de Negociación</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    ${body || '<div class="section-sub">No hay historial de negociación para este proyecto.</div>'}
   </div>`;
 }
 // Target-price RFQs replace the normal quote form entirely: the supplier
@@ -9183,6 +9208,7 @@ const App = {
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
   openLegalModal(type){ openModal(legalModalHtml(type), true); },
   openWhyInnousModal(){ openModal(whyInnousModalHtml(), true); },
+  openNegotiationHistoryModal(pid){ openModal(negotiationHistoryModalHtml(pid), true); },
 
   /* ---- Multi-step signup wizard ---- */
   signupStepValidate(stepEl){
