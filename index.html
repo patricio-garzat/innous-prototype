@@ -3219,7 +3219,14 @@ const ORDER_STATUS_CLS = {
 function orderStatusBadge(p, es){
   const status = p.order.status;
   const cls = ORDER_STATUS_CLS[status] || 'badge-gray';
-  return `<span class="badge ${cls}">${orderStatusLabelFor(p, status, es)}</span>`;
+  // fix188: en inglés (badge del cliente), una orden de recolección
+  // terminada decía "Picked Up" — sonaba a que apenas se recogió de la
+  // fábrica (un paso intermedio), no a que el proyecto ya terminó. El
+  // timeline (orderStatusLabelFor, sin tocar) se queda diciendo "Picked
+  // Up" ahí porque ahí sí es el nombre literal de ese paso de la
+  // secuencia — este badge resumen es lo único que cambia.
+  const label = (!es && status==='delivered' && isPickupOrder(p)) ? 'Completed' : orderStatusLabelFor(p, status, es);
+  return `<span class="badge ${cls}">${label}</span>`;
 }
 function stars(rating){
   let out = '<span class="stars">';
