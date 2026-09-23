@@ -1865,20 +1865,28 @@ function quoteRowToJs(row){
     validity: row.validity||'', notes: row.notes||'', documents: row.documents||[],
     submittedAt: row.submitted_at ? new Date(row.submitted_at) : null,
     rating: s?.rating||0, onTime: s?.onTime||0,
-    // fix161: target-price counter-offer negotiation. A CLIENT session can
-    // now see this one row (see the new RLS policy in
-    // supabase-fix161-target-price-counter-offer.sql) but only ever for
-    // its own negotiation-stage rows, and even then it must never learn
-    // the supplier's raw MXN ask or the markup/rate that produced
-    // targetCounterUsd — same confidentiality rule projectRowToJs already
+    // fix161/162/164: target-price counter-offer negotiation. A CLIENT
+    // session can see this one row (see the RLS policy in
+    // supabase-fix161-target-price-counter-offer.sql, amended by
+    // fix162) but only ever for its own negotiation-stage rows — and
+    // must never learn the supplier's raw MXN ask, or the markup/rate
+    // INNOUS used, same confidentiality rule projectRowToJs already
     // applies to the original target_price_* columns.
+    // fix164: the mirror image is just as real a leak — a SUPPLIER must
+    // never learn the USD price the CLIENT is paying (targetCounterUsd/
+    // clientCounterUsd), since comparing that to their own MXN number
+    // hands them INNOUS's exact markup on this deal. A supplier only
+    // ever sees MXN figures for this negotiation, same as the original
+    // target_price_supplier_budget_mxn always was.
     targetCounterMxn: STATE.role==='CLIENT' ? null : (row.target_counter_mxn ?? null),
     targetCounterNote: row.target_counter_note || '',
-    targetCounterUsd: row.target_counter_usd ?? null,
+    targetCounterUsd: STATE.role==='SUPPLIER' ? null : (row.target_counter_usd ?? null),
     targetCounterMarkupPct: STATE.role==='CLIENT' ? null : (row.target_counter_markup_pct ?? null),
     targetCounterExchangeRate: STATE.role==='CLIENT' ? null : (row.target_counter_exchange_rate ?? null),
-    clientCounterUsd: row.client_counter_usd ?? null,
+    clientCounterUsd: STATE.role==='SUPPLIER' ? null : (row.client_counter_usd ?? null),
     clientCounterMxn: STATE.role==='CLIENT' ? null : (row.client_counter_mxn ?? null),
+    clientCounterMarkupPct: STATE.role==='CLIENT' ? null : (row.client_counter_markup_pct ?? null),
+    clientCounterExchangeRate: STATE.role==='CLIENT' ? null : (row.client_counter_exchange_rate ?? null),
   };
 }
 /* Shortlist entry — the client's copy comes from shortlist_client_view,
@@ -5261,6 +5269,7 @@ ROUTES['client/rfq'] = function(id){
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
     ${targetPriceNegotiationSection(p)}
+    ${(p.supplierQuotes||[]).map(q=>targetPriceHistorySection(p, q, 'CLIENT')).join('')}
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Project Information</div>
@@ -6016,7 +6025,8 @@ function targetPriceSourcingSection(p){
     </div>
     <div class="field-hint" style="margin-top:10px;">Los proveedores solo ven el Presupuesto en MXN — nunca el target price, tu markup %, ni este margen.</div>
     ${targetPriceNegotiationStatusInnous(p)}
-  </div>`;
+  </div>
+  ${(p.supplierQuotes||[]).filter(q=>q.targetCounterMxn!=null).map(q=>targetPriceHistorySection(p, q, 'INNOUS')).join('')}`;
 }
 // fix162: cada contraoferta pasa PRIMERO por aquí — INNOUS puede
 // ajustar el markup %/tipo de cambio (pre-cargados con los mismos ya
@@ -7845,8 +7855,77 @@ ROUTES['supplier/rfq'] = function(id){
       </div>
     </div>
     ${isTargetPrice ? targetPriceSupplierSection(p, q) : (submitted ? supplierSubmittedQuoteCard(p, q) : supplierQuoteForm(p))}
+    ${isTargetPrice ? targetPriceHistorySection(p, q, 'SUPPLIER') : ''}
   </div>`;
 };
+// fix164: margen de INNOUS en un punto de la negociación — solo tiene
+// sentido calcularlo una vez que hay un costo MXN, un precio USD, y el
+// tipo de cambio que los conectó (si cualquiera falta, es que ese paso
+// todavía no lo aprueba INNOUS — regresa null en vez de un número
+// falso).
+function targetPriceMargin(costMxn, priceUsd, rate){
+  if(costMxn==null || priceUsd==null || !rate) return null;
+  const costUsd = costMxn / rate;
+  const marginUsd = priceUsd - costUsd;
+  return { marginUsd, marginMxn: marginUsd * rate, marginPct: priceUsd>0 ? (marginUsd/priceUsd*100) : 0 };
+}
+// fix164: el usuario pidió un historial de la negociación, visible para
+// las 3 partes dentro de su propia pestaña del RFQ — cada quien ve los
+// mismos pasos, pero solo en SU moneda (cliente=USD, proveedor=MXN);
+// INNOUS ve ambas monedas y el margen en cada paso, para que quede
+// clarísimo cuánto se está ganando en cada oferta. Se guarda con las
+// mismas columnas que ya usa el negociador en vivo — no hace falta una
+// tabla de auditoría aparte, la fila de supplier_quotes ya trae todo
+// el rastro (target_counter_*/client_counter_*).
+function targetPriceHistorySection(p, q, role){
+  if(!q || (q.targetCounterMxn==null && q.targetCounterUsd==null && q.clientCounterUsd==null && q.clientCounterMxn==null)) return '';
+  const steps = [];
+  if(role==='INNOUS'){
+    steps.push({ label:'Target Price Original', detail:`${fmtMoney(p.targetPriceUsd)} para el cliente → ${fmtMXN(p.targetPriceSupplierBudgetMxn)} para el proveedor (markup ${p.targetPriceMarkupPct}%, TC ${p.targetPriceExchangeRate})`,
+      margin: targetPriceMargin(p.targetPriceSupplierBudgetMxn, p.targetPriceUsd, p.targetPriceExchangeRate) });
+  } else if(role==='CLIENT'){
+    steps.push({ label:'Your original target price', detail: fmtMoney(p.targetPriceUsd) });
+  } else {
+    steps.push({ label:'Precio fijo original de INNOUS', detail: fmtMXN(p.targetPriceSupplierBudgetMxn) });
+  }
+  if(q.targetCounterMxn!=null || q.targetCounterUsd!=null){
+    if(role==='INNOUS'){
+      const approved = q.targetCounterUsd!=null;
+      steps.push({ label:'Contraoferta del Proveedor', note: q.targetCounterNote,
+        detail: approved ? `${fmtMXN(q.targetCounterMxn)} → ${fmtMoney(q.targetCounterUsd)} (markup ${q.targetCounterMarkupPct}%, TC ${q.targetCounterExchangeRate})` : `${fmtMXN(q.targetCounterMxn)} — pendiente de aprobar`,
+        margin: approved ? targetPriceMargin(q.targetCounterMxn, q.targetCounterUsd, q.targetCounterExchangeRate) : null });
+    } else if(role==='CLIENT' && q.targetCounterUsd!=null){
+      steps.push({ label:"Supplier's counter-offer", detail: fmtMoney(q.targetCounterUsd) });
+    } else if(role==='SUPPLIER' && q.targetCounterMxn!=null){
+      steps.push({ label:'Tu Contraoferta', detail: fmtMXN(q.targetCounterMxn), note: q.targetCounterNote });
+    }
+  }
+  if(q.clientCounterUsd!=null || q.clientCounterMxn!=null){
+    if(role==='INNOUS'){
+      const approved = q.clientCounterMxn!=null;
+      steps.push({ label:'Contraoferta Final del Cliente',
+        detail: approved ? `${fmtMoney(q.clientCounterUsd)} → ${fmtMXN(q.clientCounterMxn)} (markup ${q.clientCounterMarkupPct}%, TC ${q.clientCounterExchangeRate})` : `${fmtMoney(q.clientCounterUsd)} — pendiente de aprobar`,
+        margin: approved ? targetPriceMargin(q.clientCounterMxn, q.clientCounterUsd, q.clientCounterExchangeRate) : null });
+    } else if(role==='CLIENT' && q.clientCounterUsd!=null){
+      steps.push({ label:'Your final counter-offer', detail: fmtMoney(q.clientCounterUsd) });
+    } else if(role==='SUPPLIER' && q.clientCounterMxn!=null){
+      steps.push({ label:'Contraoferta Final del Cliente', detail: fmtMXN(q.clientCounterMxn) });
+    }
+  }
+  if(q.status==='submitted') steps.push({ label: role==='CLIENT'?'Outcome':'Resultado', detail: role==='CLIENT'?'Accepted ✓':'Aceptado ✓' });
+  else if(q.status==='declined') steps.push({ label: role==='CLIENT'?'Outcome':'Resultado', detail: role==='CLIENT'?'Declined':'Rechazado' });
+  const title = role==='CLIENT' ? 'Negotiation History' : 'Historial de la Negociación';
+  const supplierLabel = role==='INNOUS' ? ` — ${supplierName(q.supplierId)}` : '';
+  return `
+  <div class="card card-pad" style="margin-top:16px;">
+    <div class="section-title">${title}${supplierLabel}</div>
+    ${steps.map(s=>`
+      <div class="pricing-row" style="align-items:flex-start;">
+        <span>${s.label}${s.note?` — "${s.note}"`:''}</span>
+        <span style="text-align:right;">${s.detail}${s.margin?`<br><span style="color:var(--success);font-size:12px;">Margen: ${fmtMoney(s.margin.marginUsd)} / ${fmtMXN(s.margin.marginMxn)} (${s.margin.marginPct.toFixed(1)}%)</span>`:''}</span>
+      </div>`).join('')}
+  </div>`;
+}
 // Target-price RFQs replace the normal quote form entirely: the supplier
 // only ever sees the fixed MXN budget INNOUS already computed (never the
 // client's raw USD target price or INNOUS's markup %). Since fix161/162
@@ -7861,7 +7940,7 @@ ROUTES['supplier/rfq'] = function(id){
 function targetPriceSupplierSection(p, q){
   const status = q?.status || 'pending';
   if(status==='declined'){
-    return `<div class="card card-pad"><div class="section-title">Proyecto No Asignado</div><div class="section-sub" style="margin-top:6px;">${q.clientCounterUsd!=null ? 'Rechazaste la contraoferta final del cliente, o el cliente rechazó tu contraoferta — este proyecto ya no está disponible para ti.' : 'Otro proveedor aceptó este proyecto al precio fijo antes que tú. Gracias por tu interés — te seguiremos invitando a nuevos RFQs según tus capacidades.'}</div></div>`;
+    return `<div class="card card-pad"><div class="section-title">Proyecto No Asignado</div><div class="section-sub" style="margin-top:6px;">${q.clientCounterMxn!=null ? 'Rechazaste la contraoferta final del cliente, o el cliente rechazó tu contraoferta — este proyecto ya no está disponible para ti.' : 'Otro proveedor aceptó este proyecto al precio fijo antes que tú. Gracias por tu interés — te seguiremos invitando a nuevos RFQs según tus capacidades.'}</div></div>`;
   }
   if(status==='submitted'){
     // supplierWon() (and therefore the Order page) only unlocks once INNOUS
@@ -7897,7 +7976,6 @@ function targetPriceSupplierSection(p, q){
       <div class="section-sub" style="margin-top:6px;">INNOUS revisó tu contraoferta y ya se la mandó al cliente. Puede aceptarla, mandarte una última contraoferta, o rechazarla. Ya usaste tu única oportunidad de contraofertar en este RFQ, así que no puedes volver a hacerlo.</div>
       <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:14px;">
         ${infoItem('Tu Contraoferta (MXN)', fmtMXN(q.targetCounterMxn))}
-        ${infoItem('Equivalente para el Cliente (USD)', fmtMoney(q.targetCounterUsd))}
       </div>
       ${q.targetCounterNote ? `<div class="field-hint" style="margin-top:10px;">Tu nota: "${q.targetCounterNote}"</div>` : ''}
     </div>`;
@@ -7920,7 +7998,7 @@ function targetPriceSupplierSection(p, q){
     <div class="card card-pad">
       <div class="section-title">Contraoferta Final del Cliente</div>
       <div class="section-sub" style="margin-top:6px;">INNOUS revisó la contraoferta final del cliente y te la mandó. Esta es la última vuelta de la negociación — si rechazas, el proyecto se cierra para ti y no podrás volver a contraofertar.</div>
-      <div style="margin:18px 0;"><div class="field-label">Contraoferta Final (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(q.clientCounterMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(q.clientCounterMxn)} + IVA (16%) · equivalente a ${fmtMoney(q.clientCounterUsd)} para el cliente</div></div>
+      <div style="margin:18px 0;"><div class="field-label">Contraoferta Final (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(q.clientCounterMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(q.clientCounterMxn)} + IVA (16%)</div></div>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-primary" onclick="App.respondFinalCounter('${p.id}','accept')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(q.clientCounterMxn)}</button>
         <button class="btn btn-secondary" onclick="App.respondFinalCounter('${p.id}','reject')">Rechazar Definitivamente</button>
