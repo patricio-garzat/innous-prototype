@@ -63,10 +63,11 @@
 }
 /* fix107/fix108: dark mode, every logged-in role (shipped INNOUS-only in
    fix107, opened up to CLIENT/SUPPLIER in fix108 — App.toggleDarkMode
-   only ever sets this attribute on <body> from enterAppAsUser()/
-   logOut(), so the pre-login boot/landing/login screens — which never
-   carry this attribute at all — never show it, regardless of what's
-   saved in localStorage on that browser).
+   sets this attribute on <body> from enterAppAsUser()/logOut()).
+   fix155 added the same preference (same localStorage key) to the
+   pre-login landing/login/signup/etc. screens too, applied once at
+   boot() and toggled from there via App.toggleAuthDarkMode — see
+   both functions' own comments.
    Scoped to `body` rather than `:root`/`html` specifically so it covers
    #app-shell, #modal-root and #toast-container (all body children) while
    leaving #boot-loading (its own hardcoded colors, untouched by design —
@@ -949,6 +950,11 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    que no se sienta como un elemento distinto pegado ahí. */
 .auth-lang-toggle{font:inherit;font-size:12.5px;font-weight:700;letter-spacing:.3px;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;}
 .auth-lang-toggle:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
+/* fix155: mismo look que .auth-lang-toggle de al lado, solo que
+   circular (nada más lleva un ícono). */
+.auth-theme-toggle{flex:0 0 auto;width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:50%;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;}
+.auth-theme-toggle:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
+.auth-theme-toggle svg{width:16px;height:16px;}
 /* fix154: en el home, el bloque de contenido quedaba pegado a la
    franja azul de abajo (fix152) — más aire arriba y, sobre todo,
    abajo, para que se sienta centrado entre topbar y footer en vez de
@@ -4341,6 +4347,17 @@ function authLangToggleHtml(){
   const isEs = STATE.ui.authLang==='es';
   return `<button type="button" class="auth-lang-toggle" onclick="App.setAuthLang('${isEs?'en':'es'}')" aria-label="${isEs?'Switch to English':'Cambiar a español'}">${isEs?'EN':'ES'}</button>`;
 }
+// fix155: modo oscuro también en las pantallas de antes de iniciar
+// sesión (landing/login/signup/etc.) — antes App.toggleDarkMode solo
+// existía para dentro de la app ya con sesión (fix107/108 lo dejaban
+// fuera a propósito). Mismo localStorage key de siempre
+// (innous_dark_mode) y mismas variables de :root que ya cubren todo
+// el CSS de estas pantallas (nunca hizo falta CSS nuevo — el atributo
+// data-theme="dark" en <body> simplemente nunca se les había puesto).
+function authThemeToggleHtml(){
+  const isDark = document.body.getAttribute('data-theme')==='dark';
+  return `<button type="button" class="auth-theme-toggle" onclick="App.toggleAuthDarkMode()" aria-label="${isDark?'Switch to light mode':'Switch to dark mode'}" title="${isDark?'Modo claro':'Modo oscuro'}"><i data-lucide="${isDark?'sun':'moon'}"></i></button>`;
+}
 function renderAuthRoot(){
   const root = document.getElementById('auth-root');
   if(STATE.authView==='recovery') root.innerHTML = renderRecoveryForm();
@@ -4362,7 +4379,7 @@ function renderSignupCheckEmail(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}${authThemeToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
@@ -4391,7 +4408,7 @@ function renderRecoveryForm(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}${authThemeToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
@@ -4442,7 +4459,7 @@ function renderForgotPasswordSent(){
   return `
   <div class="auth-shell">
     <div class="auth-mesh"></div>
-    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}</div></div>
+    <div class="auth-topbar"><span class="logo" aria-label="INNOUS">${logoSvgMarkup()}</span><div class="auth-topbar-actions">${authLangToggleHtml()}${authThemeToggleHtml()}</div></div>
     <div class="auth-main">
       <div class="auth-narrow">
         <div class="auth-card">
@@ -4468,6 +4485,7 @@ function authTopbar(wide){
     <a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
     <div class="auth-topbar-actions">
       ${authLangToggleHtml()}
+      ${authThemeToggleHtml()}
       ${wide ? '' : (STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`)}
     </div>`;
   return wide
@@ -8745,17 +8763,28 @@ const App = {
   // fix108: dark mode — every logged-in role now (fix107 shipped it
   // INNOUS-only). Preference saved to localStorage (same "interface
   // preference, not tracking" bucket as everything else this app keeps
-  // there per the Aviso de Privacidad); only ever actually APPLIED (the
-  // data-theme attribute set on body) from here and from
-  // enterAppAsUser()/logOut() — never unconditionally on page load — so
-  // the pre-login landing/login/signup screens and boot-loading never
-  // carry it.
+  // there per the Aviso de Privacidad). fix155 added the same toggle to
+  // the pre-login screens too (see toggleAuthDarkMode below) — this one
+  // stays scoped to logged-in roles and re-renders the app shell;
+  // logOut()/the "someone else logged in" kick still clear the
+  // attribute on the way OUT to guest view specifically (shared-
+  // computer reasoning, see their own comments), same as before.
   toggleDarkMode(){
     if(STATE.role!=='CLIENT' && STATE.role!=='SUPPLIER' && STATE.role!=='INNOUS') return;
     const next = document.body.getAttribute('data-theme')==='dark' ? '' : 'dark';
     if(next) document.body.setAttribute('data-theme','dark'); else document.body.removeAttribute('data-theme');
     try{ localStorage.setItem('innous_dark_mode', next==='dark' ? '1' : '0'); }catch(e){}
     renderShell();
+  },
+  // fix155: same idea as toggleDarkMode above, for the guest/auth
+  // screens (landing/login/signup/etc.) — re-renders #auth-root
+  // instead of the app shell, since that's what's actually visible
+  // before logging in.
+  toggleAuthDarkMode(){
+    const next = document.body.getAttribute('data-theme')==='dark' ? '' : 'dark';
+    if(next) document.body.setAttribute('data-theme','dark'); else document.body.removeAttribute('data-theme');
+    try{ localStorage.setItem('innous_dark_mode', next==='dark' ? '1' : '0'); }catch(e){}
+    renderAuthRoot();
   },
   toggleRoleMenu(e){ e.stopPropagation(); document.getElementById('notif-menu').classList.remove('open'); document.getElementById('role-menu').classList.toggle('open'); },
   toggleNotifMenu(e){ e.stopPropagation(); document.getElementById('role-menu').classList.remove('open'); document.getElementById('notif-menu').classList.toggle('open'); },
@@ -10996,6 +11025,11 @@ function withTimeout(promise, ms, label){
 }
 async function boot(){
   if(booted) return; booted = true;
+  // fix155: aplica el modo oscuro guardado ANTES de renderizar nada —
+  // cubre tanto la pantalla de recuperación como el landing/login de
+  // invitado (ambos casos de abajo); enterAppAsUser hace lo mismo por
+  // su cuenta para cuando sí hay sesión, así que esto no le estorba.
+  try{ if(localStorage.getItem('innous_dark_mode')==='1') document.body.setAttribute('data-theme','dark'); }catch(e){}
   const slowTimer = setTimeout(()=>{ const t=document.getElementById('boot-loading-text'); if(t) t.textContent='Esto está tardando más de lo normal…'; }, 4000);
   try{
     const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000, 'session');
