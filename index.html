@@ -932,8 +932,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 /* fix157: mismo tamaño que el logo de innous.com (62px de alto en
    desktop, medido ahí directamente — no depende del alto de la
-   ventana como el clamp() de antes). */
-.auth-topbar .logo-svg{height:62px;}
+   ventana como el clamp() de antes). fix159: el usuario pidió el
+   doble de grande, 124px. */
+.auth-topbar .logo-svg{height:124px;}
 /* fix146: en el home, el logo debe alinearse con el borde izquierdo del
    texto del hero de abajo (.landing-grid, centrado con max-width:1180px
    dentro de .auth-main) en vez de con el padding fijo de 40px que usa
@@ -944,7 +945,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    el usuario pidió regresarla a como estaba). */
 .auth-topbar.auth-topbar-wide{display:block;padding-left:24px;padding-right:24px;}
 .auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:12px;}
-.auth-topbar-wide .logo-svg{height:62px;}
+.auth-topbar-wide .logo-svg{height:124px;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
@@ -1001,31 +1002,34 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    scroll, el título/subtítulo del hero (que el usuario pidió encoger
    de cualquier forma, para que se vea todo más acomodado) bajan un
    poco de tamaño aquí en el home nada más. */
-.landing-hero-col .hero-title{font-size:clamp(22px,min(3.8vw,5.2vh),44px);margin-top:clamp(8px,2vh,16px);margin-bottom:clamp(6px,1.4vh,14px);}
-.landing-hero-col .hero-sub{font-size:15px;line-height:1.55;}
+.landing-hero-col .hero-title{font-size:clamp(24px,min(4.2vw,5.8vh),50px);margin-top:clamp(10px,2.4vh,20px);margin-bottom:clamp(8px,1.8vh,16px);}
+.landing-hero-col .hero-sub{font-size:16px;line-height:1.6;}
 /* fix151: tarjeta de login de verdad, en la columna derecha arriba de
    "Why INNOUS" — reemplaza el mini-formulario apretado en el topbar
    (fix150) que salía mal alineado y con el texto de los campos
    cortado. Usuario arriba, contraseña abajo (como pidió el usuario),
    ambos a todo lo ancho de la tarjeta — con este ancho (el mismo que
    .landing-info-card de al lado) no se corta nada. */
-.landing-right-col{display:flex;flex-direction:column;gap:12px;}
+.landing-right-col{display:flex;flex-direction:column;gap:16px;}
 /* fix153: más contraste contra el fondo (que es casi del mismo gris
    claro que las tarjetas) sin recargar el diseño — solo borde un poco
    más marcado + sombra un poco más presente, nada de color ni bordes
    gruesos de más. */
-.landing-login-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:clamp(14px,2vh,18px) clamp(18px,2.2vw,24px);box-shadow:0 20px 46px -16px rgba(0,56,101,0.3);}
-.landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:8px;}
-.landing-login-card form{display:flex;flex-direction:column;gap:7px;}
-.landing-login-card input[type=text],.landing-login-card input[type=password]{width:100%;padding:9px 12px;border-radius:9px;font-size:13.5px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink);}
+.landing-login-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:clamp(20px,3vh,28px) clamp(22px,2.5vw,28px);box-shadow:0 20px 46px -16px rgba(0,56,101,0.3);}
+.landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:16px;color:var(--ink);margin-bottom:14px;}
+.landing-login-card form{display:flex;flex-direction:column;gap:11px;}
+.landing-login-card input[type=text],.landing-login-card input[type=password]{width:100%;padding:11px 14px;border-radius:9px;font-size:14px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink);}
 .landing-login-card input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
 .landing-login-card .password-input-wrap input{width:100%;}
-.landing-login-card .btn{padding:9px;font-size:13.5px;margin-top:2px;}
+.landing-login-card .btn{padding:11px;font-size:14px;margin-top:2px;}
 .landing-login-card-forgot{display:block;text-align:right;font-size:11.5px;color:var(--ink-tertiary);margin-top:9px;cursor:pointer;}
 .landing-login-card-forgot:hover{color:var(--ink);text-decoration:underline;}
-.landing-info-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:clamp(16px,2.4vh,22px) clamp(20px,2.5vw,30px);box-shadow:0 28px 60px -18px rgba(0,56,101,0.32);position:relative;overflow:hidden;}
-.landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
-.landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
+/* fix159: "Why INNOUS" pasó de tarjeta fija a este botón (abre la
+   misma info en un modal, ver whyInnousModalHtml) — el usuario lo
+   pidió para que la columna derecha no se sintiera amontonada. */
+.landing-why-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:12px;background:var(--surface);border:1px solid var(--border-strong);color:var(--ink);font-family:inherit;font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:0 16px 32px -18px rgba(0,56,101,0.28);transition:border-color .15s,background .15s,transform .15s;}
+.landing-why-btn:hover{border-color:var(--accent);background:var(--surface-alt);transform:translateY(-1px);}
+.landing-why-btn i{width:16px;height:16px;stroke:var(--accent-ink);}
 .landing-value-row{display:flex;align-items:center;gap:12px;padding:4px 0;}
 .landing-value-row .value-icon{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .landing-value-row .value-icon svg{width:15px;height:15px;stroke:var(--accent-ink);}
@@ -1102,8 +1106,8 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .tour-dot.active{background:var(--accent);width:18px;border-radius:3px;transition:width .15s;}
 @media(max-width:640px){
   .hero-eyebrow{font-size:10.5px;}
-  .auth-topbar{padding:16px 18px;}
-  .auth-topbar .logo-svg{height:40px;}
+  .auth-topbar{padding:16px 18px;flex-wrap:wrap;row-gap:10px;}
+  .auth-topbar .logo-svg{height:80px;}
   .auth-topbar-actions span{display:none;}
   .auth-card{padding:28px 22px 24px;border-radius:14px;}
 }
@@ -4547,22 +4551,11 @@ function renderLanding(){
               ${pwFieldHtml('landing-login-password', `name="password" placeholder="${at('password')}" required autocomplete="current-password"`)}
               <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>${at('logIn')}</button>
             </form>
-            <div class="auth-or-divider" style="margin:7px 0;"><span>${at('orWord')}</span></div>
+            <div class="auth-or-divider" style="margin:12px 0;"><span>${at('orWord')}</span></div>
             <button type="button" class="btn btn-secondary btn-block" onclick="App.signInWithGoogle()">${GOOGLE_G_ICON_SVG}${at('continueWithGoogle')}</button>
             <a class="landing-login-card-forgot" onclick="App.goToForgotPassword()">${at('forgotPassword')}</a>
           </div>
-          <div class="landing-info-card">
-            <div class="landing-info-title">${at('whyInnous')}</div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="settings"></i></div><div class="landing-value-text">${at('value3')}</div></div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="truck"></i></div><div class="landing-value-text">${at('value4')}</div></div>
-            <div class="landing-info-divider"></div>
-            <div class="landing-caps-label">${at('whatWeSource')}</div>
-            <div class="landing-process-row">
-              ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${STATE.ui.authLang==='es'?procES(p):p}</span>`).join('')}
-            </div>
-          </div>
+          <button type="button" class="landing-why-btn" onclick="App.openWhyInnousModal()"><i data-lucide="info"></i>${at('whyInnous')}</button>
         </div>
       </div>
     </div>
@@ -4789,6 +4782,27 @@ function legalTermsHtml(){
   <p>INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico, acting as the sole point of contact between both parties through quoting, selection, production and logistics. You are responsible for your account and for providing truthful information. The final price a client pays includes an INNOUS margin over the supplier's cost — this is core to how the service works. Each party agrees not to try to identify or contact the other outside the platform to bypass INNOUS. INNOUS actively manages quality, delivery or compliance disputes on the client's behalf. These terms are governed by the laws of Mexico, and continued use of the platform after a change means you accept it.</p>
   ${legalDisclaimerHtml()}
   `;
+}
+// fix159: "Why INNOUS" pasó de tarjeta fija en el home a un botón que
+// abre esta misma info en un modal — el usuario lo pidió para que la
+// columna derecha no se sintiera amontonada (sobre todo con el logo
+// ahora el doble de grande). Reutiliza las mismas clases
+// landing-value-row/landing-process-chip/etc. de siempre, solo que
+// ahora dentro de un modal en vez de la tarjeta que se quitó.
+function whyInnousModalHtml(){
+  return `
+  <div class="modal-header"><h3>${at('whyInnous')}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
+    <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
+    <div class="landing-value-row"><div class="value-icon"><i data-lucide="settings"></i></div><div class="landing-value-text">${at('value3')}</div></div>
+    <div class="landing-value-row"><div class="value-icon"><i data-lucide="truck"></i></div><div class="landing-value-text">${at('value4')}</div></div>
+    <div class="landing-info-divider"></div>
+    <div class="landing-caps-label">${at('whatWeSource')}</div>
+    <div class="landing-process-row">
+      ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${STATE.ui.authLang==='es'?procES(p):p}</span>`).join('')}
+    </div>
+  </div>`;
 }
 function legalModalHtml(type){
   const isPrivacy = type==='privacy';
@@ -8832,6 +8846,7 @@ const App = {
 
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
   openLegalModal(type){ openModal(legalModalHtml(type), true); },
+  openWhyInnousModal(){ openModal(whyInnousModalHtml(), true); },
 
   /* ---- Multi-step signup wizard ---- */
   signupStepValidate(stepEl){
