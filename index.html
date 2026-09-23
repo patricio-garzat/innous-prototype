@@ -3837,6 +3837,35 @@ function orderDocChip(d, pid){
   const deleteBtn = (d.path && pid) ? `<button type="button" class="fc-remove" onclick="event.stopPropagation();App.deleteOrderDocument('${pid}','${escAttr(d.path)}','${escAttr(d.name)}')" title="Borrar documento"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>` : '';
   return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${d.name}</span>${deleteBtn}</div>`;
 }
+// fix175: la selección múltiple ("Seleccionar Todo" + "Borrar
+// Seleccionados") vive aquí, en el detalle del pedido (dentro de Mis
+// Proyectos) — ya no en una página de "Mis Documentos" aparte (esa
+// página se quitó por completo). Un checkbox por fila, más el de
+// "Seleccionar Todo" arriba, solo aparecen si hay al menos un documento
+// real (con `path`) que se pueda borrar.
+function orderDocumentsSection(p){
+  const docs = p.order.quality.documents;
+  const selectableKeys = docs.filter(d=>typeof d!=='string' && d.path).map(d=>p.id+'::'+d.path);
+  const selected = selectableKeys.filter(k=>STATE.ui.selectedOrderDocs[k]);
+  const allSelected = selectableKeys.length>0 && selected.length===selectableKeys.length;
+  return `
+  ${selectableKeys.length ? `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-secondary);cursor:pointer;">
+      <input type="checkbox" ${allSelected?'checked':''} onchange="App.toggleSelectAllOrderDocs(${JSON.stringify(selectableKeys)}, this.checked)">
+      Seleccionar Todo
+    </label>
+    ${selected.length ? `<button type="button" class="btn btn-danger btn-sm" onclick="App.deleteSelectedOrderDocs()"><i data-lucide="trash-2"></i>Borrar Seleccionados (${selected.length})</button>` : ''}
+  </div>` : ''}
+  <div class="file-list">${docs.length ? docs.map(d=>orderDocRow(d, p.id)).join('') : '<div class="td-sub">Aún no has cargado documentos.</div>'}</div>
+  `;
+}
+function orderDocRow(d, pid){
+  const selectable = typeof d!=='string' && !!d.path;
+  const checked = selectable && STATE.ui.selectedOrderDocs[pid+'::'+d.path];
+  const checkbox = selectable ? `<input type="checkbox" ${checked?'checked':''} onchange="App.toggleOrderDocSelect('${pid}','${escAttr(d.path)}')">` : `<span style="display:inline-block;width:14px;"></span>`;
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">${checkbox}<div style="flex:1;">${orderDocChip(d, pid)}</div></div>`;
+}
 /* ---- INNOUS-only file chip: shows the original (only INNOUS/client ever
    see it) plus whether a supplier-safe redacted copy has been published. ---- */
 function innousFileChip(p, f, i){
@@ -8276,9 +8305,7 @@ ROUTES['supplier/orders'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Mis Proyectos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div>
-      <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/supplier/documents')"><i data-lucide="folder"></i>Ver Mis Documentos</button></div>
-    </div>
+    <div class="page-header"><div><div class="page-title">Mis Proyectos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div></div>
     <div class="grid grid-2">
       ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','Aún no tienes pedidos activos','Los pedidos aparecerán aquí cuando un cliente seleccione tu cotización.')}</div>`}
     </div>
@@ -8334,7 +8361,7 @@ ROUTES['supplier/order'] = function(id){
       </div>
       <div class="card card-pad">
         <div class="section-title">Documentos del Proveedor</div>
-        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.length ? p.order.quality.documents.map(d=>orderDocChip(d, p.id)).join('') : '<div class="td-sub">Aún no has cargado documentos.</div>'}</div>
+        <div style="margin-top:8px;">${orderDocumentsSection(p)}</div>
         <div style="margin-top:10px;">
           <input type="file" id="order-doc-input-${p.id}" style="display:none" accept=".pdf,.step,.stp,.dwg,.dxf,.jpg,.jpeg,.png" onchange="App.onOrderDocumentSelected(this,'${p.id}')">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('order-doc-input-${p.id}').click()"><i data-lucide="upload"></i>Cargar Documento</button>
@@ -8344,48 +8371,6 @@ ROUTES['supplier/order'] = function(id){
         <button class="btn btn-secondary btn-block" onclick="navigate('#/supplier/messages')"><i data-lucide="message-square"></i>Mensaje a INNOUS</button>
       </div>
     </div>
-  </div>`;
-};
-
-/* ---- Supplier Documents — ya no está en el menú (fix172), se llega
-   nada más desde el botón "Ver Mis Documentos" en Mis Proyectos. ---- */
-// fix174: selección múltiple para borrar varios documentos de un jalón (o
-// "Seleccionar Todo"). Solo un documento REAL cargado por el proveedor
-// (quality_documents con `path`) es seleccionable/borrable — un string
-// viejo de demo no tiene nada real que borrar en Storage, y los
-// documentos de logística los sube/controla INNOUS, no el proveedor.
-ROUTES['supplier/documents'] = function(){
-  const orders = supplierOrders();
-  const docs = orders.flatMap(p=>[
-    ...p.order.quality.documents.map(d=>({d,p,deletable:typeof d!=='string' && !!d.path})),
-    ...p.order.logistics.documents.map(d=>({d,p,deletable:false})),
-  ]);
-  const selectableKeys = docs.filter(r=>r.deletable).map(r=>r.p.id+'::'+r.d.path);
-  const selected = selectableKeys.filter(k=>STATE.ui.selectedOrderDocs[k]);
-  const allSelected = selectableKeys.length>0 && selected.length===selectableKeys.length;
-  return `
-  <div class="content-inner">
-    <div class="breadcrumb"><a href="#/supplier/orders">Mis Proyectos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Mis Documentos</span></div>
-    <div class="page-header"><div><div class="page-title">Mis Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque que has cargado</div></div>
-      ${selected.length ? `<div class="page-actions"><button class="btn btn-danger" onclick="App.deleteSelectedOrderDocs()"><i data-lucide="trash-2"></i>Borrar Seleccionados (${selected.length})</button></div>` : ''}
-    </div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr>
-      <th style="width:36px;">${selectableKeys.length ? `<input type="checkbox" ${allSelected?'checked':''} onchange="App.toggleSelectAllOrderDocs(${JSON.stringify(selectableKeys)}, this.checked)">` : ''}</th>
-      <th>Documento</th><th>Pedido</th><th>Proyecto</th><th></th>
-    </tr></thead><tbody>
-      ${docs.length? docs.map(({d,p,deletable})=>{
-        const name = typeof d==='string' ? d : d.name;
-        const path = typeof d==='string' ? null : d.path;
-        const key = p.id+'::'+path;
-        const checked = deletable && STATE.ui.selectedOrderDocs[key];
-        return `<tr>
-          <td>${deletable?`<input type="checkbox" ${checked?'checked':''} onchange="App.toggleOrderDocSelect('${p.id}','${escAttr(path)}')">`:''}</td>
-          <td class="td-strong ${path?'row-link':''}" ${path?`onclick="App.openOrderDocument('${escAttr(path)}')"`:''}>${name}</td>
-          <td class="mono">${p.id}</td><td>${p.projectName}</td>
-          <td>${deletable?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="App.deleteOrderDocument('${p.id}','${escAttr(path)}','${escAttr(name)}')"><i data-lucide="trash-2"></i></button>`:''}</td>
-        </tr>`;
-      }).join('') : `<tr><td colspan="5">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
-    </tbody></table></div></div>
   </div>`;
 };
 
