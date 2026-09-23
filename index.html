@@ -8433,9 +8433,6 @@ ROUTES['supplier/order'] = function(id){
           ${infoItem('Fecha de Entrega', fmtDate(p.deliveryDate))}
         </div>
         <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="App.downloadPurchaseOrderPdf('${p.id}')"><i data-lucide="file-down"></i>Descargar Orden de Compra (PDF)</button>
-        <hr class="divider">
-        <div class="section-title">Hitos de Producción</div>
-        <div style="margin-top:8px;">${p.order.milestones.map(m=>`<div class="checklist-item">${m.done?`<div class="step-check"><i data-lucide="check"></i></div>`:`<div class="step-pending"></div>`}<div><div style="font-weight:600;font-size:13px;">${orderStatusLabelFor(p, m.key, true)}</div>${m.date?`<div class="td-sub">${fmtDate(m.date)}</div>`:''}</div></div>`).join('')}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Documentos del Proveedor</div>
