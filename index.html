@@ -8317,7 +8317,7 @@ ROUTES['supplier/quote'] = function(id){
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${supplierQuoteStatusBadge(p)}</div>
     ${stageBanner(rfqStageMessage(p,'supplier'), p.status==='completed'||won?'success':'info')}
     ${supplierSubmittedQuoteCard(p, q)}
-    ${won && p.order ? `<button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="navigate('#/supplier/order/${p.id}')"><i data-lucide="package"></i>Ver Pedido</button>` : ''}
+    ${won && p.order ? `<button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="navigate('#/supplier/order/${p.id}')"><i data-lucide="package"></i>Ver Proyecto</button>` : ''}
   </div>`;
 };
 
