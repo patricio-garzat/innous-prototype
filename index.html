@@ -996,35 +996,42 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .landing-hero-col{text-align:left;}
 .landing-hero-col .hero-title,.landing-hero-col .hero-sub{margin-left:0;margin-right:0;}
 .landing-hero-col .hero-actions{justify-content:flex-start;}
+/* fix158: el login con Google que se le agregó a .landing-login-card le
+   sube el alto a la columna derecha — para que siga cabiendo todo sin
+   scroll, el título/subtítulo del hero (que el usuario pidió encoger
+   de cualquier forma, para que se vea todo más acomodado) bajan un
+   poco de tamaño aquí en el home nada más. */
+.landing-hero-col .hero-title{font-size:clamp(22px,min(3.8vw,5.2vh),44px);margin-top:clamp(8px,2vh,16px);margin-bottom:clamp(6px,1.4vh,14px);}
+.landing-hero-col .hero-sub{font-size:15px;line-height:1.55;}
 /* fix151: tarjeta de login de verdad, en la columna derecha arriba de
    "Why INNOUS" — reemplaza el mini-formulario apretado en el topbar
    (fix150) que salía mal alineado y con el texto de los campos
    cortado. Usuario arriba, contraseña abajo (como pidió el usuario),
    ambos a todo lo ancho de la tarjeta — con este ancho (el mismo que
    .landing-info-card de al lado) no se corta nada. */
-.landing-right-col{display:flex;flex-direction:column;gap:16px;}
+.landing-right-col{display:flex;flex-direction:column;gap:12px;}
 /* fix153: más contraste contra el fondo (que es casi del mismo gris
    claro que las tarjetas) sin recargar el diseño — solo borde un poco
    más marcado + sombra un poco más presente, nada de color ni bordes
    gruesos de más. */
-.landing-login-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:clamp(16px,2.2vh,20px) clamp(18px,2.2vw,24px);box-shadow:0 20px 46px -16px rgba(0,56,101,0.3);}
-.landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:10px;}
-.landing-login-card form{display:flex;flex-direction:column;gap:9px;}
+.landing-login-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:clamp(14px,2vh,18px) clamp(18px,2.2vw,24px);box-shadow:0 20px 46px -16px rgba(0,56,101,0.3);}
+.landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:8px;}
+.landing-login-card form{display:flex;flex-direction:column;gap:7px;}
 .landing-login-card input[type=text],.landing-login-card input[type=password]{width:100%;padding:9px 12px;border-radius:9px;font-size:13.5px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink);}
 .landing-login-card input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
 .landing-login-card .password-input-wrap input{width:100%;}
 .landing-login-card .btn{padding:9px;font-size:13.5px;margin-top:2px;}
 .landing-login-card-forgot{display:block;text-align:right;font-size:11.5px;color:var(--ink-tertiary);margin-top:9px;cursor:pointer;}
 .landing-login-card-forgot:hover{color:var(--ink);text-decoration:underline;}
-.landing-info-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 28px 60px -18px rgba(0,56,101,0.32);position:relative;overflow:hidden;}
+.landing-info-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:clamp(16px,2.4vh,22px) clamp(20px,2.5vw,30px);box-shadow:0 28px 60px -18px rgba(0,56,101,0.32);position:relative;overflow:hidden;}
 .landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
 .landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
-.landing-value-row{display:flex;align-items:center;gap:12px;padding:5px 0;}
+.landing-value-row{display:flex;align-items:center;gap:12px;padding:4px 0;}
 .landing-value-row .value-icon{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .landing-value-row .value-icon svg{width:15px;height:15px;stroke:var(--accent-ink);}
 .landing-value-text{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.4;}
-.landing-info-divider{border-top:1px solid var(--border);margin:14px 0 16px;}
-.landing-caps-label{font-family:'Ubuntu',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--ink-tertiary);margin-bottom:10px;}
+.landing-info-divider{border-top:1px solid var(--border);margin:10px 0 12px;}
+.landing-caps-label{font-family:'Ubuntu',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--ink-tertiary);margin-bottom:8px;}
 .landing-process-row{display:flex;flex-wrap:wrap;gap:7px;}
 .landing-process-chip{font-size:11.5px;font-weight:600;color:var(--ink-secondary);background:var(--surface-alt);border:1px solid var(--border);border-radius:100px;padding:5px 11px;}
 @media(max-width:900px){
@@ -4540,6 +4547,8 @@ function renderLanding(){
               ${pwFieldHtml('landing-login-password', `name="password" placeholder="${at('password')}" required autocomplete="current-password"`)}
               <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>${at('logIn')}</button>
             </form>
+            <div class="auth-or-divider" style="margin:7px 0;"><span>${at('orWord')}</span></div>
+            <button type="button" class="btn btn-secondary btn-block" onclick="App.signInWithGoogle()">${GOOGLE_G_ICON_SVG}${at('continueWithGoogle')}</button>
             <a class="landing-login-card-forgot" onclick="App.goToForgotPassword()">${at('forgotPassword')}</a>
           </div>
           <div class="landing-info-card">
