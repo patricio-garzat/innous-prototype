@@ -3922,11 +3922,17 @@ function innousFileChip(p, f, i){
       ? `<span class="badge badge-green">Compartido con el proveedor</span>`
       : `<span class="badge badge-amber">Pendiente de revisión</span>`;
   const openOriginal = f.path ? `onclick="App.openProjectFile('${escAttr(f.path)}')" style="cursor:pointer;" title="Ver original (el proveedor nunca lo ve)"` : '';
+  // fix183: si INNOUS le puso otro nombre a la versión que ve el proveedor
+  // (para esconder el nombre real del cliente), se muestra aquí abajo —
+  // así INNOUS no tiene que volver a abrir el editor solo para acordarse.
+  const renameNote = f.redactedPath && f.redactedName && f.redactedName!==f.name
+    ? `<div class="td-sub" style="flex-basis:100%;margin-top:-2px;">El proveedor lo ve como "${escAttr(f.redactedName)}"</div>` : '';
   return `<div class="file-chip" style="flex-wrap:wrap;">
     <div class="fc-icon" style="color:${meta.color};background:${meta.color}18;" ${openOriginal}>${meta.ext}</div>
     <span class="fc-name" ${openOriginal}>${f.name}</span><span class="fc-size">${f.size}</span>
     ${statusBadge}
     ${!isCad?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.openRedactModal('${p.id}',${i})">${f.redactedPath?'Editar redacción':'Redactar y compartir'}</button>`:''}
+    ${renameNote}
   </div>`;
 }
 /* ---- Redaction editor (INNOUS-only): loads a PDF (via pdf.js, every page —
@@ -3953,6 +3959,11 @@ function redactModalHtml(){
   <div class="modal-header"><h3>Redactar Plano</h3><button class="modal-close" onclick="App.closeRedactModal()"><i data-lucide="x"></i></button></div>
   <div class="modal-body">
     <div class="field-hint" style="margin-bottom:10px;flex:none;">Haz clic y arrastra para dibujar cuadros blancos sobre cualquier logo o información que identifique al cliente — esto es exactamente lo que verá el proveedor, nada más. Usa el trackpad para moverte (dos dedos) y hacer zoom (pellizcar), o los botones de abajo. ${st.numPages>1?'Cada página necesita sus propios cuadros — usa Anterior/Siguiente abajo para revisarlas todas.':''}</div>
+    <div class="form-group" style="margin-bottom:12px;flex:none;">
+      <label class="field-label">Nombre visible para el proveedor</label>
+      <input type="text" value="${escAttr(st.redactedName)}" oninput="STATE.ui.redactState.redactedName=this.value" placeholder="ej. Plano-01.pdf">
+      <div class="field-hint" style="margin-top:4px;">El archivo original se llama "${escAttr(st.fileName)}" — si el cliente puso su nombre o el de su empresa en el nombre del archivo, cámbialo aquí antes de publicar. El cliente sigue viendo su nombre real; esto solo cambia lo que ve el proveedor.</div>
+    </div>
     ${st.numPages>1?`
     <div style="display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:10px;flex:none;">
       <button type="button" class="btn btn-secondary btn-sm" ${st.pageNum<=1?'disabled':''} onclick="App.loadRedactPage(${st.pageNum-1})"><i data-lucide="chevron-left"></i>Anterior</button>
@@ -8007,7 +8018,7 @@ ROUTES['supplier/rfq'] = function(id){
         <div class="section-title">Archivos</div>
         <div class="file-list" style="margin-top:10px;">${(()=>{
           const visible = p.files.filter(f=>f.redactedPath);
-          if(visible.length) return visible.map(f=>fileIconChip({...f, path:f.redactedPath})).join('');
+          if(visible.length) return visible.map(f=>fileIconChip({...f, path:f.redactedPath, name:f.redactedName||f.name})).join('');
           return `<div class="td-sub">${p.files.length ? 'INNOUS está revisando los archivos antes de compartirlos contigo.' : 'Sin archivos adjuntos.'}</div>`;
         })()}</div>
       </div>
@@ -9958,7 +9969,11 @@ const App = {
     if(!f.path){ showToast('This file has no original to open.'); return; }
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(f.path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
-    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, numPages:1, pageNum:1, boxesByPage:{}, drawing:null, sources:{}, pdfDoc:null, loading:true, zoom:1, panX:0, panY:0 };
+    // fix183: redactedName arranca con el nombre real del archivo (o el
+    // que ya se le haya puesto antes, si se está editando una redacción
+    // existente) — el proveedor nunca ve esto hasta que se publique, así
+    // que empezar con el nombre real no expone nada.
+    STATE.ui.redactState = { projectId:pid, fileIndex:idx, fileType:f.type, fileName:f.name, redactedName: f.redactedName || f.name, numPages:1, pageNum:1, boxesByPage:{}, drawing:null, sources:{}, pdfDoc:null, loading:true, zoom:1, panX:0, panY:0 };
     openModal(redactModalHtml(), 'xwide');
     try{
       if(f.type==='pdf'){
@@ -10159,7 +10174,10 @@ const App = {
       if(!blob){ showToast('No se pudo generar el archivo.'); if(saveBtn) saveBtn.disabled=false; return; }
       const { error: upErr } = await sb.storage.from('project-files').upload(redactedPath, blob, { contentType });
       if(upErr){ showToast(upErr.message); if(saveBtn) saveBtn.disabled=false; return; }
-      const newFiles = p.files.map((file,i)=> i===st.fileIndex ? {...file, redactedPath} : file);
+      // fix183: si se dejó en blanco, no hay nada que esconder — se guarda
+      // el nombre real tal cual en vez de un string vacío.
+      const redactedName = (st.redactedName||'').trim() || f.name;
+      const newFiles = p.files.map((file,i)=> i===st.fileIndex ? {...file, redactedPath, redactedName} : file);
       if(!p.isDemo){
         const { error: dbErr } = await sb.from('projects').update({ files:newFiles }).eq('id', st.projectId);
         if(dbErr){ showToast(dbErr.message); if(saveBtn) saveBtn.disabled=false; return; }
