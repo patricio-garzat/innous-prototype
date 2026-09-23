@@ -2892,7 +2892,7 @@ function recalcSupplierMetrics(supplierId){
     // date; real orders don't persist per-stage dates yet, so approximate
     // with "right now" — accurate for the common case (this runs the moment
     // an order is actually marked Delivered) if a bit off for a metrics
-    // recompute long after the fact (e.g. from App.setQualityStatus).
+    // recompute long after the fact.
     const dm = p.order.milestones.find(m=>m.key==='delivered');
     const deliveredOn = dm && dm.date ? new Date(dm.date) : new Date();
     if(deliveredOn <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
@@ -4279,8 +4279,6 @@ const NAV = {
     {id:'quotes', label:'Cotizaciones', icon:'file-diff', path:'#/innous/quotes'},
     {id:'orders', label:'Pedidos', icon:'package', path:'#/innous/orders'},
     {id:'production', label:'Producción', icon:'cog', path:'#/innous/production'},
-    {id:'quality', label:'Calidad', icon:'shield-check', path:'#/innous/quality'},
-    {id:'logistics', label:'Logística', icon:'truck', path:'#/innous/logistics'},
     {id:'analytics', label:'Analítica', icon:'bar-chart-3', path:'#/innous/analytics'},
     {id:'messages', label:'Mensajes', icon:'message-square', path:'#/innous/messages'},
     {id:'team-chat', label:'Chat de Equipo', icon:'users', path:'#/innous/team-chat'},
@@ -4442,12 +4440,6 @@ function pendingItems(){
     });
     PROJECTS.filter(p=>p.status==='awarded' && !p.innousAuthorizedAt).forEach(p=>{
       items.push({navId:'rfqs', icon:'check-circle', text:`Autorizar proyecto — ${p.projectName}`, sub:p.id, path:'#/innous/rfq/'+p.id});
-    });
-    PROJECTS.filter(p=>p.order && p.order.quality.status==='ncr_open').forEach(p=>{
-      items.push({navId:'quality', icon:'alert-triangle', text:`Problema de calidad abierto — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
-    });
-    PROJECTS.filter(p=>p.order && p.order.status==='delivered' && p.order.paymentStatus!=='Paid').forEach(p=>{
-      items.push({navId:'orders', icon:'dollar-sign', text:`Cobrar pago final — ${p.projectName}`, sub:p.id, path:'#/innous/order/'+p.id});
     });
     PROJECTS.filter(p=>p.order && innousNextOrderStatus(p)).forEach(p=>{
       const label = orderStatusLabelFor(p, innousNextOrderStatus(p));
@@ -7340,11 +7332,11 @@ ROUTES['innous/orders'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Pedidos</div><div class="page-subtitle">${orders.length} pedidos — activos y completados</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportOrders()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th><th>Pago</th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
         <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))}</td>
-        <td>${orderStatusBadge(p)}</td><td class="td-sub">${p.order.paymentStatus}</td>
+        <td>${orderStatusBadge(p)}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -7410,24 +7402,6 @@ ROUTES['innous/order'] = function(id){
       ${kpiCard('Precio al Cliente', fmtMoney(p.order.customerPrice), 'cobrado a '+customerName(p.customerId)+(p.order.freightUsd?' · incl. '+fmtMoney(p.order.freightUsd)+' de envío':''), 'dollar-sign')}
       ${kpiCard('Margen Bruto', fmtMoney(margin), (margin/p.order.customerPrice*100).toFixed(1)+'% margen ('+p.order.markupPct+'% markup)', 'trending-up')}
     </div>
-    <div class="grid grid-2" style="margin-bottom:20px;">
-      <div class="card card-pad">
-        <div class="section-title">Calidad</div>
-        ${qualityBlock(p)}
-      </div>
-      <div class="card card-pad">
-        <div class="section-title">Logística</div>
-        ${logisticsBlock(p)}
-      </div>
-    </div>
-    <div class="card card-pad">
-      <div class="section-title">Estatus de Pago</div>
-      <div class="section-sub">La facturación es entre INNOUS y cada parte — actualiza esto conforme realmente sucedan los depósitos y pagos. Es independiente de la línea de tiempo de producción.</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span class="badge ${p.order.paymentStatus==='Paid'?'badge-green':'badge-amber'}">${p.order.paymentStatus}</span><span class="td-sub">Cliente: ${p.order.customerPrice>0?fmtMoney(p.order.customerPrice):''} · Pago al proveedor (IVA incl.): ${p.order.supplierCostMxn?fmtMXN(withIva(p.order.supplierCostMxn)):fmtMoney(withIva(p.order.supplierCost))}</span></div>
-      <div class="markup-chip-row">
-        ${['Awaiting Deposit','Deposit Received','Paid'].map(st=>`<button type="button" class="markup-chip ${p.order.paymentStatus===st?'active':''}" onclick="App.setPaymentStatus('${p.id}','${st}')">${st}</button>`).join('')}
-      </div>
-    </div>
     ${innousRatingCardHtml(p)}
   </div>`;
 };
@@ -7444,40 +7418,6 @@ ROUTES['innous/rate'] = function(id){
     ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
-function qualityBlock(p){
-  const q = p.order.quality;
-  const statusMap = {pending:['badge-gray','Pendiente'],approved:['badge-green','Aprobada'],ncr_open:['badge-red','NCR Abierto']};
-  const [cls,label] = statusMap[q.status]||['badge-gray',q.status];
-  return `
-  <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-    ${infoItem('Inspección Requerida', q.inspectionRequired?'Sí':'No')}
-    ${infoItem('Estatus de Inspección', `<span class="badge ${cls}">${label}</span>`)}
-  </div>
-  <div class="info-item-label" style="margin-top:12px;">Documentos y Certificados</div>
-  <div class="file-list" style="margin-top:8px;">${[...q.documents,...q.certificates].map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
-  <div class="td-sub" style="margin-top:8px;">${q.photos} fotos de inspección registradas</div>
-  ${q.ncr.length? `<div class="confidential-note" style="margin-top:10px;background:var(--danger-soft);border-color:#F9C6C6;color:var(--danger);"><i data-lucide="alert-triangle"></i><div>${q.ncr.map(n=>`${n.id}: ${n.issue} — ${n.status}`).join('<br>')}</div></div>`:''}
-  ${q.status!=='approved' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;margin-right:8px;color:var(--success);" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check-circle-2"></i>Aprobar Calidad</button>` : ''}
-  ${q.status!=='ncr_open' ? `<button class="btn btn-secondary btn-sm" style="margin-top:12px;color:var(--danger);" onclick="App.setQualityStatus('${p.id}','ncr_open')"><i data-lucide="alert-triangle"></i>Rechazar — Abrir NCR</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:12px;" onclick="App.setQualityStatus('${p.id}','approved')"><i data-lucide="check"></i>Resolver NCR y Aprobar</button>`}
-  `;
-}
-function logisticsBlock(p){
-  const l = p.order.logistics;
-  const pickup = isPickupOrder(p);
-  return `
-  <div class="info-grid" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-    ${infoItem('Origen', l.origin)}
-    ${infoItem('Destino', pickup?'Recolección del Cliente':l.destination)}
-    ${pickup ? '' : infoItem('Transportista', l.carrier||'Aún sin enviar')}
-    ${pickup ? '' : infoItem('No. de Rastreo', l.tracking||'—')}
-    ${pickup ? '' : infoItem('Fecha de Recolección (del proveedor)', fmtDate(l.pickupDate))}
-    ${infoItem(pickup?'Fecha Lista':'Entrega Estimada', fmtDate(l.estimatedDelivery))}
-  </div>
-  <div class="info-item-label" style="margin-top:12px;">Documentos de Envío</div>
-  <div class="file-list" style="margin-top:8px;">${l.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#2952CC;background:#2952CC18;">DOC</div><span class="fc-name">${d}</span></div>`).join('')}</div>
-  `;
-}
-
 /* ---- INNOUS Production board ---- */
 ROUTES['innous/production'] = function(){
   const orders = PROJECTS.filter(p=>p.order && p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -7498,33 +7438,6 @@ ROUTES['innous/production'] = function(){
           </div>
         </div>`).join('')}
     </div>
-  </div>`;
-};
-
-/* ---- INNOUS Quality ---- */
-ROUTES['innous/quality'] = function(){
-  const orders = PROJECTS.filter(p=>p.order);
-  return `
-  <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Calidad</div><div class="page-subtitle">Estatus de inspección en todos los pedidos</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Inspección Requerida</th><th>Estatus</th><th>NCR</th></tr></thead><tbody>
-      ${orders.map(p=>{
-        const q=p.order.quality; const statusMap={pending:['badge-gray','Pendiente'],approved:['badge-green','Aprobada'],ncr_open:['badge-red','NCR Abierto']}; const [cls,label]=statusMap[q.status]||['badge-gray',q.status];
-        return `<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td><td>${q.inspectionRequired?'Sí':'No'}</td><td><span class="badge ${cls}">${label}</span></td><td>${q.ncr.length?`<span class="badge badge-red">${q.ncr.length} abierto${q.ncr.length===1?'':'s'}</span>`:'—'}</td></tr>`;
-      }).join('')}
-    </tbody></table></div></div>
-  </div>`;
-};
-
-/* ---- INNOUS Logistics ---- */
-ROUTES['innous/logistics'] = function(){
-  const orders = PROJECTS.filter(p=>p.order);
-  return `
-  <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Logística</div><div class="page-subtitle">Envío y entrega en todos los pedidos</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Origen</th><th>Destino</th><th>Transportista</th><th>Rastreo</th><th>Entrega Estimada</th><th>Estatus</th></tr></thead><tbody>
-      ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')"><td class="td-strong mono">${p.id}</td><td>${p.order.logistics.origin}</td><td>${p.order.logistics.destination}</td><td>${p.order.logistics.carrier}</td><td class="mono">${p.order.logistics.tracking}</td><td class="td-sub">${fmtDate(p.order.logistics.estimatedDelivery)}</td><td>${orderStatusBadge(p)}</td></tr>`).join('')}
-    </tbody></table></div></div>
   </div>`;
 };
 
@@ -9967,12 +9880,12 @@ const App = {
   },
   exportOrders(){
     const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-    const headers = ['Pedido','Cliente','Proveedor','Costo del Proveedor','Moneda del Costo','Precio al Cliente (USD)','Margen (USD)','Producción','Pago'];
+    const headers = ['Pedido','Cliente','Proveedor','Costo del Proveedor','Moneda del Costo','Precio al Cliente (USD)','Margen (USD)','Producción'];
     const rows = orders.map(p=>{
       const supplierCost = p.order.supplierCostMxn || p.order.supplierCost;
       const supplierCostCurrency = p.order.supplierCostMxn ? 'MXN' : 'USD';
       const margin = p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0);
-      return [p.id, customerName(p.customerId), supplierName(p.selectedSupplierId), supplierCost, supplierCostCurrency, p.order.customerPrice, margin, orderStatusLabelFor(p, p.order.status), p.order.paymentStatus];
+      return [p.id, customerName(p.customerId), supplierName(p.selectedSupplierId), supplierCost, supplierCostCurrency, p.order.customerPrice, margin, orderStatusLabelFor(p, p.order.status)];
     });
     exportRowsToExcel(`Pedidos-${exportDateStamp()}.xlsx`, 'Pedidos', headers, rows);
   },
@@ -11295,8 +11208,8 @@ const App = {
     const idx = ORDER_STATUS_FLOW.indexOf(p.order.status);
     p.order.status = next;
     if(p.order.milestones[idx+1]){ p.order.milestones[idx+1].done = true; p.order.milestones[idx+1].date = new Date('2026-09-08'); }
-    // Payment status is deliberately NOT touched here — production progress is the
-    // supplier's call, billing/collection is INNOUS's (see App.setPaymentStatus).
+    // Payment status is deliberately NOT touched here — production progress
+    // and billing/collection are two separate tracks.
     const justCompleted = next==='delivered';
     const justStarted = p.status==='awarded';
     if(justCompleted){ p.status='completed'; recalcSupplierMetrics(p.selectedSupplierId); }
@@ -11371,36 +11284,6 @@ const App = {
     showToast(`Pedido ${p.id} actualizado a ${orderStatusLabelFor(p, next, true)}`, 'success');
     route();
   },
-  async setPaymentStatus(pid, status){
-    const p = findProject(pid);
-    p.order.paymentStatus = status;
-    logActivity(p, 'INNOUS', `Payment status updated to "${status}".`);
-    if(!p.isDemo){
-      const { error } = await sb.from('orders').update({payment_status: status}).eq('project_id', pid);
-      if(error){ showToast(error.message); return; }
-    }
-    showToast(`Estatus de pago actualizado a ${status}`, 'success');
-    route();
-  },
-  async setQualityStatus(pid, status){
-    const p = findProject(pid);
-    p.order.quality.status = status;
-    if(status==='ncr_open'){
-      p.order.quality.ncr = [{id:'NCR-'+Math.floor(Math.random()*900+100), issue:'Quality issue flagged by INNOUS', status:'Under Review'}];
-    } else if(status==='approved'){
-      p.order.quality.ncr = [];
-    }
-    logActivity(p, 'INNOUS', `Quality inspection ${status==='approved'?'approved':'rejected — NCR opened'}.`);
-    recalcSupplierMetrics(p.selectedSupplierId);
-    if(!p.isDemo){
-      const { error } = await sb.from('orders').update({quality_status: p.order.quality.status, quality_ncr: p.order.quality.ncr}).eq('project_id', pid);
-      if(error){ showToast(error.message); return; }
-      await persistSupplierMetrics(p.selectedSupplierId);
-    }
-    showToast(status==='approved' ? 'Calidad aprobada' : 'Calidad rechazada — NCR abierto', status==='approved'?'success':undefined);
-    route();
-  },
-
   /* ---- Post-delivery ratings (fix81) ---- */
   setClientRatingDraft(pid, field, value){
     if(!STATE.ui.clientRatingDrafts[pid]) STATE.ui.clientRatingDrafts[pid] = {ontime:0, quality:0, comment:''};
@@ -11820,8 +11703,8 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'submitTargetCounter','respondFinalCounter','respondTargetCounter','uploadOrderDocument',
   'deleteOrderDocument','deleteSelectedOrderDocs',
   'innousReviewSupplierCounter','innousReviewClientCounter','reopenSupplierQuote',
-  'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
-  'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
+  'advanceOrderStatus','revertOrderStatus','confirmShipOrder',
+  'submitClientRating','submitInnousRating','sendChatMessage',
   'sendChatCard','deleteChat','submitSignup','sendInnousTeammatePasswordReset',
 ];
 // fix130: dos capas más sobre el candado de viewer de arriba, para los
