@@ -990,7 +990,11 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    ambos a todo lo ancho de la tarjeta — con este ancho (el mismo que
    .landing-info-card de al lado) no se corta nada. */
 .landing-right-col{display:flex;flex-direction:column;gap:16px;}
-.landing-login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:clamp(16px,2.2vh,20px) clamp(18px,2.2vw,24px);box-shadow:0 16px 40px -20px rgba(0,56,101,0.2);}
+/* fix153: más contraste contra el fondo (que es casi del mismo gris
+   claro que las tarjetas) sin recargar el diseño — solo borde un poco
+   más marcado + sombra un poco más presente, nada de color ni bordes
+   gruesos de más. */
+.landing-login-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:clamp(16px,2.2vh,20px) clamp(18px,2.2vw,24px);box-shadow:0 20px 46px -16px rgba(0,56,101,0.3);}
 .landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:10px;}
 .landing-login-card form{display:flex;flex-direction:column;gap:9px;}
 .landing-login-card input[type=text],.landing-login-card input[type=password]{width:100%;padding:9px 12px;border-radius:9px;font-size:13.5px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink);}
@@ -999,7 +1003,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .landing-login-card .btn{padding:9px;font-size:13.5px;margin-top:2px;}
 .landing-login-card-forgot{display:block;text-align:right;font-size:11.5px;color:var(--ink-tertiary);margin-top:9px;cursor:pointer;}
 .landing-login-card-forgot:hover{color:var(--ink);text-decoration:underline;}
-.landing-info-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 24px 56px -22px rgba(0,56,101,0.22);position:relative;overflow:hidden;}
+.landing-info-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 28px 60px -18px rgba(0,56,101,0.32);position:relative;overflow:hidden;}
 .landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
 .landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
 .landing-value-row{display:flex;align-items:center;gap:12px;padding:7px 0;}
