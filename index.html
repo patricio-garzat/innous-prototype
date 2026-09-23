@@ -6049,17 +6049,17 @@ function targetPriceNegotiationStatusInnous(p){
       return `<div class="pricing-row"><span>${supplierName(q.supplierId)} — contraoferta del cliente aprobada: ${fmtMoney(q.clientCounterUsd)} (${fmtMXN(q.clientCounterMxn)} para el proveedor)</span><span class="badge badge-amber">Esperando al proveedor (última vuelta)</span></div>`;
     }
     if(q.status==='target_countered'){
-      const draft = getCounterReviewDraft(p.id, q.supplierId, 'supplier', p);
-      const usdPreview = (q.targetCounterMxn / draft.exchangeRate) * (1 + draft.markupPct/100);
+      const draft = getCounterReviewDraft(p.id, q.supplierId, 'supplier', p, q.targetCounterMxn);
       return `
       <div class="card card-pad" style="margin:10px 0;background:var(--surface-alt);">
         <div style="font-size:13px;font-weight:600;">${supplierName(q.supplierId)} contraofertó ${fmtMXN(q.targetCounterMxn)} — pendiente de tu revisión</div>
         ${q.targetCounterNote ? `<div class="field-hint" style="margin-top:4px;">Nota del proveedor: "${q.targetCounterNote}"</div>` : ''}
         <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;">
-          <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','markupPct',this.value)"></div>
-          <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','exchangeRate',this.value)"></div>
-          <div><div class="field-label">Precio para el Cliente (USD)</div><div style="font-size:16px;font-weight:700;">${fmtMoney(usdPreview)}</div></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','markupPct',this.value,${q.targetCounterMxn})"></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','exchangeRate',this.value,${q.targetCounterMxn})"></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Cliente (USD)</label><input type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:120px;font-weight:700;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','finalPrice',this.value,${q.targetCounterMxn})"></div>
         </div>
+        <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $900.00) en vez de ajustar markup/tipo de cambio — el markup se recalcula solo, con el mismo tipo de cambio de arriba.</div>
         <div style="display:flex;gap:10px;margin-top:12px;">
           <button class="btn btn-primary btn-sm" onclick="App.innousReviewSupplierCounter('${p.id}','${q.supplierId}','approve')"><i data-lucide="check"></i>Aprobar y Mandar al Cliente</button>
           <button class="btn btn-secondary btn-sm" onclick="App.innousReviewSupplierCounter('${p.id}','${q.supplierId}','reject')">Rechazar</button>
@@ -6067,16 +6067,16 @@ function targetPriceNegotiationStatusInnous(p){
       </div>`;
     }
     // target_client_countered — contraoferta final del cliente, pendiente de revisión
-    const draft = getCounterReviewDraft(p.id, q.supplierId, 'client', p);
-    const mxnPreview = (q.clientCounterUsd / (1 + draft.markupPct/100)) * draft.exchangeRate;
+    const draft = getCounterReviewDraft(p.id, q.supplierId, 'client', p, q.clientCounterUsd);
     return `
     <div class="card card-pad" style="margin:10px 0;background:var(--surface-alt);">
       <div style="font-size:13px;font-weight:600;">${supplierName(q.supplierId)} — el cliente contraofertó ${fmtMoney(q.clientCounterUsd)} — pendiente de tu revisión</div>
       <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;">
-        <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','markupPct',this.value)"></div>
-        <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','exchangeRate',this.value)"></div>
-        <div><div class="field-label">Precio para el Proveedor (MXN)</div><div style="font-size:16px;font-weight:700;">${fmtMXN(mxnPreview)}</div></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','markupPct',this.value,${q.clientCounterUsd})"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','exchangeRate',this.value,${q.clientCounterUsd})"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Proveedor (MXN)</label><input type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:130px;font-weight:700;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','finalPrice',this.value,${q.clientCounterUsd})"></div>
       </div>
+      <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $14,000.00 MXN) en vez de ajustar markup/tipo de cambio — el markup se recalcula solo, con el mismo tipo de cambio de arriba.</div>
       <div style="display:flex;gap:10px;margin-top:12px;">
         <button class="btn btn-primary btn-sm" onclick="App.innousReviewClientCounter('${p.id}','${q.supplierId}','approve')"><i data-lucide="check"></i>Aprobar y Mandar al Proveedor</button>
         <button class="btn btn-secondary btn-sm" onclick="App.innousReviewClientCounter('${p.id}','${q.supplierId}','reject')">Rechazar</button>
@@ -6085,12 +6085,30 @@ function targetPriceNegotiationStatusInnous(p){
   }).join('')}
   `;
 }
-function getCounterReviewDraft(pid, sid, direction, p){
+// fix165: además de ajustar markup%/tipo de cambio, INNOUS ahora puede
+// teclear el PRECIO FINAL directo (para números cerrados, ej. $900.00
+// en vez de lo que salga de la cuenta) — al hacerlo, el markup se
+// recalcula solo (el tipo de cambio se queda fijo, es un dato de
+// mercado, no algo que INNOUS esté "cerrando" con nadie). Las 3
+// casillas (markup/tipo de cambio/precio final) siempre se muestran
+// consistentes entre sí: cualquiera de las 3 que se edite, las otras
+// dos ya reflejan el resultado.
+function getCounterReviewDraft(pid, sid, direction, p, baseAmount){
   const key = pid+':'+sid+':'+direction;
   if(!STATE.ui.innousCounterReviewDrafts[key]){
-    STATE.ui.innousCounterReviewDrafts[key] = { markupPct: p.targetPriceMarkupPct, exchangeRate: p.targetPriceExchangeRate };
+    const markupPct = p.targetPriceMarkupPct, exchangeRate = p.targetPriceExchangeRate;
+    STATE.ui.innousCounterReviewDrafts[key] = { markupPct, exchangeRate, finalPrice: computeCounterFinalPrice(direction, baseAmount, markupPct, exchangeRate) };
   }
   return STATE.ui.innousCounterReviewDrafts[key];
+}
+// direction 'supplier': baseAmount es el MXN que pidió el proveedor, el
+// resultado es el USD que vería el cliente.
+// direction 'client': baseAmount es el USD que contraofertó el cliente,
+// el resultado es el MXN que vería el proveedor.
+function computeCounterFinalPrice(direction, baseAmount, markupPct, exchangeRate){
+  return direction==='supplier'
+    ? (baseAmount / exchangeRate) * (1 + markupPct/100)
+    : (baseAmount / (1 + markupPct/100)) * exchangeRate;
 }
 function supplierMatchingSection(p){
   // Only relevant while INNOUS could still be inviting suppliers — once the RFQ
@@ -10115,10 +10133,23 @@ const App = {
   // counter-offer before Approve/Reject — same on-change pattern as
   // setMarkup/setExchangeRate above, just keyed per negotiation
   // (project+supplier+direction) instead of per RFQ.
-  updateCounterReviewDraft(pid, sid, direction, field, val){
+  // fix165: agrega un tercer campo editable, finalPrice. Editar
+  // markup/tipo de cambio recalcula el precio (como antes); editar el
+  // precio directo recalcula el markup en su lugar (para números
+  // cerrados), dejando el tipo de cambio fijo.
+  updateCounterReviewDraft(pid, sid, direction, field, val, baseAmount){
     const key = pid+':'+sid+':'+direction;
-    if(!STATE.ui.innousCounterReviewDrafts[key]) STATE.ui.innousCounterReviewDrafts[key] = {};
-    STATE.ui.innousCounterReviewDrafts[key][field] = parseFloat(val)||0;
+    const draft = STATE.ui.innousCounterReviewDrafts[key] || (STATE.ui.innousCounterReviewDrafts[key] = {});
+    const n = parseFloat(val)||0;
+    if(field==='finalPrice'){
+      draft.finalPrice = n;
+      draft.markupPct = direction==='supplier'
+        ? ((n * draft.exchangeRate / baseAmount) - 1) * 100
+        : ((baseAmount * draft.exchangeRate / n) - 1) * 100;
+    } else {
+      draft[field] = n;
+      draft.finalPrice = computeCounterFinalPrice(direction, baseAmount, draft.markupPct, draft.exchangeRate);
+    }
     route();
   },
   async innousReviewSupplierCounter(pid, sid, action){
