@@ -5123,7 +5123,7 @@ function newRfqItemDraft(){ return { description:'', process:'CNC Machining', qu
 // validation still blocks submitting a half-filled item.
 function newRfqItemFieldsHtml(it, i, total){
   return `
-  <div class="card card-pad" style="background:var(--bg-subtle,#FAFAFA);border:1px solid var(--border,#EAEAEA);margin-bottom:14px;">
+  <div class="card card-pad" style="background:var(--surface-alt);border:1px solid var(--border);margin-bottom:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div class="info-item-label">Item ${i+1}</div>
       ${total>1?`<button type="button" class="btn btn-secondary btn-sm" onclick="App.removeNewRfqItem(${i})"><i data-lucide="trash-2"></i>Remove</button>`:''}
