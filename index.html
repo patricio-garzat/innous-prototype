@@ -2872,28 +2872,6 @@ function recalcSupplierMetrics(supplierId){
   s.quality = Math.round(qualityCount/completed.length*100);
   s.projects = completed.length;
 }
-// fix180: mismo cálculo que recalcSupplierMetrics de arriba, pero sin
-// mutar nada — para poder mostrar el detalle exacto ("9 de 10 pedidos
-// entregados a tiempo") en vez de solo el porcentaje ya redondeado que
-// vive en s.onTime/s.quality. Usado tanto en el Desempeño del proveedor
-// como en su ficha dentro de INNOUS, para que ambos lados vean el mismo
-// desglose.
-function supplierMetricsDetail(supplierId){
-  const completed = PROJECTS.filter(p=>p.selectedSupplierId===supplierId && p.status==='completed' && p.order);
-  let onTimeCount=0, qualityCount=0;
-  completed.forEach(p=>{
-    const dm = p.order.milestones.find(m=>m.key==='delivered');
-    const deliveredOn = dm && dm.date ? new Date(dm.date) : new Date();
-    if(deliveredOn <= new Date(p.order.logistics.estimatedDelivery)) onTimeCount++;
-    if(p.order.quality.status==='approved') qualityCount++;
-  });
-  const total = completed.length;
-  return {
-    total, onTimeCount, qualityCount,
-    onTimePct: total ? Math.round(onTimeCount/total*100) : 0,
-    qualityPct: total ? Math.round(qualityCount/total*100) : 0,
-  };
-}
 // fix128: el Rating que se ve por todos lados (tarjetas de proveedor,
 // comparación de cotizaciones, su ficha) ya NO sale del cálculo objetivo
 // de arriba (onTime/quality) — sale ÚNICAMENTE de lo que de verdad
@@ -2938,35 +2916,26 @@ function supplierRatingSummary(supplierId){
     innousCount: innousRatings.length, innousCommunication: avg(innousRatings,'communication'), innousOntime: avg(innousRatings,'ontime'), innousQuality: avg(innousRatings,'quality'),
   };
 }
-// fix180: bloque de "desempeño" compartido entre el Desempeño del
-// proveedor y su ficha dentro de INNOUS — separa clarísimo las
-// Métricas Automáticas (se calculan solas, comparando fechas de entrega
-// e inspección de calidad — nadie opina) de la Calificación de
-// Estrellas (100% la reseña real que dejan el cliente e INNOUS después
-// de cada pedido). Antes vivían mezcladas en un solo grid de 4 KPIs sin
-// explicar por qué, por ejemplo, 100% a tiempo no significa 5 estrellas
-// — son dos cosas distintas por diseño, esto solo lo deja claro.
+// fix181: el usuario pidió quitar por completo las "calificaciones
+// automáticas" (lo que fix180 llamaba Métricas Automáticas) — la
+// calificación de un proveedor debe salir 100% de lo que el cliente y
+// INNOUS de verdad calificaron a mano después de cada pedido, nunca de
+// un cálculo de fechas/inspección. Esto NO borra s.onTime/s.quality ni
+// recalcSupplierMetrics — esos siguen existiendo como dato operativo
+// (se usan en las tarjetas de "qué tan confiable es este proveedor"
+// cuando INNOUS anda invitando proveedores a cotizar, y en el export a
+// Excel), nada más se quitan de esta sección de calificación, que ahora
+// es solo la reseña humana.
 function performanceOverviewHtml(s){
-  const md = supplierMetricsDetail(s.id);
-  const metricsIsNew = md.total===0;
   const rs = supplierRatingSummary(s.id);
   const ratingIsNew = rs.clientCount===0 && rs.innousCount===0;
   return `
-  <div class="card card-pad" style="margin-bottom:16px;background:var(--surface-alt);">
-    <div class="section-sub">Dos tipos de número, y es normal que no coincidan: las <strong>Métricas Automáticas</strong> se calculan solas (fechas de entrega, resultado de inspección) — la <strong>Calificación de Estrellas</strong> es 100% la opinión real que dejaron el cliente e INNOUS después de cada pedido, a mano.</div>
-  </div>
-  <div class="section-title" style="margin-bottom:2px;"><i data-lucide="calculator" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Métricas Automáticas</div>
-  <div class="field-hint" style="margin-bottom:10px;">Se calculan solas — nadie las escribe a mano.</div>
-  ${metricsIsNew ? stageBanner('Aún no hay pedidos completados — estas métricas se calculan en cuanto se entregue el primero.', 'info') : ''}
-  <div class="grid grid-2" style="margin-bottom:20px;">
-    ${kpiCard('Entregas a Tiempo', metricsIsNew?'—':md.onTimePct+'%', metricsIsNew?'sin historial aún':`${md.onTimeCount} de ${md.total} pedidos a tiempo`,'clock')}
-    ${kpiCard('Índice de Calidad', metricsIsNew?'—':md.qualityPct+'%', metricsIsNew?'sin historial aún':`${md.qualityCount} de ${md.total} aprobados en inspección`,'shield-check')}
-  </div>
-  <div class="section-title" style="margin-bottom:2px;"><i data-lucide="star" style="width:14px;height:14px;display:inline;vertical-align:-2px;"></i> Calificación de Estrellas</div>
-  <div class="field-hint" style="margin-bottom:10px;">100% reseña real — nunca se calcula sola.</div>
   <div class="card card-pad" style="margin-bottom:20px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
-      <div class="section-sub" style="max-width:420px;">La opinión de tu cliente y de INNOUS después de cada pedido entregado — cada quien califica lo suyo, y esta calificación es el promedio de ambos.</div>
+      <div>
+        <div class="section-title">Calificación</div>
+        <div class="section-sub" style="max-width:420px;">100% la opinión real de tu cliente y de INNOUS después de cada pedido entregado — cada quien califica lo suyo, y esta calificación es el promedio de ambos.</div>
+      </div>
       <div style="text-align:right;">
         <div style="font-size:28px;font-weight:700;">${ratingIsNew?'—':s.rating.toFixed(1)}</div>
         <div class="td-sub">${ratingIsNew?'sin calificaciones aún':'de 5.0'}</div>
