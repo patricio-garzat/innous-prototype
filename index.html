@@ -4036,12 +4036,16 @@ function timelineComp(steps, currentIdx){
   return `<div class="timeline">${steps.map((label,i)=>{
     const d = done(i);
     const cls = d ? 'done' : (i===currentIdx?'current':'');
-    // The connector line in front of a step only fills in once that
-    // previous step is actually done — and only halfway, since the step
-    // it's leading into isn't done yet itself. It only goes all the way
-    // once that next step is done too (checked at the top of its own
-    // next render, from the other side of the same segment).
-    const fillPct = i>0 && done(i-1) ? (d ? 100 : 50) : 0;
+    // fix184: la línea que lleva a un punto se llena completa en cuanto se
+    // llegó a ese punto (el paso anterior ya está done) — antes se
+    // quedaba nada más a la mitad mientras el punto en el que ya estás
+    // seguía sin marcarse como terminado, lo cual se veía como que
+    // seguías "a medio camino" hacia donde ya llegaste. El que de verdad
+    // debe verse a la mitad es la línea que SALE del punto actual hacia
+    // el siguiente (el paso anterior es el que está "current", en
+    // progreso) — así se lee "ya llegué aquí, y voy a la mitad de camino
+    // al siguiente".
+    const fillPct = i===0 ? 0 : (done(i-1) ? 100 : (i-1===currentIdx ? 50 : 0));
     return `<div class="timeline-step ${cls}"><div class="timeline-line"><div class="timeline-line-fill" style="width:${fillPct}%;"></div></div><div class="timeline-dot">${d?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':(i+1)}</div><div class="timeline-label">${label}</div></div>`;
   }).join('')}</div>`;
 }
