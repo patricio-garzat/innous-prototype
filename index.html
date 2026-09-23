@@ -3802,6 +3802,20 @@ function fileIconChip(f){
   const clickAttrs = f.path ? `style="cursor:pointer;" onclick="App.openProjectFile('${escAttr(f.path)}')" title="Click to open"` : '';
   return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${f.name}</span><span class="fc-size">${f.size}</span></div>`;
 }
+// fix172: documentos de pedido (certificados de calidad, planos, etc. que
+// el proveedor carga) — antes `d` era siempre un string suelto (dato de
+// demo, nunca un archivo real). Ahora una carga real guarda
+// {name, path, ...} (ver App.uploadOrderDocument), pero se sigue
+// aceptando el string viejo para no romper proyectos de demo/datos ya
+// existentes — solo el objeto con `path` es clickeable.
+function orderDocChip(d){
+  if(typeof d==='string') return `<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`;
+  const ext = (d.name.split('.').pop()||'').toLowerCase();
+  const type = ext==='stp' ? 'step' : (ext==='jpeg' ? 'jpg' : ext);
+  const meta = FILE_TYPES[type] || {ext: ext.toUpperCase()||'DOC', color:'#71717A'};
+  const clickAttrs = d.path ? `style="cursor:pointer;" onclick="App.openOrderDocument('${escAttr(d.path)}')" title="Click para abrir"` : '';
+  return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${d.name}</span></div>`;
+}
 /* ---- INNOUS-only file chip: shows the original (only INNOUS/client ever
    see it) plus whether a supplier-safe redacted copy has been published. ---- */
 function innousFileChip(p, f, i){
@@ -4127,11 +4141,9 @@ const NAV = {
   ],
   SUPPLIER: [
     {id:'dashboard', label:'Panel', icon:'layout-dashboard', path:'#/supplier/dashboard'},
-    {id:'rfqs', label:'RFQs Disponibles', icon:'inbox', path:'#/supplier/rfqs'},
+    {id:'rfqs', label:'Proyectos Disponibles', icon:'inbox', path:'#/supplier/rfqs'},
     {id:'quotes', label:'Mis Cotizaciones', icon:'file-text', path:'#/supplier/quotes'},
-    {id:'orders', label:'Pedidos Activos', icon:'package', path:'#/supplier/orders'},
-    {id:'production', label:'Producción', icon:'cog', path:'#/supplier/production'},
-    {id:'documents', label:'Documentos', icon:'folder', path:'#/supplier/documents'},
+    {id:'orders', label:'Mis Proyectos', icon:'package', path:'#/supplier/orders'},
     {id:'messages', label:'Mensajes', icon:'message-square', path:'#/supplier/messages'},
     {id:'performance', label:'Desempeño', icon:'trending-up', path:'#/supplier/performance'},
     {id:'profile', label:'Perfil de la Empresa', icon:'building', path:'#/supplier/profile'},
@@ -4867,9 +4879,9 @@ const TOUR_STEPS = {
   ],
   SUPPLIER: [
     {icon:'hexagon', title:'¡Bienvenido a INNOUS!', text:'Te conectamos con clientes industriales de Estados Unidos. INNOUS es tu único punto de contacto — nosotros gestionamos al cliente final.'},
-    {icon:'inbox', title:'RFQs Disponibles', text:'Verás únicamente las solicitudes de cotización que INNOUS te invite a cotizar, según tus capacidades.'},
+    {icon:'inbox', title:'Proyectos Disponibles', text:'Verás únicamente las solicitudes de cotización que INNOUS te invite a cotizar, según tus capacidades.'},
     {icon:'file-text', title:'Envía tu Cotización', text:'Define tu precio, tiempo de entrega y condiciones de pago. Tú decides tus términos.'},
-    {icon:'cog', title:'Gestiona tus Pedidos', text:'Cuando ganes un proyecto, actualiza el estatus de producción — desde material comprado hasta entregado.'},
+    {icon:'package', title:'Mis Proyectos', text:'Cuando ganes un proyecto, síguelo aquí — INNOUS va actualizando el estatus de producción, y tú puedes cargar tus documentos (certificados, planos, etc.) en cualquier momento.'},
     {icon:'rocket', title:'Completa tu Perfil', text:'Agrega tus servicios, maquinaria y certificaciones para recibir más oportunidades.', cta:'Completar mi Perfil', ctaPath:'#/supplier/profile'},
   ],
 };
@@ -7783,18 +7795,18 @@ ROUTES['supplier/dashboard'] = function(){
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Bienvenido de nuevo</div><div class="brand-rule"></div><div class="page-subtitle">${currentSupplier().name} · Panel del Proveedor</div></div>
-      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>Ver RFQs Disponibles</button></div></div>
-    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — cotiza o actualiza producción para no perder oportunidades.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
+      <div class="page-actions"><button class="btn btn-primary" onclick="navigate('#/supplier/rfqs')"><i data-lucide="inbox"></i>Ver Proyectos Disponibles</button></div></div>
+    ${pending.length ? stageBanner(`Tienes <strong>${pending.length}</strong> pendiente${pending.length===1?'':'s'} — cotiza para no perder oportunidades.`, 'action', `<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="App.toggleNotifMenu(event)">Ver Lista</button>`) : ''}
     <div class="grid grid-4" style="margin-bottom:24px;">
-      ${kpiCard('RFQs Disponibles', available.length, 'esperando tu cotización','inbox')}
+      ${kpiCard('Proyectos Disponibles', available.length, 'esperando tu cotización','inbox')}
       ${kpiCard('Cotizaciones Enviadas', submitted.length, 'total enviadas','file-text')}
-      ${kpiCard('Pedidos Activos', activeOrders.length, 'en producción','package')}
+      ${kpiCard('Mis Proyectos', activeOrders.length, 'en producción','package')}
       ${kpiCard('Tasa de Éxito', winRate+'%', 'de cotizaciones enviadas','target')}
     </div>
     <div class="grid grid-2">
       <div class="card">
-        <div class="card-header"><h3>RFQs Disponibles</h3><a href="#/supplier/rfqs" class="btn btn-ghost btn-sm">Ver todas</a></div>
-        <div class="table-wrap">${available.length? supplierRfqMiniTable(available.slice(0,6)) : emptyState('inbox','Sin RFQs en espera','Nuevas oportunidades aparecerán aquí conforme INNOUS te asigne proyectos.')}</div>
+        <div class="card-header"><h3>Proyectos Disponibles</h3><a href="#/supplier/rfqs" class="btn btn-ghost btn-sm">Ver todas</a></div>
+        <div class="table-wrap">${available.length? supplierRfqMiniTable(available.slice(0,6)) : emptyState('inbox','Sin proyectos en espera','Nuevas oportunidades aparecerán aquí conforme INNOUS te asigne proyectos.')}</div>
       </div>
       <div class="card">
         <div class="card-header"><h3>Actividad Reciente</h3></div>
@@ -7814,9 +7826,9 @@ ROUTES['supplier/rfqs'] = function(){
   const invited = supplierInvited().filter(p=>['sourcing','quotes_received','customer_review','awarded','in_production','completed'].includes(p.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">RFQs Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
+    <div class="page-header"><div><div class="page-title">Proyectos Disponibles</div><div class="page-subtitle">Solicitudes que INNOUS te ha invitado a cotizar</div></div></div>
     <div class="grid grid-3">
-      ${invited.length? invited.map(supplierRfqCard).join('') : `<div style="grid-column:1/-1;">${emptyState('inbox','No hay RFQs disponibles por ahora','Vuelve pronto — INNOUS asigna nuevos proyectos según tus capacidades regularmente.')}</div>`}
+      ${invited.length? invited.map(supplierRfqCard).join('') : `<div style="grid-column:1/-1;">${emptyState('inbox','No hay proyectos disponibles por ahora','Vuelve pronto — INNOUS asigna nuevos proyectos según tus capacidades regularmente.')}</div>`}
     </div>
   </div>`;
 };
@@ -7862,7 +7874,7 @@ ROUTES['supplier/rfq'] = function(id){
   if(p.status==='rejected'){
     return `
     <div class="content-inner" style="max-width:900px;">
-      <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+      <div class="breadcrumb"><a href="#/supplier/rfqs">Proyectos Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
       <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div><span class="badge badge-red">RFQ Cerrado</span></div>
       ${rejectedRfqBanner(p, 'supplier')}
     </div>`;
@@ -7882,7 +7894,7 @@ ROUTES['supplier/rfq'] = function(id){
   else if(q?.status==='target_supplier_final_review') headerBadge = '<span class="badge badge-amber">Contraoferta Final Pendiente</span>';
   return `
   <div class="content-inner" style="max-width:900px;">
-    <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="breadcrumb"><a href="#/supplier/rfqs">Proyectos Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div>${headerBadge}</div>
     ${declined ? stageBanner('Otro proveedor aceptó este proyecto al precio fijo antes que tú, o la negociación de target price se cerró. Ya no está disponible.', 'info')
       : (isTargetPrice && submitted && !p.innousAuthorizedAt) ? stageBanner('Aceptaste el precio — INNOUS está finalizando los detalles del pedido antes de liberarlo.', 'info')
@@ -8243,7 +8255,9 @@ ROUTES['supplier/orders'] = function(){
   const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Pedidos Activos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div></div>
+    <div class="page-header"><div><div class="page-title">Mis Proyectos</div><div class="page-subtitle">${orders.length} pedidos en curso</div></div>
+      <div class="page-actions"><button class="btn btn-secondary" onclick="navigate('#/supplier/documents')"><i data-lucide="folder"></i>Ver Mis Documentos</button></div>
+    </div>
     <div class="grid grid-2">
       ${orders.length? orders.map(supplierOrderCard).join('') : `<div style="grid-column:1/-1;">${emptyState('package','Aún no tienes pedidos activos','Los pedidos aparecerán aquí cuando un cliente seleccione tu cotización.')}</div>`}
     </div>
@@ -8275,7 +8289,7 @@ ROUTES['supplier/order'] = function(id){
   const bannerKind = p.order.status==='delivered' ? 'success' : (nextStatus ? 'action' : 'info');
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/supplier/orders">Pedidos Activos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="breadcrumb"><a href="#/supplier/orders">Mis Proyectos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id}</div></div>
       <div class="page-actions">${orderStatusBadge(p, true)}
         ${supplierCanRevertOrder(p)?`<button class="btn btn-secondary" onclick="App.revertOrderStatus('${p.id}')"><i data-lucide="undo-2"></i>Regresar Estatus</button>`:''}
@@ -8299,8 +8313,11 @@ ROUTES['supplier/order'] = function(id){
       </div>
       <div class="card card-pad">
         <div class="section-title">Documentos del Proveedor</div>
-        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.map(d=>`<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`).join('')}</div>
-        <div style="margin-top:10px;"><button class="btn btn-secondary btn-sm" onclick="showToast('Documento cargado')"><i data-lucide="upload"></i>Cargar Documento</button></div>
+        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.length ? p.order.quality.documents.map(orderDocChip).join('') : '<div class="td-sub">Aún no has cargado documentos.</div>'}</div>
+        <div style="margin-top:10px;">
+          <input type="file" id="order-doc-input-${p.id}" style="display:none" accept=".pdf,.step,.stp,.dwg,.dxf,.jpg,.jpeg,.png" onchange="App.onOrderDocumentSelected(this,'${p.id}')">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('order-doc-input-${p.id}').click()"><i data-lucide="upload"></i>Cargar Documento</button>
+        </div>
         <hr class="divider">
         <div class="section-title">Mensajes</div>
         <button class="btn btn-secondary btn-block" onclick="navigate('#/supplier/messages')"><i data-lucide="message-square"></i>Mensaje a INNOUS</button>
@@ -8309,32 +8326,21 @@ ROUTES['supplier/order'] = function(id){
   </div>`;
 };
 
-/* ---- Supplier Production (list view of all active orders w/ update) ---- */
-ROUTES['supplier/production'] = function(){
-  const orders = supplierOrders().filter(p=>p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  return `
-  <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">Sigue el estatus de producción de tus pedidos activos — INNOUS lo va actualizando conforme avanza</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Proyecto</th><th>Cantidad</th><th>Estatus Actual</th><th></th></tr></thead><tbody>
-      ${orders.map(p=>{
-        const nextStatus = supplierNextOrderStatus(p);
-        const doneText = p.order.status==='delivered' ? 'Completo' : 'A cargo de INNOUS';
-        return `<tr><td class="td-strong mono">${p.id}</td><td>${p.projectName}</td><td>${p.quantity.toLocaleString()}</td><td>${orderStatusBadge(p, true)}</td>
-        <td>${nextStatus?`<button class="btn btn-primary btn-sm" onclick="App.advanceOrderStatus('${p.id}')">Marcar: ${orderStatusLabelFor(p, nextStatus, true)}</button>`:`<span class="td-sub">${doneText}</span>`}</td></tr>`;
-      }).join('') || `<tr><td colspan="5">${emptyState('cog','Sin producción activa','')}</td></tr>`}
-    </tbody></table></div></div>
-  </div>`;
-};
-
-/* ---- Supplier Documents ---- */
+/* ---- Supplier Documents — ya no está en el menú (fix172), se llega
+   nada más desde el botón "Ver Mis Documentos" en Mis Proyectos. ---- */
 ROUTES['supplier/documents'] = function(){
   const orders = supplierOrders();
   const docs = orders.flatMap(p=>[...p.order.quality.documents,...p.order.logistics.documents].map(d=>({d,p})));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque</div></div></div>
+    <div class="breadcrumb"><a href="#/supplier/orders">Mis Proyectos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Mis Documentos</span></div>
+    <div class="page-header"><div><div class="page-title">Mis Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque que has cargado</div></div></div>
     <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Documento</th><th>Pedido</th><th>Proyecto</th></tr></thead><tbody>
-      ${docs.length? docs.map(({d,p})=>`<tr><td class="td-strong">${d}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`).join('') : `<tr><td colspan="3">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
+      ${docs.length? docs.map(({d,p})=>{
+        const name = typeof d==='string' ? d : d.name;
+        const path = typeof d==='string' ? null : d.path;
+        return `<tr${path?` class="row-link" onclick="App.openOrderDocument('${escAttr(path)}')"`:''}><td class="td-strong">${name}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`;
+      }).join('') : `<tr><td colspan="3">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
@@ -9119,7 +9125,7 @@ const App = {
       }
       // Courtesy notice to anyone already invited — they were never going to
       // hear about this otherwise, since a rejected RFQ simply stops
-      // appearing in their "RFQs Disponibles"/dashboard lists.
+      // appearing in their "Proyectos Disponibles"/dashboard lists.
       if(supplierIds.length){
         const { error: e2 } = await sb.rpc('innous_send_notification', {
           p_user_ids: supplierIds,
@@ -9722,6 +9728,35 @@ const App = {
     if(!path) return;
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
+    window.open(data.signedUrl, '_blank');
+  },
+  // fix172: "Cargar Documento" en el detalle del pedido — antes era puro
+  // teatro (showToast sin subir nada de verdad). Mismo patrón que
+  // addRealFiles/openProjectFile para archivos de RFQ, solo que aquí se
+  // sube de una vez (sin paso de "borrador") y va al bucket
+  // order-documents en vez de project-files.
+  onOrderDocumentSelected(input, pid){ App.uploadOrderDocument(pid, input.files); input.value=''; },
+  async uploadOrderDocument(pid, fileList){
+    const file = fileList && fileList[0];
+    if(!file) return;
+    const allowedExt = ['pdf','step','stp','dwg','dxf','jpg','jpeg','png'];
+    const ext = (file.name.split('.').pop()||'').toLowerCase();
+    if(!allowedExt.includes(ext)){ showToast(`No se pudo cargar ${file.name}: tipo no soportado.`); return; }
+    if(file.size > 25*1024*1024){ showToast(`No se pudo cargar ${file.name}: pesa más de 25 MB.`); return; }
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path = `${pid}/${Date.now()}-${safeName}`;
+    const { error: upErr } = await sb.storage.from('order-documents').upload(path, file);
+    if(upErr){ showToast(`No se pudo subir ${file.name}: ${upErr.message}`); return; }
+    const { error } = await sb.rpc('supplier_attach_order_document', { p_project_id: pid, p_name: file.name, p_path: path });
+    if(error){ showToast(error.message); return; }
+    await refreshRealProjects();
+    showToast('Documento cargado', 'success');
+    route();
+  },
+  async openOrderDocument(path){
+    if(!path) return;
+    const { data, error } = await sb.storage.from('order-documents').createSignedUrl(path, 300);
+    if(error || !data){ showToast('No se pudo abrir el documento.'); return; }
     window.open(data.signedUrl, '_blank');
   },
   downloadQuotePdf(id){
@@ -11581,7 +11616,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'saveSupplierAccount','onSupplierCsfSelected','deleteSupplierCsf','addToShortlist',
   'removeFromShortlist','sendQuotesToCustomer','confirmSelectQuote','authorizeProject',
   'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
-  'submitTargetCounter','respondFinalCounter','respondTargetCounter',
+  'submitTargetCounter','respondFinalCounter','respondTargetCounter','uploadOrderDocument',
   'innousReviewSupplierCounter','innousReviewClientCounter','reopenSupplierQuote',
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
