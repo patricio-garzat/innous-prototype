@@ -8032,7 +8032,7 @@ function targetPriceSupplierSection(p, q){
     <div class="card card-pad">
       <div class="section-title">Contraoferta Final del Cliente</div>
       <div class="section-sub" style="margin-top:6px;">INNOUS revisó la contraoferta final del cliente y te la mandó. Esta es la última vuelta de la negociación — si rechazas, el proyecto se cierra para ti y no podrás volver a contraofertar.</div>
-      <div style="margin:18px 0;"><div class="field-label">Contraoferta Final (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(q.clientCounterMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(q.clientCounterMxn)} + IVA (16%)</div></div>
+      <div style="margin:18px 0;"><div class="field-label">Contraoferta Final (sin IVA)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(q.clientCounterMxn)}</div><div class="field-hint" style="margin-top:4px;">+ IVA (16%) = ${fmtMXN(withIva(q.clientCounterMxn))} con IVA incluido</div></div>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-primary" onclick="App.respondFinalCounter('${p.id}','accept')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(q.clientCounterMxn)}</button>
         <button class="btn btn-secondary" onclick="App.respondFinalCounter('${p.id}','reject')">Rechazar Definitivamente</button>
@@ -8045,7 +8045,7 @@ function targetPriceSupplierSection(p, q){
   <div class="card card-pad">
     <div class="section-title">Precio Fijo del Cliente</div>
     <div class="section-sub" style="margin-top:6px;">El cliente ya fijó el presupuesto para este proyecto. El primer proveedor que acepte se queda con el proyecto de inmediato — no hay comparación de cotizaciones. Si el precio no te funciona, puedes mandar UNA contraoferta en vez de rechazar de una vez — pero solo tienes esa única oportunidad en todo el RFQ.</div>
-    <div style="margin:18px 0;"><div class="field-label">Precio Fijo (IVA incluido)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(withIva(p.targetPriceSupplierBudgetMxn))}</div><div class="field-hint" style="margin-top:4px;">Subtotal ${fmtMXN(p.targetPriceSupplierBudgetMxn)} + IVA (16%)</div></div>
+    <div style="margin:18px 0;"><div class="field-label">Precio Fijo (sin IVA)</div><div style="font-size:28px;font-weight:700;margin-top:4px;">${fmtMXN(p.targetPriceSupplierBudgetMxn)}</div><div class="field-hint" style="margin-top:4px;">+ IVA (16%) = ${fmtMXN(withIva(p.targetPriceSupplierBudgetMxn))} con IVA incluido</div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="App.acceptTargetPrice('${p.id}')"><i data-lucide="check-circle"></i>Aceptar a ${fmtMXN(p.targetPriceSupplierBudgetMxn)}</button>
       ${draft ? '' : `<button class="btn btn-secondary" onclick="App.openTargetCounterForm('${p.id}')"><i data-lucide="repeat"></i>Contraofertar</button>`}
