@@ -4008,12 +4008,16 @@ function stageBanner(text, tone, cta){
 // act on, so replacing both with one clear explanation reads better than a
 // dead progress bar plus a generic banner.
 function rejectedRfqBanner(p, audience){
-  const msg = audience==='innous' ? 'Este RFQ se cerró y se notificó al cliente.' : rfqStageMessage(p,'client');
-  const label = audience==='innous' ? 'Razón' : 'Reason';
+  // fix170: audience 'supplier' — antes solo existían 'innous'/'client', así
+  // que un proveedor que entrara a un RFQ ya cerrado (típicamente desde un
+  // link de correo viejo) nunca veía este aviso — caía derecho al formulario
+  // de cotización como si el RFQ siguiera activo.
+  const msg = audience==='innous' ? 'Este RFQ se cerró y se notificó al cliente.' : rfqStageMessage(p, audience==='supplier' ? 'supplier' : 'client');
+  const label = audience==='client' ? 'Reason' : 'Razón';
   return `<div class="card card-pad" style="margin-bottom:20px;">
     ${stageBanner(msg, 'danger')}
     ${p.rejectedReason?`<div class="info-item-label" style="margin-top:14px;">${label}</div><div style="font-size:13px;color:var(--ink-secondary);margin-top:6px;">${p.rejectedReason}</div>`:''}
-    ${p.rejectedAt?`<div class="field-hint" style="margin-top:10px;">${audience==='innous'?'Cerrado el':'Closed'} ${fmtDate(p.rejectedAt)}</div>`:''}
+    ${p.rejectedAt?`<div class="field-hint" style="margin-top:10px;">${audience==='client'?'Closed':'Cerrado el'} ${fmtDate(p.rejectedAt)}</div>`:''}
   </div>`;
 }
 function rfqStageMessage(p, audience){
@@ -4049,6 +4053,7 @@ function rfqStageMessage(p, audience){
     // App.authorizeProject(). A losing supplier finds out right away, same
     // as always; there's nothing sensitive about telling them it went
     // elsewhere.
+    if(p.status==='rejected') return 'INNOUS cerró este RFQ — ya no está disponible para cotizar. Consulta la razón abajo.';
     const isWinner = p.selectedSupplierId===STATE.supplierId;
     const revealed = !isWinner || !!p.innousAuthorizedAt;
     if(['awarded','in_production','completed'].includes(p.status) && revealed){
@@ -5268,7 +5273,7 @@ ROUTES['client/rfq'] = function(id){
     ${p.status==='rejected' ? rejectedRfqBanner(p,'client') : `
     ${stageBanner(rfqStageMessage(p,'client'), p.status==='customer_review'?'action':'info', p.status==='customer_review'?`<button class="btn btn-secondary btn-sm" style="background:var(--surface);" onclick="navigate('#/client/quotes/${p.id}')">Review Quotes</button>`:'')}
     <div class="card card-pad" style="margin-bottom:20px;">${timelineComp(flowLabels, curIdx)}</div>`}
-    ${targetPriceNegotiationSection(p)}
+    ${p.status==='rejected' ? '' : targetPriceNegotiationSection(p)}
     ${(p.supplierQuotes||[]).map(q=>targetPriceHistorySection(p, q, 'CLIENT')).join('')}
     <div class="grid grid-2">
       <div class="card card-pad">
@@ -7845,6 +7850,22 @@ function supplierRfqCard(p){
 /* ---- Supplier RFQ Detail / Quote Form ---- */
 ROUTES['supplier/rfq'] = function(id){
   const p = findProject(id); if(!p || !p.invitedSupplierIds.includes(STATE.supplierId)) return emptyState('lock','RFQ no disponible','Esta solicitud no fue enviada a tu empresa.');
+  // fix170: un RFQ cerrado/rechazado por INNOUS no debe seguir siendo
+  // cotizable — antes esto se le escapaba a un proveedor que entrara
+  // directo desde un link de correo viejo (sin pasar por "RFQs
+  // Disponibles", que sí ya lo escondía), viendo el formulario de
+  // cotización normal como si el RFQ siguiera activo. El candado real
+  // está del lado del servidor (ver supabase-fix170-*.sql); esto nada
+  // más evita que la UI le muestre algo que de todas formas se va a
+  // rechazar al enviarlo.
+  if(p.status==='rejected'){
+    return `
+    <div class="content-inner" style="max-width:900px;">
+      <div class="breadcrumb"><a href="#/supplier/rfqs">RFQs Disponibles</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+      <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">${p.id}</div></div><span class="badge badge-red">RFQ Cerrado</span></div>
+      ${rejectedRfqBanner(p, 'supplier')}
+    </div>`;
+  }
   const q = supplierQuoteFor(p);
   const submitted = q && q.status==='submitted';
   const declined = q && q.status==='declined';
@@ -10778,8 +10799,12 @@ const App = {
   // nothing else called these.
   async submitSupplierQuote(e,pid){
     e.preventDefault();
-    const f = new FormData(e.target);
     const p = findProject(pid);
+    // fix170: la UI ya no muestra este formulario para un RFQ 'rejected'
+    // (y el RLS del lado del servidor lo bloquea de todas formas) — esto es
+    // nada más un segundo candado por si se llegó a llamar de otra forma.
+    if(p.status==='rejected'){ showToast('Este RFQ ya fue cerrado por INNOUS — ya no se puede cotizar.'); return false; }
+    const f = new FormData(e.target);
     const draft = STATE.ui.supplierQuoteDrafts[pid] || {};
     const multiItem = !!(p.items && p.items.length>1);
     // Multi-item RFQs (fix42) get a real per-item unit price instead of one
