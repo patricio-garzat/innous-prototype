@@ -6006,23 +6006,24 @@ function targetPriceSourcingSection(p){
   const marginUsd = p.targetPriceUsd - supplierCostUsd;
   const marginPct = p.targetPriceUsd>0 ? (marginUsd/p.targetPriceUsd*100) : 0;
   const marginMxn = marginUsd * rate;
+  const rowId = 'tps-'+p.id;
   return `
   <div class="card card-pad" style="margin-bottom:20px;">
     <div class="section-title">Sourcing con Target Price</div>
     <div class="section-sub">El cliente puso un target price de ${fmtMoney(p.targetPriceUsd)}. ${locked ? 'El markup y el tipo de cambio de abajo ya están bloqueados — todos los proveedores invitados ven este mismo presupuesto.' : 'Fija tu markup y el tipo de cambio a usar antes de invitar proveedores — en cuanto envíes la primera invitación, estos números se bloquean.'}</div>
     <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;">
-      <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${markup}" style="width:100px;" ${locked?'disabled':`onchange="App.setMarkup('${p.id}','__target__', this.value)"`}></div>
-      <div><div class="field-label">Costo del Proveedor (USD)</div><div style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMoney(supplierCostUsd)}</div></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input id="${rowId}-markup" type="number" min="0" max="100" step="0.1" value="${markup}" style="width:100px;" ${locked?'disabled':`oninput="App.liveRecalcRow('${rowId}','targetSourcing','markup',this.value,${p.targetPriceUsd},0)" onchange="App.setMarkup('${p.id}','__target__', this.value)"`}></div>
+      <div><div class="field-label">Costo del Proveedor (USD)</div><div id="${rowId}-costUsd" style="font-size:20px;font-weight:700;margin-top:2px;">${fmtMoney(supplierCostUsd)}</div></div>
     </div>
     <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-top:16px;">
-      <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio (MXN por USD)</label><input type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
-      <div class="form-group" style="margin:0;"><label class="field-label">Presupuesto del Proveedor (MXN)</label><input type="number" min="0" step="0.01" value="${budgetMxn.toFixed(2)}" style="width:130px;font-size:16px;font-weight:700;" ${locked?'disabled':`onchange="App.setTargetSupplierBudgetDirect('${p.id}', this.value, ${p.targetPriceUsd}, ${rate})"`}></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio (MXN por USD)</label><input id="${rowId}-rate" type="number" min="0.01" step="0.01" value="${rate}" style="width:110px;" ${locked?'disabled':`oninput="App.liveRecalcRow('${rowId}','targetSourcing','rate',this.value,${p.targetPriceUsd},0)" onchange="App.setExchangeRate('${p.id}', this.value)"`}></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Presupuesto del Proveedor (MXN)</label><input id="${rowId}-price" type="number" min="0" step="0.01" value="${budgetMxn.toFixed(2)}" style="width:130px;font-size:16px;font-weight:700;" ${locked?'disabled':`oninput="App.liveRecalcRow('${rowId}','targetSourcing','price',this.value,${p.targetPriceUsd},0)" onchange="App.setTargetSupplierBudgetDirect('${p.id}', this.value, ${p.targetPriceUsd}, ${rate})"`}></div>
     </div>
-    ${!locked ? `<div class="field-hint" style="margin-top:6px;">Puedes teclear el presupuesto en MXN directo (número cerrado) — el markup se recalcula solo, con el mismo tipo de cambio de arriba.</div>` : ''}
+    ${!locked ? `<div class="field-hint" style="margin-top:6px;">Puedes teclear el presupuesto en MXN directo (número cerrado) — el markup y tu margen se recalculan solos, en vivo mientras escribes, con el mismo tipo de cambio de arriba.</div>` : ''}
     <hr class="divider">
     <div style="display:flex;gap:32px;flex-wrap:wrap;">
-      <div><div class="field-label">Margen de INNOUS (USD)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:2px;">${marginPct.toFixed(1)}% del target price</div></div>
-      <div><div class="field-label">Margen de INNOUS (MXN)</div><div style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
+      <div><div class="field-label">Margen de INNOUS (USD)</div><div id="${rowId}-marginUsd" style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMoney(marginUsd)}</div><div id="${rowId}-marginPct" class="field-hint" style="margin-top:2px;">${marginPct.toFixed(1)}% del target price</div></div>
+      <div><div class="field-label">Margen de INNOUS (MXN)</div><div id="${rowId}-marginMxn" style="font-size:18px;font-weight:700;margin-top:2px;color:var(--success);">${fmtMXN(marginMxn)}</div></div>
     </div>
     <div class="field-hint" style="margin-top:10px;">Los proveedores solo ven el Presupuesto en MXN — nunca el target price, tu markup %, ni este margen.</div>
     ${targetPriceNegotiationStatusInnous(p)}
@@ -6051,16 +6052,22 @@ function targetPriceNegotiationStatusInnous(p){
     }
     if(q.status==='target_countered'){
       const draft = getCounterReviewDraft(p.id, q.supplierId, 'supplier', p, q.targetCounterMxn);
+      const rowId = 'cr-'+p.id+'-'+q.supplierId+'-supplier';
+      const m = targetPriceMargin(q.targetCounterMxn, draft.finalPrice, draft.exchangeRate) || {marginUsd:0,marginMxn:0,marginPct:0};
       return `
       <div class="card card-pad" style="margin:10px 0;background:var(--surface-alt);">
         <div style="font-size:13px;font-weight:600;">${supplierName(q.supplierId)} contraofertó ${fmtMXN(q.targetCounterMxn)} — pendiente de tu revisión</div>
         ${q.targetCounterNote ? `<div class="field-hint" style="margin-top:4px;">Nota del proveedor: "${q.targetCounterNote}"</div>` : ''}
         <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;">
-          <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','markupPct',this.value,${q.targetCounterMxn})"></div>
-          <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','exchangeRate',this.value,${q.targetCounterMxn})"></div>
-          <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Cliente (USD)</label><input type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:120px;font-weight:700;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','finalPrice',this.value,${q.targetCounterMxn})"></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input id="${rowId}-markup" type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" oninput="App.liveRecalcRow('${rowId}','counterSupplier','markup',this.value,${q.targetCounterMxn},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','markupPct',this.value,${q.targetCounterMxn})"></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input id="${rowId}-rate" type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" oninput="App.liveRecalcRow('${rowId}','counterSupplier','rate',this.value,${q.targetCounterMxn},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','exchangeRate',this.value,${q.targetCounterMxn})"></div>
+          <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Cliente (USD)</label><input id="${rowId}-price" type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:120px;font-weight:700;" oninput="App.liveRecalcRow('${rowId}','counterSupplier','price',this.value,${q.targetCounterMxn},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','supplier','finalPrice',this.value,${q.targetCounterMxn})"></div>
         </div>
-        <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $900.00) en vez de ajustar markup/tipo de cambio — el markup se recalcula solo, con el mismo tipo de cambio de arriba.</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
+          <div><div class="field-label">Margen de INNOUS (USD)</div><div id="${rowId}-marginUsd" style="font-size:15px;font-weight:700;color:var(--success);">${fmtMoney(m.marginUsd)}</div><div id="${rowId}-marginPct" class="field-hint" style="margin-top:1px;">${m.marginPct.toFixed(1)}%</div></div>
+          <div><div class="field-label">Margen de INNOUS (MXN)</div><div id="${rowId}-marginMxn" style="font-size:15px;font-weight:700;color:var(--success);">${fmtMXN(m.marginMxn)}</div></div>
+        </div>
+        <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $900.00) en vez de ajustar markup/tipo de cambio — el markup y tu margen se recalculan solos, en vivo mientras escribes.</div>
         <div style="display:flex;gap:10px;margin-top:12px;">
           <button class="btn btn-primary btn-sm" onclick="App.innousReviewSupplierCounter('${p.id}','${q.supplierId}','approve')"><i data-lucide="check"></i>Aprobar y Mandar al Cliente</button>
           <button class="btn btn-secondary btn-sm" onclick="App.innousReviewSupplierCounter('${p.id}','${q.supplierId}','reject')">Rechazar</button>
@@ -6069,15 +6076,21 @@ function targetPriceNegotiationStatusInnous(p){
     }
     // target_client_countered — contraoferta final del cliente, pendiente de revisión
     const draft = getCounterReviewDraft(p.id, q.supplierId, 'client', p, q.clientCounterUsd);
+    const rowId = 'cr-'+p.id+'-'+q.supplierId+'-client';
+    const m = targetPriceMargin(draft.finalPrice, q.clientCounterUsd, draft.exchangeRate) || {marginUsd:0,marginMxn:0,marginPct:0};
     return `
     <div class="card card-pad" style="margin:10px 0;background:var(--surface-alt);">
       <div style="font-size:13px;font-weight:600;">${supplierName(q.supplierId)} — el cliente contraofertó ${fmtMoney(q.clientCounterUsd)} — pendiente de tu revisión</div>
       <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;">
-        <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','markupPct',this.value,${q.clientCounterUsd})"></div>
-        <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','exchangeRate',this.value,${q.clientCounterUsd})"></div>
-        <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Proveedor (MXN)</label><input type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:130px;font-weight:700;" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','finalPrice',this.value,${q.clientCounterUsd})"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input id="${rowId}-markup" type="number" min="0" max="100" step="0.1" value="${draft.markupPct}" style="width:90px;" oninput="App.liveRecalcRow('${rowId}','counterClient','markup',this.value,${q.clientCounterUsd},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','markupPct',this.value,${q.clientCounterUsd})"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Tipo de Cambio</label><input id="${rowId}-rate" type="number" min="0.01" step="0.01" value="${draft.exchangeRate}" style="width:100px;" oninput="App.liveRecalcRow('${rowId}','counterClient','rate',this.value,${q.clientCounterUsd},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','exchangeRate',this.value,${q.clientCounterUsd})"></div>
+        <div class="form-group" style="margin:0;"><label class="field-label">Precio para el Proveedor (MXN)</label><input id="${rowId}-price" type="number" min="0" step="0.01" value="${draft.finalPrice.toFixed(2)}" style="width:130px;font-weight:700;" oninput="App.liveRecalcRow('${rowId}','counterClient','price',this.value,${q.clientCounterUsd},0)" onchange="App.updateCounterReviewDraft('${p.id}','${q.supplierId}','client','finalPrice',this.value,${q.clientCounterUsd})"></div>
       </div>
-      <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $14,000.00 MXN) en vez de ajustar markup/tipo de cambio — el markup se recalcula solo, con el mismo tipo de cambio de arriba.</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
+        <div><div class="field-label">Margen de INNOUS (USD)</div><div id="${rowId}-marginUsd" style="font-size:15px;font-weight:700;color:var(--success);">${fmtMoney(m.marginUsd)}</div><div id="${rowId}-marginPct" class="field-hint" style="margin-top:1px;">${m.marginPct.toFixed(1)}%</div></div>
+        <div><div class="field-label">Margen de INNOUS (MXN)</div><div id="${rowId}-marginMxn" style="font-size:15px;font-weight:700;color:var(--success);">${fmtMXN(m.marginMxn)}</div></div>
+      </div>
+      <div class="field-hint" style="margin-top:8px;">Puedes teclear un precio cerrado directo (ej. $14,000.00 MXN) en vez de ajustar markup/tipo de cambio — el markup y tu margen se recalculan solos, en vivo mientras escribes.</div>
       <div style="display:flex;gap:10px;margin-top:12px;">
         <button class="btn btn-primary btn-sm" onclick="App.innousReviewClientCounter('${p.id}','${q.supplierId}','approve')"><i data-lucide="check"></i>Aprobar y Mandar al Proveedor</button>
         <button class="btn btn-secondary btn-sm" onclick="App.innousReviewClientCounter('${p.id}','${q.supplierId}','reject')">Rechazar</button>
@@ -6248,6 +6261,7 @@ function quoteCompareCard(p, q, rate, freight, isShortlisted){
   const customerPrice = costUsd*(1+markup/100) + freight;
   const marginUsd = customerPrice - costUsd - freight;
   const marginPct = customerPrice>0 ? (marginUsd/customerPrice*100) : 0;
+  const rowId = 'qc-'+p.id+'-'+q.supplierId;
   return `
   <div class="card card-pad" style="box-shadow:none;border:1px solid var(--border,#EAEAEA);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
@@ -6268,14 +6282,14 @@ function quoteCompareCard(p, q, rate, freight, isShortlisted){
     </div>
     <div class="info-item-label" style="margin:14px 0 8px;">Tu Precio al Cliente</div>
     <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap;">
-      <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input type="number" value="${markup}" min="0" max="100" style="width:72px;" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)"></div>
-      <div><div class="field-label">Margen de INNOUS</div><div style="font-size:16px;font-weight:700;color:var(--success);">${fmtMoney(marginUsd)}</div><div class="field-hint" style="margin-top:1px;">${marginPct.toFixed(1)}% del precio al cliente</div></div>
+      <div class="form-group" style="margin:0;"><label class="field-label">Markup %</label><input id="${rowId}-markup" type="number" value="${markup}" min="0" max="100" style="width:72px;" oninput="App.liveRecalcRow('${rowId}','quoteCompare','markup',this.value,${costUsd},${freight})" onchange="App.setMarkup('${p.id}','${q.supplierId}', this.value)"></div>
+      <div><div class="field-label">Margen de INNOUS</div><div id="${rowId}-marginUsd" style="font-size:16px;font-weight:700;color:var(--success);">${fmtMoney(marginUsd)}</div><div id="${rowId}-marginPct" class="field-hint" style="margin-top:1px;">${marginPct.toFixed(1)}% del precio al cliente</div></div>
     </div>
     <div class="pricing-panel" style="margin-top:12px;">
       ${freight?`<div class="pricing-row"><span>Precio del Producto</span><span>${fmtMoney(customerPrice-freight)}</span></div><div class="pricing-row"><span>Envío (al cliente)</span><span>${fmtMoney(freight)}</span></div>`:''}
-      <div class="pricing-row total"><span>Precio al Cliente</span><span><input type="number" min="0" step="0.01" value="${customerPrice.toFixed(2)}" style="width:110px;text-align:right;font-weight:700;font-size:14px;border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--surface);color:var(--ink);" onchange="App.setCustomerPriceDirect('${p.id}','${q.supplierId}', this.value, ${costUsd}, ${freight})"></span></div>
+      <div class="pricing-row total"><span>Precio al Cliente</span><span><input id="${rowId}-price" type="number" min="0" step="0.01" value="${customerPrice.toFixed(2)}" style="width:110px;text-align:right;font-weight:700;font-size:14px;border:1px solid var(--border);border-radius:6px;padding:2px 6px;background:var(--surface);color:var(--ink);" oninput="App.liveRecalcRow('${rowId}','quoteCompare','price',this.value,${costUsd},${freight})" onchange="App.setCustomerPriceDirect('${p.id}','${q.supplierId}', this.value, ${costUsd}, ${freight})"></span></div>
     </div>
-    <div class="field-hint" style="margin-top:6px;">Puedes teclear el precio al cliente directo (número cerrado) — el markup se recalcula solo.</div>
+    <div class="field-hint" style="margin-top:6px;">Puedes teclear el precio al cliente directo (número cerrado) — el markup y tu margen se recalculan solos, en vivo mientras escribes.</div>
   </div>`;
 }
 function quoteComparisonSection(p){
@@ -10146,6 +10160,79 @@ const App = {
     const n = parseFloat(val)||0;
     if(n>0 && targetPriceUsd>0) STATE.ui.markupDrafts[markupKey(pid,'__target__')] = ((targetPriceUsd*rate/n) - 1)*100;
     route();
+  },
+  // fix167: margen/ganancia EN VIVO mientras INNOUS teclea markup, tipo
+  // de cambio o precio, en cualquiera de las 4 pantallas donde fija un
+  // precio (RFQ normal, sourcing con target price, y las 2 revisiones
+  // de contraoferta). Esto corre en oninput (cada tecla) y solo
+  // lee/escribe los inputs y textos de ESTA fila por id — nunca llama a
+  // route(), porque un re-render completo a media escritura le sacaría
+  // el cursor del campo. onchange (que sí llama a route()) sigue siendo
+  // el que de verdad persiste el valor en STATE.ui — esto es nada más
+  // la vista previa, se autocorrige solo en cuanto sales del campo.
+  liveRecalcRow(rowId, kind, changedField, val, a, b){
+    const $ = id => document.getElementById(rowId+'-'+id);
+    const markupEl = $('markup'), rateEl = $('rate'), priceEl = $('price');
+    let markup = parseFloat(changedField==='markup' ? val : markupEl?.value) || 0;
+    let rate = parseFloat(changedField==='rate' ? val : rateEl?.value) || 0;
+    let price = parseFloat(changedField==='price' ? val : priceEl?.value) || 0;
+
+    if(kind==='quoteCompare'){
+      const costUsd = a, freight = b;
+      if(changedField==='price'){
+        if(costUsd>0){ markup = ((price-freight)/costUsd - 1)*100; if(markupEl) markupEl.value = markup.toFixed(2); }
+      } else {
+        price = costUsd*(1+markup/100) + freight;
+        if(priceEl) priceEl.value = price.toFixed(2);
+      }
+      const marginUsd = price - costUsd - freight;
+      const marginPct = price>0 ? (marginUsd/price*100) : 0;
+      if($('marginUsd')) $('marginUsd').textContent = fmtMoney(marginUsd);
+      if($('marginPct')) $('marginPct').textContent = marginPct.toFixed(1)+'% del precio al cliente';
+      return;
+    }
+
+    if(kind==='targetSourcing'){
+      const targetPriceUsd = a;
+      if(changedField==='price'){
+        if(price>0 && targetPriceUsd>0){ markup = ((targetPriceUsd*rate/price) - 1)*100; if(markupEl) markupEl.value = markup.toFixed(2); }
+      } else {
+        const supplierCostUsd = targetPriceUsd/(1+markup/100);
+        price = supplierCostUsd*rate;
+        if(priceEl) priceEl.value = price.toFixed(2);
+      }
+      const supplierCostUsd = targetPriceUsd/(1+markup/100);
+      const marginUsd = targetPriceUsd - supplierCostUsd;
+      const marginMxn = marginUsd*rate;
+      const marginPct = targetPriceUsd>0 ? (marginUsd/targetPriceUsd*100) : 0;
+      if($('costUsd')) $('costUsd').textContent = fmtMoney(supplierCostUsd);
+      if($('marginUsd')) $('marginUsd').textContent = fmtMoney(marginUsd);
+      if($('marginMxn')) $('marginMxn').textContent = fmtMXN(marginMxn);
+      if($('marginPct')) $('marginPct').textContent = marginPct.toFixed(1)+'% del target price';
+      return;
+    }
+
+    // counterSupplier / counterClient — misma matemática que computeCounterFinalPrice/
+    // App.updateCounterReviewDraft, solo que aquí nomás se dibuja, no se persiste.
+    const direction = kind==='counterSupplier' ? 'supplier' : 'client';
+    const baseAmount = a;
+    if(changedField==='price'){
+      markup = direction==='supplier'
+        ? ((price*rate/baseAmount) - 1)*100
+        : ((baseAmount*rate/price) - 1)*100;
+      if(markupEl) markupEl.value = markup.toFixed(2);
+    } else {
+      price = computeCounterFinalPrice(direction, baseAmount, markup, rate);
+      if(priceEl) priceEl.value = price.toFixed(2);
+    }
+    const costMxn = direction==='supplier' ? baseAmount : price;
+    const priceUsd = direction==='supplier' ? price : baseAmount;
+    const m = targetPriceMargin(costMxn, priceUsd, rate);
+    if(m){
+      if($('marginUsd')) $('marginUsd').textContent = fmtMoney(m.marginUsd);
+      if($('marginMxn')) $('marginMxn').textContent = fmtMXN(m.marginMxn);
+      if($('marginPct')) $('marginPct').textContent = m.marginPct.toFixed(1)+'%';
+    }
   },
   // fix162: INNOUS's markup%/tipo de cambio draft while reviewing a
   // counter-offer before Approve/Reject — same on-change pattern as
