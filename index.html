@@ -932,9 +932,9 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .auth-topbar{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:clamp(10px,2.4vh,26px) 40px;flex:0 0 auto;}
 /* fix157: mismo tamaño que el logo de innous.com (62px de alto en
    desktop, medido ahí directamente — no depende del alto de la
-   ventana como el clamp() de antes). fix159: el usuario pidió el
-   doble de grande, 124px. */
-.auth-topbar .logo-svg{height:124px;}
+   ventana como el clamp() de antes). fix159 lo probó al doble (124px)
+   y fix160 se quedó a medio camino entre los dos, 92px. */
+.auth-topbar .logo-svg{height:92px;}
 /* fix146: en el home, el logo debe alinearse con el borde izquierdo del
    texto del hero de abajo (.landing-grid, centrado con max-width:1180px
    dentro de .auth-main) en vez de con el padding fijo de 40px que usa
@@ -945,7 +945,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    el usuario pidió regresarla a como estaba). */
 .auth-topbar.auth-topbar-wide{display:block;padding-left:24px;padding-right:24px;}
 .auth-topbar-wide .auth-topbar-inner{max-width:1180px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:12px;}
-.auth-topbar-wide .logo-svg{height:124px;}
+.auth-topbar-wide .logo-svg{height:92px;}
 .auth-topbar-actions{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-tertiary);}
 .auth-topbar-actions a.auth-switch{margin:0;padding:9px 18px;border:1px solid var(--border-strong);border-radius:100px;color:var(--ink);background:var(--surface);transition:border-color .15s,background .15s,transform .15s;}
 .auth-topbar-actions a.auth-switch:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
@@ -1107,7 +1107,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 @media(max-width:640px){
   .hero-eyebrow{font-size:10.5px;}
   .auth-topbar{padding:16px 18px;flex-wrap:wrap;row-gap:10px;}
-  .auth-topbar .logo-svg{height:80px;}
+  .auth-topbar .logo-svg{height:60px;}
   .auth-topbar-actions span{display:none;}
   .auth-card{padding:28px 22px 24px;border-radius:14px;}
 }
