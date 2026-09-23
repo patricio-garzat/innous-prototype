@@ -945,32 +945,6 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
    que no se sienta como un elemento distinto pegado ahí. */
 .auth-lang-toggle{font:inherit;font-size:12.5px;font-weight:700;letter-spacing:.3px;color:var(--ink);background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:9px 14px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;}
 .auth-lang-toggle:hover{border-color:var(--ink);background:var(--surface-alt);transform:translateY(-1px);}
-/* fix150: en el home, en vez de un botón "Iniciar Sesión" que te manda
-   a otra pantalla, un formulario mini right ahí en el topbar — usuario/
-   correo + contraseña + un botón redondo de enviar, mismo
-   App.submitLogin de siempre (funciona igual sin importar en qué
-   página viva el formulario). Crear Cuenta sigue siendo un botón de
-   verdad (en el hero, como ya estaba). */
-.landing-inline-login-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
-.landing-inline-login{display:flex;align-items:center;background:var(--surface);border:1px solid var(--border-strong);border-radius:100px;padding:4px 4px 4px 16px;}
-.landing-inline-login input{border:none;background:transparent;font-size:13px;color:var(--ink);padding:8px 4px;min-width:0;}
-.landing-inline-login input::placeholder{color:var(--ink-tertiary);}
-.landing-inline-login input:focus{outline:none;}
-.landing-inline-login input[name="login"]{width:112px;border-right:1px solid var(--border);padding-right:10px;margin-right:6px;}
-.landing-inline-login .password-input-wrap{width:110px;}
-.landing-inline-login .password-input-wrap input{width:100%;}
-.landing-inline-login-submit{flex:0 0 auto;width:34px;height:34px;border-radius:50%;background:linear-gradient(90deg,var(--navy),var(--accent-ink));border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-left:4px;transition:transform .15s,opacity .15s;}
-.landing-inline-login-submit:hover{transform:scale(1.06);}
-.landing-inline-login-submit svg{width:15px;height:15px;stroke:#fff;}
-.landing-inline-login-forgot{font-size:11px;color:var(--ink-tertiary);cursor:pointer;padding-right:8px;}
-.landing-inline-login-forgot:hover{color:var(--ink);text-decoration:underline;}
-@media(max-width:760px){
-  .landing-inline-login-wrap{align-items:stretch;width:100%;}
-  .landing-inline-login{width:100%;}
-  .landing-inline-login input[name="login"]{flex:1;width:auto;}
-  .landing-inline-login .password-input-wrap{flex:1;width:auto;}
-  .landing-inline-login-forgot{align-self:center;padding-right:0;}
-}
 .auth-main{position:relative;z-index:1;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;align-items:center;justify-content:center;padding:clamp(8px,2vh,24px) 24px clamp(10px,2.5vh,40px);}
 .auth-narrow{width:100%;max-width:400px;}
 
@@ -1005,6 +979,22 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .landing-hero-col{text-align:left;}
 .landing-hero-col .hero-title,.landing-hero-col .hero-sub{margin-left:0;margin-right:0;}
 .landing-hero-col .hero-actions{justify-content:flex-start;}
+/* fix151: tarjeta de login de verdad, en la columna derecha arriba de
+   "Why INNOUS" — reemplaza el mini-formulario apretado en el topbar
+   (fix150) que salía mal alineado y con el texto de los campos
+   cortado. Usuario arriba, contraseña abajo (como pidió el usuario),
+   ambos a todo lo ancho de la tarjeta — con este ancho (el mismo que
+   .landing-info-card de al lado) no se corta nada. */
+.landing-right-col{display:flex;flex-direction:column;gap:16px;}
+.landing-login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:clamp(16px,2.2vh,20px) clamp(18px,2.2vw,24px);box-shadow:0 16px 40px -20px rgba(0,56,101,0.2);}
+.landing-login-card-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:10px;}
+.landing-login-card form{display:flex;flex-direction:column;gap:9px;}
+.landing-login-card input[type=text],.landing-login-card input[type=password]{width:100%;padding:9px 12px;border-radius:9px;font-size:13.5px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink);}
+.landing-login-card input:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.landing-login-card .password-input-wrap input{width:100%;}
+.landing-login-card .btn{padding:9px;font-size:13.5px;margin-top:2px;}
+.landing-login-card-forgot{display:block;text-align:right;font-size:11.5px;color:var(--ink-tertiary);margin-top:9px;cursor:pointer;}
+.landing-login-card-forgot:hover{color:var(--ink);text-decoration:underline;}
 .landing-info-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 24px 56px -22px rgba(0,56,101,0.22);position:relative;overflow:hidden;}
 .landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
 .landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
@@ -4454,28 +4444,19 @@ function renderForgotPasswordSent(){
     ${authFooterLinks()}
   </div>`;
 }
-// fix150: en el home, en vez de un link "¿Ya tienes cuenta? Iniciar
-// Sesión" que manda a otra pantalla, hay un mini formulario de login
-// ahí mismo (misma App.submitLogin de siempre, funciona igual sin
-// importar en qué página viva el <form>) — Crear Cuenta sigue siendo
-// un botón real, nada más en el hero (ver renderLanding).
-function landingInlineLoginHtml(){
-  return `
-  <div class="landing-inline-login-wrap">
-    <form class="landing-inline-login" onsubmit="return App.submitLogin(event)">
-      <input type="text" name="login" placeholder="${at('usernameOrEmail')}" required autocomplete="username">
-      ${pwFieldHtml('landing-login-password', `name="password" placeholder="${at('password')}" required autocomplete="current-password"`)}
-      <button type="submit" class="landing-inline-login-submit" aria-label="${at('logIn')}" title="${at('logIn')}"><i data-lucide="arrow-right"></i></button>
-    </form>
-    <a class="landing-inline-login-forgot" onclick="App.goToForgotPassword()">${at('forgotPassword')}</a>
-  </div>`;
-}
+// fix151: el mini-login de fix150 vivía apretado en el topbar y salía
+// mal alineado / con texto cortado (el usuario lo probó y pidió
+// quitarlo de ahí) — ahora es una tarjeta de verdad
+// (.landing-login-card, ver renderLanding) metida en la columna
+// derecha, arriba de "Why INNOUS", con espacio de sobra para los
+// campos. El topbar del home vuelve a traer nada más el logo + el
+// switch de idioma.
 function authTopbar(wide){
   const inner = `
     <a href="#" class="logo" onclick="App.backToLanding();return false;" aria-label="INNOUS">${logoSvgMarkup()}</a>
     <div class="auth-topbar-actions">
       ${authLangToggleHtml()}
-      ${wide ? landingInlineLoginHtml() : (STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`)}
+      ${wide ? '' : (STATE.authView!=='login' ? `<span style="color:var(--ink-tertiary);">${at('alreadyHaveAccount')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToLogin()"><b>${at('logIn')}</b></a>` : `<span style="color:var(--ink-tertiary);">${at('newHere')}</span> <a class="auth-switch" style="margin:0;" onclick="App.goToSignup()"><b>${at('createAccount')}</b></a>`)}
     </div>`;
   return wide
     ? `<div class="auth-topbar auth-topbar-wide"><div class="auth-topbar-inner">${inner}</div></div>`
@@ -4518,16 +4499,27 @@ function renderLanding(){
             <button class="btn btn-hero-primary" onclick="App.goToSignup()"><i data-lucide="user-plus"></i>${at('createAccount')}</button>
           </div>
         </div>
-        <div class="landing-info-card">
-          <div class="landing-info-title">${at('whyInnous')}</div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">${at('value3')}</div></div>
-          <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">${at('value4')}</div></div>
-          <div class="landing-info-divider"></div>
-          <div class="landing-caps-label">${at('whatWeSource')}</div>
-          <div class="landing-process-row">
-            ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${STATE.ui.authLang==='es'?procES(p):p}</span>`).join('')}
+        <div class="landing-right-col">
+          <div class="landing-login-card">
+            <div class="landing-login-card-title">${at('loginTitle')}</div>
+            <form onsubmit="return App.submitLogin(event)">
+              <input type="text" name="login" placeholder="${at('usernameOrEmail')}" required autocomplete="username">
+              ${pwFieldHtml('landing-login-password', `name="password" placeholder="${at('password')}" required autocomplete="current-password"`)}
+              <button type="submit" class="btn btn-primary btn-block"><i data-lucide="log-in"></i>${at('logIn')}</button>
+            </form>
+            <a class="landing-login-card-forgot" onclick="App.goToForgotPassword()">${at('forgotPassword')}</a>
+          </div>
+          <div class="landing-info-card">
+            <div class="landing-info-title">${at('whyInnous')}</div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">${at('value3')}</div></div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">${at('value4')}</div></div>
+            <div class="landing-info-divider"></div>
+            <div class="landing-caps-label">${at('whatWeSource')}</div>
+            <div class="landing-process-row">
+              ${PROCESSES.filter(p=>p!=='Other').map(p=>`<span class="landing-process-chip">${STATE.ui.authLang==='es'?procES(p):p}</span>`).join('')}
+            </div>
           </div>
         </div>
       </div>
