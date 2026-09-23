@@ -1016,7 +1016,7 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .landing-info-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:20px;padding:clamp(20px,3vh,28px) clamp(20px,2.5vw,30px);box-shadow:0 28px 60px -18px rgba(0,56,101,0.32);position:relative;overflow:hidden;}
 .landing-info-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--navy),var(--accent));}
 .landing-info-title{font-family:'Ubuntu',sans-serif;font-weight:700;font-size:11.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px;}
-.landing-value-row{display:flex;align-items:center;gap:12px;padding:7px 0;}
+.landing-value-row{display:flex;align-items:center;gap:12px;padding:5px 0;}
 .landing-value-row .value-icon{width:30px;height:30px;border-radius:9px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
 .landing-value-row .value-icon svg{width:15px;height:15px;stroke:var(--accent-ink);}
 .landing-value-text{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.4;}
@@ -4284,10 +4284,10 @@ const AUTH_I18N = {
     heroTitlePre:'Optimizing Collaboration Between ', heroTitleGrad:'Mexico and the U.S.', heroTitlePost:' in the Metalworking Industry',
     heroSub:'INNOUS connects U.S. industrial buyers with verified manufacturing partners in Mexico — sourcing, quoting, production and logistics, all through a single point of contact.',
     whyInnous:'Why INNOUS',
-    value1:'Vetted manufacturing partners, reviewed before they see an RFQ',
-    value2:'One point of contact from first quote to final shipment',
-    value3:'Full visibility — quoting, production, QC, and shipping in one place',
-    value4:'Confidential by design — suppliers never see your identity or price',
+    value1:'A vetted network of Mexican workshops, evaluated on capabilities and certifications',
+    value2:'One point of contact — from sourcing the right manufacturer to production and logistics',
+    value3:'Full-service manufacturing — machining, casting, cutting, stamping and weldments',
+    value4:'End-to-end logistics, with warehousing in Monterrey, N.L. and Laredo, TX',
     whatWeSource:'What We Source',
     back:'Back',
     loginTitle:'Log in', loginSub:'Welcome back to INNOUS.',
@@ -4316,10 +4316,10 @@ const AUTH_I18N = {
     heroTitlePre:'Optimizando la Colaboración Entre ', heroTitleGrad:'México y Estados Unidos', heroTitlePost:' en la Industria Metalmecánica',
     heroSub:'INNOUS conecta a compradores industriales de Estados Unidos con socios de manufactura verificados en México — sourcing, cotización, producción y logística, todo a través de un solo punto de contacto.',
     whyInnous:'Por qué INNOUS',
-    value1:'Proveedores de manufactura verificados, revisados antes de ver una cotización (RFQ)',
-    value2:'Un solo punto de contacto, desde la primera cotización hasta el envío final',
-    value3:'Visibilidad total — cotización, producción, control de calidad y envío en un solo lugar',
-    value4:'Confidencial por diseño — los proveedores nunca ven tu identidad ni tu precio',
+    value1:'Una red de talleres mexicanos evaluados por sus capacidades y certificaciones',
+    value2:'Un solo punto de contacto — desde encontrar al fabricante correcto hasta producción y logística',
+    value3:'Manufactura integral — maquinado, fundición, corte, estampado y estructuras metálicas',
+    value4:'Logística de principio a fin, con bodegas en Monterrey, N.L. y Laredo, TX',
     whatWeSource:'Lo Que Cotizamos',
     back:'Atrás',
     loginTitle:'Iniciar sesión', loginSub:'Bienvenido de nuevo a INNOUS.',
@@ -4543,8 +4543,8 @@ function renderLanding(){
             <div class="landing-info-title">${at('whyInnous')}</div>
             <div class="landing-value-row"><div class="value-icon"><i data-lucide="shield-check"></i></div><div class="landing-value-text">${at('value1')}</div></div>
             <div class="landing-value-row"><div class="value-icon"><i data-lucide="user"></i></div><div class="landing-value-text">${at('value2')}</div></div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="eye"></i></div><div class="landing-value-text">${at('value3')}</div></div>
-            <div class="landing-value-row"><div class="value-icon"><i data-lucide="lock"></i></div><div class="landing-value-text">${at('value4')}</div></div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="settings"></i></div><div class="landing-value-text">${at('value3')}</div></div>
+            <div class="landing-value-row"><div class="value-icon"><i data-lucide="truck"></i></div><div class="landing-value-text">${at('value4')}</div></div>
             <div class="landing-info-divider"></div>
             <div class="landing-caps-label">${at('whatWeSource')}</div>
             <div class="landing-process-row">
