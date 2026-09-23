@@ -2932,7 +2932,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{} },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{} },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -3808,13 +3808,34 @@ function fileIconChip(f){
 // {name, path, ...} (ver App.uploadOrderDocument), pero se sigue
 // aceptando el string viejo para no romper proyectos de demo/datos ya
 // existentes — solo el objeto con `path` es clickeable.
-function orderDocChip(d){
+// fix173: abrir una foto (jpg/png) con window.open(url) tal cual la mete en
+// el visor de imágenes nativo del navegador — al imprimir desde ahí, Chrome
+// agrega su encabezado/pie por default (URL, fecha, título de la pestaña),
+// aunque la hoja debería tener nada más la foto. Envolviéndola en una
+// página en blanco con @page{margin:0} evita que el navegador tenga
+// espacio para meter ese texto (lo dibuja justo en el margen de la
+// página). Un PDF no tiene este problema — su propio visor ya imprime
+// limpio — así que solo se envuelve cuando la extensión es de imagen.
+function openFileSmart(signedUrl, path){
+  const ext = (path.split('.').pop()||'').toLowerCase();
+  if(!['jpg','jpeg','png'].includes(ext)){ window.open(signedUrl, '_blank'); return; }
+  const w = window.open('', '_blank');
+  if(!w){ window.open(signedUrl, '_blank'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><title></title><style>*{margin:0;padding:0;box-sizing:border-box;}@page{margin:0;}html,body{height:100%;background:#fff;}img{display:block;max-width:100%;max-height:100vh;margin:auto;}</style></head><body><img src="${signedUrl}"></body></html>`);
+  w.document.close();
+}
+// fix174: `pid` es opcional — cuando se pasa, un documento real (con path)
+// gana un botón de borrar junto al nombre. Un documento viejo de puro
+// string (sin path) nunca lo tiene — no hay nada real que borrar en
+// Storage para ese caso.
+function orderDocChip(d, pid){
   if(typeof d==='string') return `<div class="file-chip"><div class="fc-icon" style="color:#B91C1C;background:#B91C1C18;">PDF</div><span class="fc-name">${d}</span></div>`;
   const ext = (d.name.split('.').pop()||'').toLowerCase();
   const type = ext==='stp' ? 'step' : (ext==='jpeg' ? 'jpg' : ext);
   const meta = FILE_TYPES[type] || {ext: ext.toUpperCase()||'DOC', color:'#71717A'};
   const clickAttrs = d.path ? `style="cursor:pointer;" onclick="App.openOrderDocument('${escAttr(d.path)}')" title="Click para abrir"` : '';
-  return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${d.name}</span></div>`;
+  const deleteBtn = (d.path && pid) ? `<button type="button" class="fc-remove" onclick="event.stopPropagation();App.deleteOrderDocument('${pid}','${escAttr(d.path)}','${escAttr(d.name)}')" title="Borrar documento"><i data-lucide="trash-2" style="width:14px;height:14px;"></i></button>` : '';
+  return `<div class="file-chip" ${clickAttrs}><div class="fc-icon" style="color:${meta.color};background:${meta.color}18;">${meta.ext}</div><span class="fc-name">${d.name}</span>${deleteBtn}</div>`;
 }
 /* ---- INNOUS-only file chip: shows the original (only INNOUS/client ever
    see it) plus whether a supplier-safe redacted copy has been published. ---- */
@@ -8313,7 +8334,7 @@ ROUTES['supplier/order'] = function(id){
       </div>
       <div class="card card-pad">
         <div class="section-title">Documentos del Proveedor</div>
-        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.length ? p.order.quality.documents.map(orderDocChip).join('') : '<div class="td-sub">Aún no has cargado documentos.</div>'}</div>
+        <div class="file-list" style="margin-top:8px;">${p.order.quality.documents.length ? p.order.quality.documents.map(d=>orderDocChip(d, p.id)).join('') : '<div class="td-sub">Aún no has cargado documentos.</div>'}</div>
         <div style="margin-top:10px;">
           <input type="file" id="order-doc-input-${p.id}" style="display:none" accept=".pdf,.step,.stp,.dwg,.dxf,.jpg,.jpeg,.png" onchange="App.onOrderDocumentSelected(this,'${p.id}')">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('order-doc-input-${p.id}').click()"><i data-lucide="upload"></i>Cargar Documento</button>
@@ -8328,19 +8349,42 @@ ROUTES['supplier/order'] = function(id){
 
 /* ---- Supplier Documents — ya no está en el menú (fix172), se llega
    nada más desde el botón "Ver Mis Documentos" en Mis Proyectos. ---- */
+// fix174: selección múltiple para borrar varios documentos de un jalón (o
+// "Seleccionar Todo"). Solo un documento REAL cargado por el proveedor
+// (quality_documents con `path`) es seleccionable/borrable — un string
+// viejo de demo no tiene nada real que borrar en Storage, y los
+// documentos de logística los sube/controla INNOUS, no el proveedor.
 ROUTES['supplier/documents'] = function(){
   const orders = supplierOrders();
-  const docs = orders.flatMap(p=>[...p.order.quality.documents,...p.order.logistics.documents].map(d=>({d,p})));
+  const docs = orders.flatMap(p=>[
+    ...p.order.quality.documents.map(d=>({d,p,deletable:typeof d!=='string' && !!d.path})),
+    ...p.order.logistics.documents.map(d=>({d,p,deletable:false})),
+  ]);
+  const selectableKeys = docs.filter(r=>r.deletable).map(r=>r.p.id+'::'+r.d.path);
+  const selected = selectableKeys.filter(k=>STATE.ui.selectedOrderDocs[k]);
+  const allSelected = selectableKeys.length>0 && selected.length===selectableKeys.length;
   return `
   <div class="content-inner">
     <div class="breadcrumb"><a href="#/supplier/orders">Mis Proyectos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>Mis Documentos</span></div>
-    <div class="page-header"><div><div class="page-title">Mis Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque que has cargado</div></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Documento</th><th>Pedido</th><th>Proyecto</th></tr></thead><tbody>
-      ${docs.length? docs.map(({d,p})=>{
+    <div class="page-header"><div><div class="page-title">Mis Documentos</div><div class="page-subtitle">Certificados de calidad, planos y documentación de embarque que has cargado</div></div>
+      ${selected.length ? `<div class="page-actions"><button class="btn btn-danger" onclick="App.deleteSelectedOrderDocs()"><i data-lucide="trash-2"></i>Borrar Seleccionados (${selected.length})</button></div>` : ''}
+    </div>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr>
+      <th style="width:36px;">${selectableKeys.length ? `<input type="checkbox" ${allSelected?'checked':''} onchange="App.toggleSelectAllOrderDocs(${JSON.stringify(selectableKeys)}, this.checked)">` : ''}</th>
+      <th>Documento</th><th>Pedido</th><th>Proyecto</th><th></th>
+    </tr></thead><tbody>
+      ${docs.length? docs.map(({d,p,deletable})=>{
         const name = typeof d==='string' ? d : d.name;
         const path = typeof d==='string' ? null : d.path;
-        return `<tr${path?` class="row-link" onclick="App.openOrderDocument('${escAttr(path)}')"`:''}><td class="td-strong">${name}</td><td class="mono">${p.id}</td><td>${p.projectName}</td></tr>`;
-      }).join('') : `<tr><td colspan="3">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
+        const key = p.id+'::'+path;
+        const checked = deletable && STATE.ui.selectedOrderDocs[key];
+        return `<tr>
+          <td>${deletable?`<input type="checkbox" ${checked?'checked':''} onchange="App.toggleOrderDocSelect('${p.id}','${escAttr(path)}')">`:''}</td>
+          <td class="td-strong ${path?'row-link':''}" ${path?`onclick="App.openOrderDocument('${escAttr(path)}')"`:''}>${name}</td>
+          <td class="mono">${p.id}</td><td>${p.projectName}</td>
+          <td>${deletable?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="App.deleteOrderDocument('${p.id}','${escAttr(path)}','${escAttr(name)}')"><i data-lucide="trash-2"></i></button>`:''}</td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="5">${emptyState('folder','Aún no hay documentos','')}</td></tr>`}
     </tbody></table></div></div>
   </div>`;
 };
@@ -9728,7 +9772,7 @@ const App = {
     if(!path) return;
     const { data, error } = await sb.storage.from('project-files').createSignedUrl(path, 300);
     if(error || !data){ showToast('No se pudo abrir el archivo.'); return; }
-    window.open(data.signedUrl, '_blank');
+    openFileSmart(data.signedUrl, path);
   },
   // fix172: "Cargar Documento" en el detalle del pedido — antes era puro
   // teatro (showToast sin subir nada de verdad). Mismo patrón que
@@ -9757,7 +9801,49 @@ const App = {
     if(!path) return;
     const { data, error } = await sb.storage.from('order-documents').createSignedUrl(path, 300);
     if(error || !data){ showToast('No se pudo abrir el documento.'); return; }
-    window.open(data.signedUrl, '_blank');
+    openFileSmart(data.signedUrl, path);
+  },
+  // fix174: borrar un documento cargado por accidente — confirm() nativo
+  // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
+  // App.deleteSupplierCsf. Quita el archivo real de Storage Y la entrada
+  // en orders.quality_documents (esto último vía RPC — el proveedor no
+  // tiene UPDATE directo en orders desde fix106).
+  toggleOrderDocSelect(pid, path){
+    const key = pid+'::'+path;
+    if(STATE.ui.selectedOrderDocs[key]) delete STATE.ui.selectedOrderDocs[key];
+    else STATE.ui.selectedOrderDocs[key] = true;
+    route();
+  },
+  toggleSelectAllOrderDocs(keys, checked){
+    keys.forEach(k=>{ if(checked) STATE.ui.selectedOrderDocs[k]=true; else delete STATE.ui.selectedOrderDocs[k]; });
+    route();
+  },
+  async deleteOrderDocument(pid, path, name){
+    if(!confirm(`¿Seguro que quieres borrar "${name}"? Esta acción no se puede deshacer.`)) return;
+    await App._deleteOrderDocs([{pid, path}]);
+  },
+  async deleteSelectedOrderDocs(){
+    const keys = Object.keys(STATE.ui.selectedOrderDocs);
+    if(!keys.length) return;
+    if(!confirm(`¿Seguro que quieres borrar ${keys.length} documento${keys.length===1?'':'s'}? Esta acción no se puede deshacer.`)) return;
+    const items = keys.map(k=>{ const idx = k.indexOf('::'); return { pid: k.slice(0,idx), path: k.slice(idx+2) }; });
+    await App._deleteOrderDocs(items);
+  },
+  async _deleteOrderDocs(items){
+    const byProject = {};
+    items.forEach(({pid,path})=>{ (byProject[pid] = byProject[pid]||[]).push(path); });
+    let anyError = false;
+    for(const pid of Object.keys(byProject)){
+      const paths = byProject[pid];
+      const { error: rmErr } = await sb.storage.from('order-documents').remove(paths);
+      if(rmErr){ showToast(`No se pudo borrar: ${rmErr.message}`); anyError = true; continue; }
+      const { error } = await sb.rpc('supplier_remove_order_documents', { p_project_id: pid, p_paths: paths });
+      if(error){ showToast(error.message); anyError = true; continue; }
+    }
+    items.forEach(({pid,path})=>{ delete STATE.ui.selectedOrderDocs[pid+'::'+path]; });
+    await refreshRealProjects();
+    if(!anyError) showToast(items.length>1 ? 'Documentos eliminados' : 'Documento eliminado', 'success');
+    route();
   },
   downloadQuotePdf(id){
     const p = findProject(id); if(!p) return;
@@ -11404,7 +11490,7 @@ const App = {
     if(!path) return;
     const { data, error } = await sb.storage.from('chat-files').createSignedUrl(path, 300);
     if(error || !data){ showToast('Could not open the file.'); return; }
-    window.open(data.signedUrl, '_blank');
+    openFileSmart(data.signedUrl, path);
   },
   async sendChatMessage(key){
     const inputId = STATE.role==='CLIENT' ? 'client-chat-input' : STATE.role==='SUPPLIER' ? 'supplier-chat-input' : 'innous-chat-input';
@@ -11617,6 +11703,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'removeFromShortlist','sendQuotesToCustomer','confirmSelectQuote','authorizeProject',
   'submitSupplierQuote','acceptTargetPrice','declineTargetPrice','advanceStatus',
   'submitTargetCounter','respondFinalCounter','respondTargetCounter','uploadOrderDocument',
+  'deleteOrderDocument','deleteSelectedOrderDocs',
   'innousReviewSupplierCounter','innousReviewClientCounter','reopenSupplierQuote',
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder','setPaymentStatus',
   'setQualityStatus','submitClientRating','submitInnousRating','sendChatMessage',
