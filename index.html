@@ -3029,7 +3029,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsRfqRange:'6', analyticsTopMonth:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsRfqMonth:'', analyticsTopMonth:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -7479,19 +7479,12 @@ ROUTES['innous/rate'] = function(id){
     ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
-// fix196: agrupa fechas en llaves "YYYY-M" (mes calendario, no "hace N
-// días") — usado tanto por el chart de RFQs por Mes como por el filtro de
-// mes específico de Top Clientes/Top Proveedores, para que ambos hablen
-// del mismo concepto de "mes".
+// fix196/197: agrupa fechas en llaves "YYYY-M" (mes calendario, no "hace N
+// días") — usado tanto por el filtro de "RFQs por Mes" como por el de mes
+// específico de Top Clientes/Top Proveedores, para que los tres hablen del
+// mismo concepto de "mes".
 function analyticsMonthKey(d){ const dt=new Date(d); return dt.getFullYear()+'-'+(dt.getMonth()+1); }
 function analyticsMonthLabel(key){ const [y,m]=key.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('es-MX',{month:'short',year:'numeric'}); }
-// Las últimas N llaves de mes terminando en el mes actual — ej. n=3 en
-// septiembre 2026 da ['2026-7','2026-8','2026-9'].
-function analyticsLastNMonthKeys(n){
-  const now = new Date(); const keys=[];
-  for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1); keys.push(d.getFullYear()+'-'+(d.getMonth()+1)); }
-  return keys;
-}
 /* ---- INNOUS Analytics ---- */
 ROUTES['innous/analytics'] = function(){
   const withOrder = PROJECTS.filter(p=>p.order);
@@ -7510,25 +7503,14 @@ ROUTES['innous/analytics'] = function(){
   const revenue = withOrder.reduce((s,p)=>s+customerPriceCur(p),0);
   const margin = withOrder.reduce((s,p)=>s+(customerPriceCur(p)-supplierCostCurOf(p)-freightCur(p)),0);
 
-  // fix196: "RFQs por Mes" — conteo de RFQs creados por mes calendario,
-  // con un filtro de rango (últimos 3/6/12 meses, o todo el historial
-  // real de PROJECTS).
-  const rfqRange = STATE.ui.analyticsRfqRange || '6';
-  let rfqMonthKeys;
-  if(rfqRange==='all'){
-    const created = PROJECTS.map(p=>new Date(p.createdAt)).filter(d=>!isNaN(d));
-    if(created.length){
-      const earliest = created.reduce((a,b)=>a<b?a:b);
-      const now = new Date();
-      const span = (now.getFullYear()-earliest.getFullYear())*12 + (now.getMonth()-earliest.getMonth()) + 1;
-      rfqMonthKeys = analyticsLastNMonthKeys(Math.max(span,1));
-    } else rfqMonthKeys = analyticsLastNMonthKeys(6);
-  } else {
-    rfqMonthKeys = analyticsLastNMonthKeys(parseInt(rfqRange,10));
-  }
-  const rfqCounts = {}; rfqMonthKeys.forEach(k=>rfqCounts[k]=0);
-  PROJECTS.forEach(p=>{ const k=analyticsMonthKey(p.createdAt); if(k in rfqCounts) rfqCounts[k]++; });
-  const maxRfqCount = Math.max(1, ...rfqMonthKeys.map(k=>rfqCounts[k]));
+  // fix197: "RFQs por Mes" — un mes específico (o Todo), un solo total, sin
+  // lista. Mismo filtro de un-mes-o-todo que ya usan Top Clientes/Top
+  // Proveedores abajo, aplicado aquí a TODOS los RFQs (no solo los
+  // adjudicados — createdAt vive en cada proyecto sin importar si ya tiene
+  // orden).
+  const rfqMonth = STATE.ui.analyticsRfqMonth || '';
+  const rfqMonthOptions = [...new Set(PROJECTS.map(p=>analyticsMonthKey(p.createdAt)))].sort().reverse();
+  const rfqCount = rfqMonth ? PROJECTS.filter(p=>analyticsMonthKey(p.createdAt)===rfqMonth).length : PROJECTS.length;
 
   // fix196: filtro de mes específico compartido por Top Clientes/Top
   // Proveedores — "" = todo el tiempo (comportamiento de antes).
@@ -7552,7 +7534,7 @@ ROUTES['innous/analytics'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Analítica</div><div class="page-subtitle">Desempeño de la plataforma en sourcing y cumplimiento</div></div></div>
     <div class="grid grid-3" style="margin-bottom:16px;">
-      ${kpiCard('RFQs Este Mes', rfqCounts[analyticsMonthKey(new Date())]||0, 'nuevas solicitudes enviadas','file-text')}
+      ${kpiCard('RFQs Este Mes', PROJECTS.filter(p=>analyticsMonthKey(p.createdAt)===analyticsMonthKey(new Date())).length, 'nuevas solicitudes enviadas','file-text')}
       ${kpiCard('Markup Promedio', avgMarkup+'%', 'en todos los pedidos adjudicados','percent')}
       ${kpiCard('Valor Promedio de Proyecto', fmtCur(avgValue), 'por pedido adjudicado','dollar-sign')}
     </div>
@@ -7567,14 +7549,13 @@ ROUTES['innous/analytics'] = function(){
     <div class="card card-pad" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div class="section-title" style="margin:0;">RFQs por Mes</div>
-        <select onchange="App.setAnalyticsRfqRange(this.value)">
-          <option value="3" ${rfqRange==='3'?'selected':''}>Últimos 3 Meses</option>
-          <option value="6" ${rfqRange==='6'?'selected':''}>Últimos 6 Meses</option>
-          <option value="12" ${rfqRange==='12'?'selected':''}>Últimos 12 Meses</option>
-          <option value="all" ${rfqRange==='all'?'selected':''}>Todo</option>
+        <select onchange="App.setAnalyticsRfqMonth(this.value)">
+          <option value="" ${rfqMonth===''?'selected':''}>Todo</option>
+          ${rfqMonthOptions.map(k=>`<option value="${k}" ${rfqMonth===k?'selected':''}>${analyticsMonthLabel(k)}</option>`).join('')}
         </select>
       </div>
-      <div style="margin-top:14px;">${rfqMonthKeys.map(k=>`<div class="bar-row"><div class="bar-label" style="text-transform:capitalize;">${analyticsMonthLabel(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${rfqCounts[k]/maxRfqCount*100}%;"></div></div><div class="bar-val">${rfqCounts[k]}</div></div>`).join('')}</div>
+      <div style="font-size:32px;font-weight:700;margin-top:14px;">${rfqCount}</div>
+      <div class="td-sub">${rfqMonth ? 'RFQs creados en '+analyticsMonthLabel(rfqMonth) : 'RFQs creados en total'}</div>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <select onchange="App.setAnalyticsTopMonth(this.value)">
@@ -9888,7 +9869,7 @@ const App = {
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
   setAnalyticsCurrency(val){ STATE.ui.analyticsCurrency = val; route(); },
-  setAnalyticsRfqRange(val){ STATE.ui.analyticsRfqRange = val; route(); },
+  setAnalyticsRfqMonth(val){ STATE.ui.analyticsRfqMonth = val; route(); },
   setAnalyticsTopMonth(val){ STATE.ui.analyticsTopMonth = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
   // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
