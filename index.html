@@ -3029,7 +3029,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsRfqRange:'6', analyticsTopMonth:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -7479,31 +7479,68 @@ ROUTES['innous/rate'] = function(id){
     ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
+// fix196: agrupa fechas en llaves "YYYY-M" (mes calendario, no "hace N
+// días") — usado tanto por el chart de RFQs por Mes como por el filtro de
+// mes específico de Top Clientes/Top Proveedores, para que ambos hablen
+// del mismo concepto de "mes".
+function analyticsMonthKey(d){ const dt=new Date(d); return dt.getFullYear()+'-'+(dt.getMonth()+1); }
+function analyticsMonthLabel(key){ const [y,m]=key.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('es-MX',{month:'short',year:'numeric'}); }
+// Las últimas N llaves de mes terminando en el mes actual — ej. n=3 en
+// septiembre 2026 da ['2026-7','2026-8','2026-9'].
+function analyticsLastNMonthKeys(n){
+  const now = new Date(); const keys=[];
+  for(let i=n-1;i>=0;i--){ const d=new Date(now.getFullYear(), now.getMonth()-i, 1); keys.push(d.getFullYear()+'-'+(d.getMonth()+1)); }
+  return keys;
+}
 /* ---- INNOUS Analytics ---- */
 ROUTES['innous/analytics'] = function(){
   const withOrder = PROJECTS.filter(p=>p.order);
-  const thisMonth = PROJECTS.filter(p=> new Date(p.createdAt) > daysFromNow(-30)).length;
-  const awarded = PROJECTS.filter(p=>p.order).length;
-  const totalShortlisted = PROJECTS.filter(p=>p.shortlist.length>0).length;
-  const winRate = totalShortlisted? Math.round(awarded/totalShortlisted*100) : 0;
   const avgMarkup = withOrder.length? (withOrder.reduce((s,p)=>s+p.order.markupPct,0)/withOrder.length).toFixed(1) : 0;
-  // Analytics is Innous's own internal view of the business, so everything
-  // here is in MXN — even though customerPrice is stored in USD per order.
-  // Each order converts at its OWN exchange rate (the one actually used at
-  // the time, from client_select_quote), never a single "today's rate"
-  // applied retroactively to every historical order.
+  // fix196: toggle USD/MXN — cada pedido convierte con SU PROPIO tipo de
+  // cambio (p.order.exchangeRate, el que de verdad se usó al seleccionarse
+  // la cotización), nunca uno "de hoy" aplicado a pedidos viejos. Mismo
+  // patrón que ya usa el toggle de Resumen (ver App.setOverviewCurrency).
+  const cur = STATE.ui.analyticsCurrency==='USD' ? 'USD' : 'MXN';
   const rateFor = p => p.order.exchangeRate || STATE.settings.defaultExchangeRate || DEFAULT_SETTINGS.defaultExchangeRate;
-  const customerPriceMxn = p => p.order.customerPrice*rateFor(p);
-  const supplierCostMxnOf = p => p.order.supplierCostMxn || p.order.supplierCost*rateFor(p);
-  const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+customerPriceMxn(p),0)/withOrder.length : 0;
-  const revenue = withOrder.reduce((s,p)=>s+customerPriceMxn(p),0);
-  const margin = withOrder.reduce((s,p)=>s+(customerPriceMxn(p)-supplierCostMxnOf(p)-(p.order.freightUsd||0)*rateFor(p)),0);
+  const customerPriceCur = p => cur==='MXN' ? p.order.customerPrice*rateFor(p) : p.order.customerPrice;
+  const supplierCostCurOf = p => cur==='MXN' ? (p.order.supplierCostMxn || p.order.supplierCost*rateFor(p)) : p.order.supplierCost;
+  const freightCur = p => cur==='MXN' ? (p.order.freightUsd||0)*rateFor(p) : (p.order.freightUsd||0);
+  const fmtCur = cur==='MXN' ? fmtMXN : fmtMoney;
+  const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+customerPriceCur(p),0)/withOrder.length : 0;
+  const revenue = withOrder.reduce((s,p)=>s+customerPriceCur(p),0);
+  const margin = withOrder.reduce((s,p)=>s+(customerPriceCur(p)-supplierCostCurOf(p)-freightCur(p)),0);
 
-  const custCounts = {}; withOrder.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+customerPriceMxn(p); });
+  // fix196: "RFQs por Mes" — conteo de RFQs creados por mes calendario,
+  // con un filtro de rango (últimos 3/6/12 meses, o todo el historial
+  // real de PROJECTS).
+  const rfqRange = STATE.ui.analyticsRfqRange || '6';
+  let rfqMonthKeys;
+  if(rfqRange==='all'){
+    const created = PROJECTS.map(p=>new Date(p.createdAt)).filter(d=>!isNaN(d));
+    if(created.length){
+      const earliest = created.reduce((a,b)=>a<b?a:b);
+      const now = new Date();
+      const span = (now.getFullYear()-earliest.getFullYear())*12 + (now.getMonth()-earliest.getMonth()) + 1;
+      rfqMonthKeys = analyticsLastNMonthKeys(Math.max(span,1));
+    } else rfqMonthKeys = analyticsLastNMonthKeys(6);
+  } else {
+    rfqMonthKeys = analyticsLastNMonthKeys(parseInt(rfqRange,10));
+  }
+  const rfqCounts = {}; rfqMonthKeys.forEach(k=>rfqCounts[k]=0);
+  PROJECTS.forEach(p=>{ const k=analyticsMonthKey(p.createdAt); if(k in rfqCounts) rfqCounts[k]++; });
+  const maxRfqCount = Math.max(1, ...rfqMonthKeys.map(k=>rfqCounts[k]));
+
+  // fix196: filtro de mes específico compartido por Top Clientes/Top
+  // Proveedores — "" = todo el tiempo (comportamiento de antes).
+  const topMonth = STATE.ui.analyticsTopMonth || '';
+  const topMonthOptions = [...new Set(withOrder.map(p=>analyticsMonthKey(p.createdAt)))].sort().reverse();
+  const topProjects = topMonth ? withOrder.filter(p=>analyticsMonthKey(p.createdAt)===topMonth) : withOrder;
+
+  const custCounts = {}; topProjects.forEach(p=>{ custCounts[p.customerId]=(custCounts[p.customerId]||0)+customerPriceCur(p); });
   const topCustomers = Object.entries(custCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxCust = topCustomers.length? topCustomers[0][1] : 1;
 
-  const supCounts = {}; withOrder.forEach(p=>{ supCounts[p.selectedSupplierId]=(supCounts[p.selectedSupplierId]||0)+1; });
+  const supCounts = {}; topProjects.forEach(p=>{ supCounts[p.selectedSupplierId]=(supCounts[p.selectedSupplierId]||0)+1; });
   const topSuppliers = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxSup = topSuppliers.length? topSuppliers[0][1] : 1;
 
@@ -7514,40 +7551,50 @@ ROUTES['innous/analytics'] = function(){
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Analítica</div><div class="page-subtitle">Desempeño de la plataforma en sourcing y cumplimiento</div></div></div>
-    <div class="grid grid-4" style="margin-bottom:16px;">
-      ${kpiCard('RFQs Este Mes', thisMonth, 'nuevas solicitudes enviadas','file-text')}
-      ${kpiCard('Tasa de Cierre', winRate+'%', 'shortlist → pedido adjudicado','target')}
+    <div class="grid grid-3" style="margin-bottom:16px;">
+      ${kpiCard('RFQs Este Mes', rfqCounts[analyticsMonthKey(new Date())]||0, 'nuevas solicitudes enviadas','file-text')}
       ${kpiCard('Markup Promedio', avgMarkup+'%', 'en todos los pedidos adjudicados','percent')}
-      ${kpiCard('Valor Promedio de Proyecto', fmtMXN(avgValue), 'por pedido adjudicado','dollar-sign')}
+      ${kpiCard('Valor Promedio de Proyecto', fmtCur(avgValue), 'por pedido adjudicado','dollar-sign')}
+    </div>
+    <div class="markup-chip-row" style="margin-bottom:10px;">
+      <button type="button" class="markup-chip ${cur==='USD'?'active':''}" onclick="App.setAnalyticsCurrency('USD')">USD</button>
+      <button type="button" class="markup-chip ${cur==='MXN'?'active':''}" onclick="App.setAnalyticsCurrency('MXN')">MXN</button>
     </div>
     <div class="grid grid-2" style="margin-bottom:16px;">
-      ${kpiCard('Ingresos', fmtMXN(revenue), 'entre pedidos activos y completados','trending-up')}
-      ${kpiCard('Margen Bruto', fmtMXN(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% margen combinado','wallet')}
+      ${kpiCard('Ingresos', fmtCur(revenue), 'entre pedidos activos y completados','trending-up')}
+      ${kpiCard('Margen Bruto', fmtCur(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% margen combinado','wallet')}
+    </div>
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div class="section-title" style="margin:0;">RFQs por Mes</div>
+        <select onchange="App.setAnalyticsRfqRange(this.value)">
+          <option value="3" ${rfqRange==='3'?'selected':''}>Últimos 3 Meses</option>
+          <option value="6" ${rfqRange==='6'?'selected':''}>Últimos 6 Meses</option>
+          <option value="12" ${rfqRange==='12'?'selected':''}>Últimos 12 Meses</option>
+          <option value="all" ${rfqRange==='all'?'selected':''}>Todo</option>
+        </select>
+      </div>
+      <div style="margin-top:14px;">${rfqMonthKeys.map(k=>`<div class="bar-row"><div class="bar-label" style="text-transform:capitalize;">${analyticsMonthLabel(k)}</div><div class="bar-track"><div class="bar-fill" style="width:${rfqCounts[k]/maxRfqCount*100}%;"></div></div><div class="bar-val">${rfqCounts[k]}</div></div>`).join('')}</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <select onchange="App.setAnalyticsTopMonth(this.value)">
+        <option value="" ${topMonth===''?'selected':''}>Todo el Tiempo</option>
+        ${topMonthOptions.map(k=>`<option value="${k}" ${topMonth===k?'selected':''}>${analyticsMonthLabel(k)}</option>`).join('')}
+      </select>
     </div>
     <div class="grid grid-2">
       <div class="card card-pad">
         <div class="section-title">Top Clientes por Ingresos</div>
-        <div style="margin-top:14px;">${topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtMXN(val)}</div></div>`).join('')}</div>
+        <div style="margin-top:14px;">${topCustomers.length?topCustomers.map(([cid,val])=>`<div class="bar-row"><div class="bar-label">${customerName(cid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxCust*100}%;"></div></div><div class="bar-val">${fmtCur(val)}</div></div>`).join(''):`<div class="td-sub">Sin datos en este periodo.</div>`}</div>
       </div>
       <div class="card card-pad">
         <div class="section-title">Top Proveedores por Pedidos Ganados</div>
-        <div style="margin-top:14px;">${topSuppliers.map(([sid,val])=>`<div class="bar-row"><div class="bar-label">${supplierName(sid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxSup*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
+        <div style="margin-top:14px;">${topSuppliers.length?topSuppliers.map(([sid,val])=>`<div class="bar-row"><div class="bar-label">${supplierName(sid)}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxSup*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join(''):`<div class="td-sub">Sin datos en este periodo.</div>`}</div>
       </div>
     </div>
-    <div class="grid grid-2" style="margin-top:16px;">
-      <div class="card card-pad">
-        <div class="section-title">Proceso de Manufactura Más Solicitado</div>
-        <div style="margin-top:14px;">${topProcess.map(([proc,val])=>`<div class="bar-row"><div class="bar-label">${proc}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxProc*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
-      </div>
-      <div class="card card-pad">
-        <div class="section-title">Tiempos de Respuesta</div>
-        <div style="margin-top:14px;">
-          <div class="pricing-row"><span>Tiempo promedio de respuesta del proveedor</span><span class="td-strong">3.4 días</span></div>
-          <div class="pricing-row"><span>Tiempo promedio de decisión del cliente</span><span class="td-strong">2.1 días</span></div>
-          <div class="pricing-row"><span>Tiempo promedio a la primera cotización</span><span class="td-strong">4.8 días</span></div>
-          <div class="pricing-row"><span>Tiempo promedio RFQ → adjudicación</span><span class="td-strong">11.6 días</span></div>
-        </div>
-      </div>
+    <div class="card card-pad" style="margin-top:16px;">
+      <div class="section-title">Proceso de Manufactura Más Solicitado</div>
+      <div style="margin-top:14px;">${topProcess.map(([proc,val])=>`<div class="bar-row"><div class="bar-label">${proc}</div><div class="bar-track"><div class="bar-fill" style="width:${val/maxProc*100}%;"></div></div><div class="bar-val">${val}</div></div>`).join('')}</div>
     </div>
   </div>`;
 };
@@ -9840,6 +9887,9 @@ const App = {
   // vista local, nada que persistir.
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
+  setAnalyticsCurrency(val){ STATE.ui.analyticsCurrency = val; route(); },
+  setAnalyticsRfqRange(val){ STATE.ui.analyticsRfqRange = val; route(); },
+  setAnalyticsTopMonth(val){ STATE.ui.analyticsTopMonth = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
   // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
   // App.deleteSupplierCsf. Quita el archivo real de Storage Y la entrada
