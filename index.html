@@ -3029,7 +3029,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsRfqMonth:'', analyticsTopMonth:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsTopMonth:'' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -7479,10 +7479,9 @@ ROUTES['innous/rate'] = function(id){
     ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
-// fix196/197: agrupa fechas en llaves "YYYY-M" (mes calendario, no "hace N
-// días") — usado tanto por el filtro de "RFQs por Mes" como por el de mes
-// específico de Top Clientes/Top Proveedores, para que los tres hablen del
-// mismo concepto de "mes".
+// fix196: agrupa fechas en llaves "YYYY-M" (mes calendario, no "hace N
+// días") — usado por el KPI "RFQs Este Mes" y por el filtro de mes
+// específico de Top Clientes/Top Proveedores.
 function analyticsMonthKey(d){ const dt=new Date(d); return dt.getFullYear()+'-'+(dt.getMonth()+1); }
 function analyticsMonthLabel(key){ const [y,m]=key.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString('es-MX',{month:'short',year:'numeric'}); }
 /* ---- INNOUS Analytics ---- */
@@ -7502,15 +7501,6 @@ ROUTES['innous/analytics'] = function(){
   const avgValue = withOrder.length? withOrder.reduce((s,p)=>s+customerPriceCur(p),0)/withOrder.length : 0;
   const revenue = withOrder.reduce((s,p)=>s+customerPriceCur(p),0);
   const margin = withOrder.reduce((s,p)=>s+(customerPriceCur(p)-supplierCostCurOf(p)-freightCur(p)),0);
-
-  // fix197: "RFQs por Mes" — un mes específico (o Todo), un solo total, sin
-  // lista. Mismo filtro de un-mes-o-todo que ya usan Top Clientes/Top
-  // Proveedores abajo, aplicado aquí a TODOS los RFQs (no solo los
-  // adjudicados — createdAt vive en cada proyecto sin importar si ya tiene
-  // orden).
-  const rfqMonth = STATE.ui.analyticsRfqMonth || '';
-  const rfqMonthOptions = [...new Set(PROJECTS.map(p=>analyticsMonthKey(p.createdAt)))].sort().reverse();
-  const rfqCount = rfqMonth ? PROJECTS.filter(p=>analyticsMonthKey(p.createdAt)===rfqMonth).length : PROJECTS.length;
 
   // fix196: filtro de mes específico compartido por Top Clientes/Top
   // Proveedores — "" = todo el tiempo (comportamiento de antes).
@@ -7545,17 +7535,6 @@ ROUTES['innous/analytics'] = function(){
     <div class="grid grid-2" style="margin-bottom:16px;">
       ${kpiCard('Ingresos', fmtCur(revenue), 'entre pedidos activos y completados','trending-up')}
       ${kpiCard('Margen Bruto', fmtCur(margin), (revenue?(margin/revenue*100).toFixed(1):0)+'% margen combinado','wallet')}
-    </div>
-    <div class="card card-pad" style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div class="section-title" style="margin:0;">RFQs por Mes</div>
-        <select onchange="App.setAnalyticsRfqMonth(this.value)">
-          <option value="" ${rfqMonth===''?'selected':''}>Todo</option>
-          ${rfqMonthOptions.map(k=>`<option value="${k}" ${rfqMonth===k?'selected':''}>${analyticsMonthLabel(k)}</option>`).join('')}
-        </select>
-      </div>
-      <div style="font-size:32px;font-weight:700;margin-top:14px;">${rfqCount}</div>
-      <div class="td-sub">${rfqMonth ? 'RFQs creados en '+analyticsMonthLabel(rfqMonth) : 'RFQs creados en total'}</div>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
       <select onchange="App.setAnalyticsTopMonth(this.value)">
@@ -9869,7 +9848,6 @@ const App = {
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
   setAnalyticsCurrency(val){ STATE.ui.analyticsCurrency = val; route(); },
-  setAnalyticsRfqMonth(val){ STATE.ui.analyticsRfqMonth = val; route(); },
   setAnalyticsTopMonth(val){ STATE.ui.analyticsTopMonth = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
   // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
