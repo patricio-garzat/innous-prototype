@@ -4297,10 +4297,8 @@ const NAV = {
     {id:'rfqs', label:'RFQs', icon:'file-text', path:'#/innous/rfqs'},
     {id:'customers', label:'Clientes', icon:'building-2', path:'#/innous/customers'},
     {id:'suppliers', label:'Proveedores', icon:'factory', path:'#/innous/suppliers'},
-    {id:'new-supplier', label:'Crear Cuenta de Proveedor', icon:'user-plus', path:'#/innous/new-supplier'},
     {id:'quotes', label:'Cotizaciones', icon:'file-diff', path:'#/innous/quotes'},
-    {id:'orders', label:'Pedidos', icon:'package', path:'#/innous/orders'},
-    {id:'production', label:'Producción', icon:'cog', path:'#/innous/production'},
+    {id:'orders', label:'Proyectos', icon:'package', path:'#/innous/orders'},
     {id:'analytics', label:'Analítica', icon:'bar-chart-3', path:'#/innous/analytics'},
     {id:'messages', label:'Mensajes', icon:'message-square', path:'#/innous/messages'},
     {id:'team-chat', label:'Chat de Equipo', icon:'users', path:'#/innous/team-chat'},
@@ -7248,6 +7246,20 @@ function refreshAccountInfoModalIfOpen(type, id){
 }
 
 /* ---- INNOUS Quotes (all quotes across platform) ---- */
+// fix193: estatus real de cada cotización de proveedor — Completada (el
+// proyecto ya se entregó y este proveedor fue el ganador), Activa (todavía
+// puede ganar: sigue en revisión, o ya ganó y el pedido está en curso), o
+// Rechazada (perdió — el cliente eligió a otro proveedor una vez que el RFQ
+// se adjudicó, o INNOUS cerró el RFQ por completo). Esta lista solo incluye
+// cotizaciones realmente enviadas (status==='submitted'), así que 'declined'
+// —que es cuando un proveedor rechaza una invitación sin haber cotizado
+// nada, ver App.declineTargetPrice— nunca aplica aquí.
+function innousQuoteStatusBadge(p, q){
+  if(p.status==='completed' && p.selectedSupplierId===q.supplierId) return '<span class="badge badge-purple">Completada</span>';
+  if(p.status==='rejected') return '<span class="badge badge-gray">Rechazada</span>';
+  if(p.selectedSupplierId && p.selectedSupplierId!==q.supplierId && ['awarded','in_production','completed'].includes(p.status)) return '<span class="badge badge-gray">Rechazada</span>';
+  return '<span class="badge badge-blue">Activa</span>';
+}
 ROUTES['innous/quotes'] = function(){
   const rows = PROJECTS.flatMap(p=>p.supplierQuotes.filter(q=>q.status==='submitted').map(q=>({p,q})));
   rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
@@ -7255,10 +7267,11 @@ ROUTES['innous/quotes'] = function(){
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones de proveedores enviadas en todos los RFQs</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportQuotes()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proveedor</th><th>Costo Total (MXN)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>En Shortlist</th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proveedor</th><th>Costo Total (MXN)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>En Shortlist</th><th>Estatus</th></tr></thead><tbody>
       ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${p.targetPriceSupplierBudgetMxn ? '<span class="badge badge-blue">Target Price</span>' : p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Sí</span>':'<span class="badge badge-gray">No</span>'}</td>
+        <td>${innousQuoteStatusBadge(p,q)}</td>
       </tr>`).join('')}
     </tbody></table></div></div>
   </div>`;
@@ -7354,9 +7367,9 @@ ROUTES['innous/orders'] = function(){
   const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   return `
   <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Pedidos</div><div class="page-subtitle">${orders.length} pedidos — activos y completados</div></div>
+    <div class="page-header"><div><div class="page-title">Proyectos</div><div class="page-subtitle">${orders.length} proyectos — activos y completados</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportOrders()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Proyecto</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th></tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
         <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))}</td>
@@ -7410,7 +7423,7 @@ ROUTES['innous/order'] = function(id){
   const nextStatus = innousNextOrderStatus(p);
   return `
   <div class="content-inner">
-    <div class="breadcrumb"><a href="#/innous/orders">Pedidos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
+    <div class="breadcrumb"><a href="#/innous/orders">Proyectos</a><i data-lucide="chevron-right" style="width:12px;height:12px;"></i><span>${p.id}</span></div>
     <div class="page-header"><div><div class="page-title">${p.projectName}</div><div class="page-subtitle mono">Pedido ${p.id} · ${customerName(p.customerId)} → ${supplierName(p.selectedSupplierId)}</div></div>
       <div class="page-actions">${orderStatusBadge(p)}
         <button class="btn btn-secondary" onclick="App.startChat('client','${p.customerId}','${p.id}')"><i data-lucide="message-square"></i>Mensaje al Cliente</button>
@@ -7444,29 +7457,6 @@ ROUTES['innous/rate'] = function(id){
     ${p.status==='completed' ? innousRatingCardHtml(p) : emptyState('clock','Aún no listo','Este pedido todavía no se marca como entregado.')}
   </div>`;
 };
-/* ---- INNOUS Production board ---- */
-ROUTES['innous/production'] = function(){
-  const orders = PROJECTS.filter(p=>p.order && p.status!=='completed').sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  const groups = ORDER_STATUS_FLOW.map(st=>({st, items: orders.filter(p=>p.order.status===st)}));
-  return `
-  <div class="content-inner">
-    <div class="page-header"><div><div class="page-title">Producción</div><div class="page-subtitle">${orders.length} pedidos en producción activa</div></div></div>
-    <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;">
-      ${groups.map(g=>`
-        <div style="min-width:230px;flex:0 0 230px;">
-          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--ink-tertiary);margin-bottom:10px;display:flex;justify-content:space-between;">${ORDER_STATUS_META[g.st].label}<span>${g.items.length}</span></div>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            ${g.items.map(p=>`<div class="card card-pad row-link" style="box-shadow:none;" onclick="navigate('#/innous/order/${p.id}')">
-              <div style="font-weight:700;font-size:12.5px;">${p.projectName}</div>
-              <div class="td-sub mono">${p.id}</div>
-              <div class="td-sub" style="margin-top:6px;">${supplierName(p.selectedSupplierId)}</div>
-            </div>`).join('') || `<div class="td-sub" style="padding:10px 0;">Vacío</div>`}
-          </div>
-        </div>`).join('')}
-    </div>
-  </div>`;
-};
-
 /* ---- INNOUS Analytics ---- */
 ROUTES['innous/analytics'] = function(){
   const withOrder = PROJECTS.filter(p=>p.order);
@@ -9918,10 +9908,11 @@ const App = {
   exportQuotes(){
     const rows = PROJECTS.flatMap(p=>p.supplierQuotes.filter(q=>q.status==='submitted').map(q=>({p,q})));
     rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
-    const headers = ['RFQ','Cliente','Proveedor','Costo Total (MXN)','Tiempo de Entrega (días)','Enviada','En Shortlist'];
+    const headers = ['RFQ','Cliente','Proveedor','Costo Total (MXN)','Tiempo de Entrega (días)','Enviada','En Shortlist','Estatus'];
     const data = rows.map(({p,q})=>[
       p.id, customerName(p.customerId), supplierName(q.supplierId), q.quotedTotal, q.leadTimeDays, fmtDate(q.submittedAt),
       p.targetPriceSupplierBudgetMxn ? 'Target Price' : (p.shortlist.find(s=>s.supplierId===q.supplierId) ? 'Sí' : 'No'),
+      innousQuoteStatusBadge(p,q).replace(/<[^>]+>/g,''),
     ]);
     exportRowsToExcel(`Cotizaciones-${exportDateStamp()}.xlsx`, 'Cotizaciones', headers, data);
   },
