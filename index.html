@@ -1579,6 +1579,12 @@ let PROJECTS = [];
 // "Equipo" section in Settings. Loaded once at login (enterAppAsUser) and
 // re-fetched after adding/removing/changing someone (App.refreshInnousTeam).
 let INNOUS_TEAM = [];
+// fix200: reportes de bug mandados desde el botón "Reportar un Problema" de
+// las pantallas de antes de iniciar sesión — solo INNOUS los puede leer
+// (ver bug_reports en supabase-fix200-reportes-de-bug.sql). Cargados una
+// vez al entrar (refreshBugReports) y re-cargados después de marcar uno
+// como resuelto (App.setBugReportStatus).
+let BUG_REPORTS = [];
 
 /* ---------- Real backend (Supabase) ----------
    Real, shared authentication and data — a client on one device and a
@@ -1695,6 +1701,15 @@ async function refreshInnousTeam(){
     id: row.user_id, name: row.display_name||'—', email: row.email||'',
     username: row.username||'', access: row.innous_access||'admin', photo: row.photo_url||null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
+}
+async function refreshBugReports(){
+  const { data, error } = await sb.from('bug_reports').select('*').order('created_at', { ascending:false });
+  if(error){ console.error('refreshBugReports failed', error); return; }
+  BUG_REPORTS = (data||[]).map(row=>({
+    id: row.id, message: row.message, reporterName: row.reporter_name||'', reporterEmail: row.reporter_email||'',
+    reporterRole: row.reporter_role||null, pageUrl: row.page_url||'', userAgent: row.user_agent||'',
+    status: row.status||'open', createdAt: new Date(row.created_at),
+  }));
 }
 /* ---- fix132: chat interno entre compañeros de INNOUS — mensajes
    directos normales (con nombre y foto real, sin la confidencialidad que
@@ -2559,6 +2574,7 @@ async function enterAppAsUser(user){
     // fix132: chat interno entre compañeros de INNOUS — ver
     // refreshInnousTeamChats/ROUTES['innous/team-chat'].
     await refreshInnousTeamChats();
+    await refreshBugReports();
   }
   // Settings (fix64) — the `settings` row is readable by every role (see
   // "todos pueden leer settings" in supabase-schema.sql), not just INNOUS,
@@ -3029,7 +3045,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsTopMonth:'', rfqSortKey:'createdAt', rfqSortDir:'desc', quotesSortKey:'submittedAt', quotesSortDir:'desc', projectsSortKey:'createdAt', projectsSortDir:'desc' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsTopMonth:'', rfqSortKey:'createdAt', rfqSortDir:'desc', quotesSortKey:'submittedAt', quotesSortDir:'desc', projectsSortKey:'createdAt', projectsSortDir:'desc', bugReportDraft:null, bugReportsFilter:'open' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -4302,6 +4318,7 @@ const NAV = {
     {id:'analytics', label:'Analítica', icon:'bar-chart-3', path:'#/innous/analytics'},
     {id:'messages', label:'Mensajes', icon:'message-square', path:'#/innous/messages'},
     {id:'team-chat', label:'Chat de Equipo', icon:'users', path:'#/innous/team-chat'},
+    {id:'reports', label:'Reportes', icon:'bug', path:'#/innous/reports'},
     {id:'settings', label:'Configuración', icon:'settings', path:'#/innous/settings'},
   ],
   SUPPLIER: [
@@ -4534,6 +4551,12 @@ const AUTH_I18N = {
     signupClientSub:'Start sourcing verified manufacturing partners in Mexico.',
     industry:'Industry', selectIndustry:'Select your industry',
     copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. All rights reserved.`,
+    reportBug:'Report a Bug', reportBugTitle:'Report a Bug',
+    reportBugSub:"Found something broken, a glitch, or anything that just doesn't look right? Tell us — it goes straight to the INNOUS team.",
+    reportBugNamePh:'Your name (optional)', reportBugEmailPh:'Your email (optional, so we can follow up)',
+    reportBugMessagePh:'What happened? The more detail, the better.',
+    reportBugSubmit:'Send Report', reportBugSuccess:'Thanks — your report is on its way to INNOUS.',
+    reportBugRequired:'Please describe the problem before sending.',
   },
   es: {
     newHere:'¿Nuevo aquí?', alreadyHaveAccount:'¿Ya tienes cuenta?',
@@ -4566,6 +4589,12 @@ const AUTH_I18N = {
     signupClientSub:'Empieza a buscar proveedores de manufactura verificados en México.',
     industry:'Industria', selectIndustry:'Selecciona tu industria',
     copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. Todos los derechos reservados.`,
+    reportBug:'Reportar un Problema', reportBugTitle:'Reportar un Problema',
+    reportBugSub:'¿Encontraste algo roto, un glitch, o algo que simplemente no se ve bien? Cuéntanos — le llega directo al equipo de INNOUS.',
+    reportBugNamePh:'Tu nombre (opcional)', reportBugEmailPh:'Tu correo (opcional, para poder darte seguimiento)',
+    reportBugMessagePh:'¿Qué pasó? Entre más detalle, mejor.',
+    reportBugSubmit:'Enviar Reporte', reportBugSuccess:'Gracias — tu reporte ya va en camino a INNOUS.',
+    reportBugRequired:'Describe el problema antes de enviar.',
   },
 };
 function at(key){ const d = AUTH_I18N[STATE.ui.authLang] || AUTH_I18N.en; return d[key] !== undefined ? d[key] : AUTH_I18N.en[key]; }
@@ -4721,8 +4750,29 @@ function authTopbar(wide){
 function authFooterLinks(){
   const year = new Date().getFullYear();
   return `<div class="auth-footer-links">
-    <div><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a></div>
+    <div><a onclick="App.openLegalModal('privacy')">Aviso de Privacidad</a> · <a onclick="App.openLegalModal('terms')">Términos y Condiciones</a> · <a onclick="App.openBugReportModal()">${at('reportBug')}</a></div>
     <div class="auth-footer-copyright">${at('copyrightLine')(year)}</div>
+  </div>`;
+}
+// fix200: botón "Reportar un Problema" en el footer de todas las pantallas
+// de antes de iniciar sesión (authFooterLinks vive en todas ellas — landing,
+// login, signup, forgot password, etc.) — quien note un bug puede mandarlo
+// sin necesitar cuenta. Nombre/correo son opcionales (a propósito: no todo
+// el mundo quiere dar su correo solo para reportar un glitch), el mensaje
+// es lo único obligatorio. page_url/user_agent se mandan solos, sin pedirle
+// nada al usuario, para que INNOUS tenga contexto técnico de dónde pasó.
+function bugReportModalHtml(){
+  if(!STATE.ui.bugReportDraft) STATE.ui.bugReportDraft = { name:'', email:'', message:'' };
+  const d = STATE.ui.bugReportDraft;
+  const upd = (field)=>`STATE.ui.bugReportDraft.${field}=this.value`;
+  return `
+  <div class="modal-header"><h3>${at('reportBugTitle')}</h3><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
+  <div class="modal-body">
+    <div class="section-sub" style="margin-bottom:14px;">${at('reportBugSub')}</div>
+    <div class="form-group"><input type="text" value="${escAttr(d.name)}" placeholder="${at('reportBugNamePh')}" oninput="${upd('name')}"></div>
+    <div class="form-group"><input type="email" value="${escAttr(d.email)}" placeholder="${at('reportBugEmailPh')}" oninput="${upd('email')}"></div>
+    <div class="form-group" style="margin-bottom:0;"><textarea style="width:100%;min-height:110px;" placeholder="${at('reportBugMessagePh')}" oninput="${upd('message')}">${escAttr(d.message)}</textarea></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn btn-primary" onclick="App.submitBugReport()"><i data-lucide="send"></i>${at('reportBugSubmit')}</button></div>
   </div>`;
 }
 function stepDotsHtml(total, current){
@@ -7861,6 +7911,44 @@ function editTeammateEmailModalHtml(){
   <div class="modal-footer"><button class="btn btn-secondary" onclick="App.closeEditTeammateEmailModal()">Cancelar</button><button class="btn btn-primary" onclick="App.changeTeammateEmail()"><i data-lucide="mail"></i>Guardar Correo Nuevo</button></div>
   `;
 }
+/* ---- fix200: Reportes — lo que llega del botón "Reportar un Problema"
+   de las pantallas de antes de iniciar sesión (ver App.openBugReportModal/
+   authFooterLinks). Simple a propósito: lista + filtro Abiertos/Resueltos/
+   Todos + un botón para marcar resuelto, nada de asignar/priorizar — es
+   un buzón, no un sistema de tickets. */
+ROUTES['innous/reports'] = function(){
+  const filter = STATE.ui.bugReportsFilter || 'open';
+  const openCount = BUG_REPORTS.filter(r=>r.status==='open').length;
+  const resolvedCount = BUG_REPORTS.filter(r=>r.status==='resolved').length;
+  const list = BUG_REPORTS.filter(r=>filter==='all' ? true : r.status===filter);
+  const roleLabel = { CLIENT:'Cliente', SUPPLIER:'Proveedor', INNOUS:'INNOUS' };
+  return `
+  <div class="content-inner">
+    <div class="page-header"><div><div class="page-title">Reportes</div><div class="page-subtitle">Problemas reportados desde las pantallas de inicio de sesión</div></div></div>
+    <div class="markup-chip-row" style="margin-bottom:16px;">
+      <button type="button" class="markup-chip ${filter==='open'?'active':''}" onclick="App.setBugReportsFilter('open')">Abiertos (${openCount})</button>
+      <button type="button" class="markup-chip ${filter==='resolved'?'active':''}" onclick="App.setBugReportsFilter('resolved')">Resueltos (${resolvedCount})</button>
+      <button type="button" class="markup-chip ${filter==='all'?'active':''}" onclick="App.setBugReportsFilter('all')">Todos</button>
+    </div>
+    ${list.length ? list.map(r=>`
+    <div class="card card-pad" style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:700;font-size:13px;">${r.reporterName ? escAttr(r.reporterName) : 'Anónimo'}${r.reporterEmail?` · <span class="td-sub" style="font-weight:400;">${escAttr(r.reporterEmail)}</span>`:''}</div>
+          <div class="td-sub">${fmtDate(r.createdAt)}${r.reporterRole?' · '+(roleLabel[r.reporterRole]||r.reporterRole):''}</div>
+        </div>
+        <span class="badge ${r.status==='open'?'badge-amber':'badge-green'}">${r.status==='open'?'Abierto':'Resuelto'}</span>
+      </div>
+      <div style="margin-top:10px;white-space:pre-wrap;font-size:13.5px;">${escAttr(r.message)}</div>
+      ${r.pageUrl ? `<div class="td-sub" style="margin-top:8px;word-break:break-all;">${escAttr(r.pageUrl)}</div>` : ''}
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        ${r.status==='open'
+          ? `<button class="btn btn-secondary btn-sm" onclick="App.setBugReportStatus('${r.id}','resolved')"><i data-lucide="check"></i>Marcar Resuelto</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="App.setBugReportStatus('${r.id}','open')"><i data-lucide="rotate-ccw"></i>Reabrir</button>`}
+      </div>
+    </div>`).join('') : emptyState('bug', filter==='open'?'Sin reportes abiertos':'Sin reportes', 'Los problemas que reporten desde la pantalla de inicio aparecerán aquí.')}
+  </div>`;
+};
 ROUTES['innous/settings'] = function(){
   if(!STATE.ui.settingsDraft) STATE.ui.settingsDraft = { legalName:STATE.settings.legalName, address:STATE.settings.address, rfc:STATE.settings.rfc, phone:STATE.settings.phone, email:STATE.settings.email, region:STATE.settings.region, defaultMarkupPct:STATE.settings.defaultMarkupPct, defaultExchangeRate:STATE.settings.defaultExchangeRate, logoUrl:STATE.settings.logoUrl, notif:{...STATE.settings.notif} };
   const d = STATE.ui.settingsDraft;
@@ -9367,6 +9455,28 @@ const App = {
 
   /* ---- Legal: Aviso de Privacidad / Términos y Condiciones ---- */
   openLegalModal(type){ openModal(legalModalHtml(type), true); },
+  openBugReportModal(){ STATE.ui.bugReportDraft = { name:'', email:'', message:'' }; openModal(bugReportModalHtml()); },
+  async submitBugReport(){
+    const d = STATE.ui.bugReportDraft || {};
+    const message = (d.message||'').trim();
+    if(!message){ showToast(at('reportBugRequired')); return; }
+    const { error } = await sb.from('bug_reports').insert({
+      message, reporter_name: (d.name||'').trim()||null, reporter_email: (d.email||'').trim()||null,
+      reporter_role: STATE.role||null, page_url: location.href, user_agent: navigator.userAgent,
+    });
+    if(error){ showToast(error.message); return; }
+    STATE.ui.bugReportDraft = null;
+    closeModal();
+    showToast(at('reportBugSuccess'), 'success');
+  },
+  setBugReportsFilter(val){ STATE.ui.bugReportsFilter = val; route(); },
+  async setBugReportStatus(id, status){
+    const r = BUG_REPORTS.find(x=>x.id===id); if(!r) return;
+    const { error } = await sb.from('bug_reports').update({ status }).eq('id', id);
+    if(error){ showToast(error.message); return; }
+    r.status = status;
+    route();
+  },
   openWhyInnousModal(){ openModal(whyInnousModalHtml(), true); },
   openNegotiationHistoryModal(pid){ openModal(negotiationHistoryModalHtml(pid), true); },
 
@@ -11828,6 +11938,7 @@ const INNOUS_VIEWER_BLOCKED_METHODS = [
   'advanceOrderStatus','revertOrderStatus','confirmShipOrder',
   'submitClientRating','submitInnousRating','sendChatMessage',
   'sendChatCard','deleteChat','submitSignup','sendInnousTeammatePasswordReset',
+  'setBugReportStatus',
 ];
 // fix130: dos capas más sobre el candado de viewer de arriba, para los
 // dos niveles nuevos —
