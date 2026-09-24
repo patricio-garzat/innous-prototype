@@ -1401,21 +1401,21 @@ const INDUSTRIES = ['Automotive','Industrial Equipment','Heavy Machinery','Aeros
 
 /* ---------- Suppliers ---------- */
 const SUPPLIERS = [
-  {id:'s1',name:'Monterrey Precision Machining',contactName:'Ricardo Villarreal',email:'rvillarreal@mtyprecision.mx',phone:'+52 81 5512 3401',city:'Monterrey, NL',capabilities:['CNC Machining'],machines:['5-axis CNC (Haas)','3-axis CNC','CNC Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 500–5,000 units/mo',operators:64,yearsOperating:14,registeredAt:daysFromNow(-520),rating:4.9,onTime:98,quality:99,projects:214},
-  {id:'s2',name:'Querétaro Advanced Manufacturing',contactName:'Fernanda Aguilar',email:'faguilar@qroadvmfg.mx',phone:'+52 442 224 8817',city:'Querétaro, QRO',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'High-volume · 1,000–20,000 units/mo',operators:118,yearsOperating:19,registeredAt:daysFromNow(-498),rating:4.8,onTime:96,quality:98,projects:187},
-  {id:'s3',name:'Bajío Metal Works',contactName:'Hector Salcedo',email:'hsalcedo@bajiometal.mx',phone:'+52 477 713 2290',city:'León, GTO',capabilities:['Stamping','Fabrication / Pailería'],machines:['400T Press','Progressive Die','Press Brake'],certs:['ISO 9001'],capacity:'High-volume · 5,000–50,000 units/mo',operators:203,yearsOperating:22,registeredAt:daysFromNow(-471),rating:4.6,onTime:92,quality:95,projects:143},
-  {id:'s4',name:'Saltillo Foundry Group',contactName:'Adriana Cavazos',email:'acavazos@saltillofoundry.mx',phone:'+52 844 415 6602',city:'Saltillo, COAH',capabilities:['Foundry / Casting'],machines:['Sand Casting','Die Casting','CNC Finishing'],certs:['ISO 9001','IATF 16949'],capacity:'Mid-volume · 300–8,000 units/mo',operators:87,yearsOperating:17,registeredAt:daysFromNow(-449),rating:4.5,onTime:90,quality:94,projects:98},
-  {id:'s5',name:'Tijuana CNC Solutions',contactName:'Miguel Ángel Rosas',email:'mrosas@tjcncsolutions.mx',phone:'+52 664 973 4415',city:'Tijuana, BC',capabilities:['CNC Machining'],machines:['4-axis CNC','3-axis CNC','Swiss Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 200–4,000 units/mo',operators:52,yearsOperating:11,registeredAt:daysFromNow(-402),rating:4.7,onTime:95,quality:97,projects:126},
-  {id:'s6',name:'Guadalajara Industrial Fab',contactName:'Paulina Orozco',email:'porozco@gdlindfab.mx',phone:'+52 33 3811 9926',city:'Guadalajara, JAL',capabilities:['Fabrication / Pailería','Cutting'],machines:['Laser Cutting','Plasma Cutting','MIG/TIG Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 100–3,000 units/mo',operators:46,yearsOperating:9,registeredAt:daysFromNow(-376),rating:4.6,onTime:93,quality:95,projects:112},
-  {id:'s7',name:'CDMX Precision Tooling',contactName:'Jorge Iturbide',email:'jiturbide@cdmxtooling.mx',phone:'+52 55 5290 6634',city:'Ciudad de México',capabilities:['CNC Machining','Conventional Machining'],machines:['3-axis CNC','Manual Lathe','Manual Mill'],certs:['ISO 9001'],capacity:'Low-mid volume · 50–2,000 units/mo',operators:31,yearsOperating:26,registeredAt:daysFromNow(-350),rating:4.8,onTime:97,quality:98,projects:161},
-  {id:'s8',name:'Juárez Manufacturing Partners',contactName:'Claudia Nevárez',email:'cnevarez@juarezmfgpartners.mx',phone:'+52 656 629 1187',city:'Ciudad Juárez, CHIH',capabilities:['Stamping','CNC Machining'],machines:['Progressive Die','300T Press','5-axis CNC'],certs:['IATF 16949','ISO 9001'],capacity:'High-volume · 10,000–100,000 units/mo',operators:266,yearsOperating:24,registeredAt:daysFromNow(-320),rating:4.7,onTime:94,quality:96,projects:203},
-  {id:'s9',name:'Puebla Casting & Foundry',contactName:'Israel Mendoza',email:'imendoza@pueblacasting.mx',phone:'+52 222 348 7720',city:'Puebla, PUE',capabilities:['Foundry / Casting'],machines:['Investment Casting','Sand Casting'],certs:['ISO 9001'],capacity:'Low-mid volume · 100–2,500 units/mo',operators:39,yearsOperating:8,registeredAt:daysFromNow(-289),rating:4.4,onTime:89,quality:92,projects:76},
-  {id:'s10',name:'Chihuahua Steel Fabrication',contactName:'Lorena Baca',email:'lbaca@chihsteelfab.mx',phone:'+52 614 481 3356',city:'Chihuahua, CHIH',capabilities:['Fabrication / Pailería'],machines:['Plasma Cutting','Press Brake','Robotic Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 50–1,500 units/mo',operators:34,yearsOperating:6,registeredAt:daysFromNow(-247),rating:4.5,onTime:91,quality:94,projects:88},
-  {id:'s11',name:'Mexicali Machining Co.',contactName:'Óscar Beltrán',email:'obeltran@mxlmachining.mx',phone:'+52 686 552 9048',city:'Mexicali, BC',capabilities:['CNC Machining','Conventional Machining'],machines:['4-axis CNC','Manual Lathe'],certs:['ISO 9001'],capacity:'Mid-volume · 200–5,000 units/mo',operators:58,yearsOperating:13,registeredAt:daysFromNow(-214),rating:4.8,onTime:96,quality:97,projects:154},
-  {id:'s12',name:'San Luis Potosí Metal Cutting',contactName:'Verónica Piña',email:'vpina@slpmetalcutting.mx',phone:'+52 444 825 1173',city:'San Luis Potosí, SLP',capabilities:['Cutting','Stamping'],machines:['Laser Cutting','Waterjet','200T Press'],certs:['ISO 9001'],capacity:'High-volume · 5,000–40,000 units/mo',operators:142,yearsOperating:16,registeredAt:daysFromNow(-183),rating:4.6,onTime:93,quality:95,projects:119},
-  {id:'s13',name:'Toluca Precision Works',contactName:'Emilio Zarate',email:'ezarate@tolucaprecision.mx',phone:'+52 722 214 6690',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',operators:74,yearsOperating:18,registeredAt:daysFromNow(-152),rating:4.9,onTime:97,quality:99,projects:171},
-  {id:'s14',name:'Hermosillo Industrial Group',contactName:'Alejandra Duarte',email:'aduarte@hmoindgroup.mx',phone:'+52 662 289 4470',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',operators:81,yearsOperating:12,registeredAt:daysFromNow(-118),rating:4.5,onTime:90,quality:93,projects:104},
-  {id:'s15',name:'Aguascalientes Advanced CNC',contactName:'Diego Fuentes',email:'dfuentes@agsadvcnc.mx',phone:'+52 449 916 5528',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',operators:96,yearsOperating:15,registeredAt:daysFromNow(-64),rating:4.9,onTime:98,quality:99,projects:196},
+  {id:'s1',name:'Monterrey Precision Machining',contactName:'Ricardo Villarreal',email:'rvillarreal@mtyprecision.mx',phone:'+52 81 5512 3401',city:'Monterrey, NL',capabilities:['CNC Machining'],machines:['5-axis CNC (Haas)','3-axis CNC','CNC Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 500–5,000 units/mo',operators:64,areaM2:3200,yearsOperating:14,registeredAt:daysFromNow(-520),rating:4.9,onTime:98,quality:99,projects:214},
+  {id:'s2',name:'Querétaro Advanced Manufacturing',contactName:'Fernanda Aguilar',email:'faguilar@qroadvmfg.mx',phone:'+52 442 224 8817',city:'Querétaro, QRO',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'High-volume · 1,000–20,000 units/mo',operators:118,areaM2:5800,yearsOperating:19,registeredAt:daysFromNow(-498),rating:4.8,onTime:96,quality:98,projects:187},
+  {id:'s3',name:'Bajío Metal Works',contactName:'Hector Salcedo',email:'hsalcedo@bajiometal.mx',phone:'+52 477 713 2290',city:'León, GTO',capabilities:['Stamping','Fabrication / Pailería'],machines:['400T Press','Progressive Die','Press Brake'],certs:['ISO 9001'],capacity:'High-volume · 5,000–50,000 units/mo',operators:203,areaM2:9500,yearsOperating:22,registeredAt:daysFromNow(-471),rating:4.6,onTime:92,quality:95,projects:143},
+  {id:'s4',name:'Saltillo Foundry Group',contactName:'Adriana Cavazos',email:'acavazos@saltillofoundry.mx',phone:'+52 844 415 6602',city:'Saltillo, COAH',capabilities:['Foundry / Casting'],machines:['Sand Casting','Die Casting','CNC Finishing'],certs:['ISO 9001','IATF 16949'],capacity:'Mid-volume · 300–8,000 units/mo',operators:87,areaM2:4200,yearsOperating:17,registeredAt:daysFromNow(-449),rating:4.5,onTime:90,quality:94,projects:98},
+  {id:'s5',name:'Tijuana CNC Solutions',contactName:'Miguel Ángel Rosas',email:'mrosas@tjcncsolutions.mx',phone:'+52 664 973 4415',city:'Tijuana, BC',capabilities:['CNC Machining'],machines:['4-axis CNC','3-axis CNC','Swiss Turning'],certs:['ISO 9001'],capacity:'Mid-volume · 200–4,000 units/mo',operators:52,areaM2:2600,yearsOperating:11,registeredAt:daysFromNow(-402),rating:4.7,onTime:95,quality:97,projects:126},
+  {id:'s6',name:'Guadalajara Industrial Fab',contactName:'Paulina Orozco',email:'porozco@gdlindfab.mx',phone:'+52 33 3811 9926',city:'Guadalajara, JAL',capabilities:['Fabrication / Pailería','Cutting'],machines:['Laser Cutting','Plasma Cutting','MIG/TIG Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 100–3,000 units/mo',operators:46,areaM2:2200,yearsOperating:9,registeredAt:daysFromNow(-376),rating:4.6,onTime:93,quality:95,projects:112},
+  {id:'s7',name:'CDMX Precision Tooling',contactName:'Jorge Iturbide',email:'jiturbide@cdmxtooling.mx',phone:'+52 55 5290 6634',city:'Ciudad de México',capabilities:['CNC Machining','Conventional Machining'],machines:['3-axis CNC','Manual Lathe','Manual Mill'],certs:['ISO 9001'],capacity:'Low-mid volume · 50–2,000 units/mo',operators:31,areaM2:1600,yearsOperating:26,registeredAt:daysFromNow(-350),rating:4.8,onTime:97,quality:98,projects:161},
+  {id:'s8',name:'Juárez Manufacturing Partners',contactName:'Claudia Nevárez',email:'cnevarez@juarezmfgpartners.mx',phone:'+52 656 629 1187',city:'Ciudad Juárez, CHIH',capabilities:['Stamping','CNC Machining'],machines:['Progressive Die','300T Press','5-axis CNC'],certs:['IATF 16949','ISO 9001'],capacity:'High-volume · 10,000–100,000 units/mo',operators:266,areaM2:12000,yearsOperating:24,registeredAt:daysFromNow(-320),rating:4.7,onTime:94,quality:96,projects:203},
+  {id:'s9',name:'Puebla Casting & Foundry',contactName:'Israel Mendoza',email:'imendoza@pueblacasting.mx',phone:'+52 222 348 7720',city:'Puebla, PUE',capabilities:['Foundry / Casting'],machines:['Investment Casting','Sand Casting'],certs:['ISO 9001'],capacity:'Low-mid volume · 100–2,500 units/mo',operators:39,areaM2:1900,yearsOperating:8,registeredAt:daysFromNow(-289),rating:4.4,onTime:89,quality:92,projects:76},
+  {id:'s10',name:'Chihuahua Steel Fabrication',contactName:'Lorena Baca',email:'lbaca@chihsteelfab.mx',phone:'+52 614 481 3356',city:'Chihuahua, CHIH',capabilities:['Fabrication / Pailería'],machines:['Plasma Cutting','Press Brake','Robotic Welding'],certs:['ISO 9001'],capacity:'Mid-volume · 50–1,500 units/mo',operators:34,areaM2:1700,yearsOperating:6,registeredAt:daysFromNow(-247),rating:4.5,onTime:91,quality:94,projects:88},
+  {id:'s11',name:'Mexicali Machining Co.',contactName:'Óscar Beltrán',email:'obeltran@mxlmachining.mx',phone:'+52 686 552 9048',city:'Mexicali, BC',capabilities:['CNC Machining','Conventional Machining'],machines:['4-axis CNC','Manual Lathe'],certs:['ISO 9001'],capacity:'Mid-volume · 200–5,000 units/mo',operators:58,areaM2:2900,yearsOperating:13,registeredAt:daysFromNow(-214),rating:4.8,onTime:96,quality:97,projects:154},
+  {id:'s12',name:'San Luis Potosí Metal Cutting',contactName:'Verónica Piña',email:'vpina@slpmetalcutting.mx',phone:'+52 444 825 1173',city:'San Luis Potosí, SLP',capabilities:['Cutting','Stamping'],machines:['Laser Cutting','Waterjet','200T Press'],certs:['ISO 9001'],capacity:'High-volume · 5,000–40,000 units/mo',operators:142,areaM2:6800,yearsOperating:16,registeredAt:daysFromNow(-183),rating:4.6,onTime:93,quality:95,projects:119},
+  {id:'s13',name:'Toluca Precision Works',contactName:'Emilio Zarate',email:'ezarate@tolucaprecision.mx',phone:'+52 722 214 6690',city:'Toluca, EDOMEX',capabilities:['CNC Machining','Fabrication / Pailería'],machines:['5-axis CNC','Laser Cutting','TIG Welding'],certs:['ISO 9001','AS9100'],capacity:'Mid-volume · 300–6,000 units/mo',operators:74,areaM2:3600,yearsOperating:18,registeredAt:daysFromNow(-152),rating:4.9,onTime:97,quality:99,projects:171},
+  {id:'s14',name:'Hermosillo Industrial Group',contactName:'Alejandra Duarte',email:'aduarte@hmoindgroup.mx',phone:'+52 662 289 4470',city:'Hermosillo, SON',capabilities:['Foundry / Casting','CNC Machining'],machines:['Die Casting','3-axis CNC Finishing'],certs:['ISO 9001'],capacity:'Mid-volume · 500–7,000 units/mo',operators:81,areaM2:3900,yearsOperating:12,registeredAt:daysFromNow(-118),rating:4.5,onTime:90,quality:93,projects:104},
+  {id:'s15',name:'Aguascalientes Advanced CNC',contactName:'Diego Fuentes',email:'dfuentes@agsadvcnc.mx',phone:'+52 449 916 5528',city:'Aguascalientes, AGS',capabilities:['CNC Machining'],machines:['5-axis CNC (Mazak)','Swiss Turning','CMM Inspection'],certs:['ISO 9001','IATF 16949'],capacity:'High-volume · 1,000–15,000 units/mo',operators:96,areaM2:4600,yearsOperating:15,registeredAt:daysFromNow(-64),rating:4.9,onTime:98,quality:99,projects:196},
 ].filter(s=>!loadDeletedDemoIds().includes(s.id));
 
 /* ---------- Project / RFQ templates ---------- */
@@ -1659,7 +1659,7 @@ function supplierRowToJs(row){
     // Situación Fiscal (see supplierBillingSection / App.onSupplierCsfSelected).
     rfc: row.rfc||'', address: row.address||'', legalName: row.legal_name||'', csfFilePath: row.csf_file_path||null,
     city: row.city||'', capabilities: row.capabilities||[], machines: row.machines||[], certs: row.certs||[],
-    capacity: row.capacity||'Not set', operators: row.operators||0, yearsOperating: row.years_operating||0,
+    capacity: row.capacity||'Not set', operators: row.operators||0, areaM2: row.area_m2||0, yearsOperating: row.years_operating||0,
     registeredAt: row.registered_at ? new Date(row.registered_at) : null,
     rating: row.rating||0, onTime: row.on_time_pct||0, quality: row.quality_pct||0, projects: row.projects_won||0,
     photo: row.photo_url || null, chats: {},
@@ -3147,7 +3147,7 @@ function clearRealData(){
 // starts genuinely empty (fix87), so the old demo persona ids (c1/s1) never
 // exist until a real account is signed up.
 function currentClient(){ return CUSTOMERS.find(c=>c.id===STATE.clientId) || {id:STATE.clientId, company:'No Client Account', contact:'—', email:'', phone:'', city:'', industry:'', position:'', address:'', registeredAt:null, chats:{}, photo:null}; }
-function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, yearsOperating:0, registeredAt:null, chats:{}, rating:0, onTime:0, quality:0, projects:0, photo:null}; }
+function currentSupplier(){ return SUPPLIERS.find(s=>s.id===STATE.supplierId) || {id:STATE.supplierId, name:'No Supplier Account', contactName:'—', email:'', phone:'', city:'', capabilities:[], machines:[], certs:[], capacity:'', operators:0, areaM2:0, yearsOperating:0, registeredAt:null, chats:{}, rating:0, onTime:0, quality:0, projects:0, photo:null}; }
 // A customer/supplier can have several NAMED chats with INNOUS at once
 // (e.g. "RFQ-2026-0003", "RFQ-2026-0004", "General") — each its own thread,
 // not just one continuous stream. chatThread gets (and lazily creates) the
@@ -6942,6 +6942,7 @@ ROUTES['innous/supplier'] = function(id){
       <div class="info-grid" style="margin-top:12px;">
         <div><div class="info-item-label">Ubicación</div><div class="info-item-val">${s.city||'—'}</div></div>
         <div><div class="info-item-label">Operadores</div><div class="info-item-val">${s.operators||'—'}</div></div>
+        <div><div class="info-item-label">Área del Taller</div><div class="info-item-val">${s.areaM2?s.areaM2+' m²':'—'}</div></div>
         <div><div class="info-item-label">Años Operando</div><div class="info-item-val">${s.yearsOperating||'—'}</div></div>
         <div><div class="info-item-label">Registrado en INNOUS</div><div class="info-item-val">${s.registeredAt?fmtDate(s.registeredAt):'—'}</div></div>
         <div><div class="info-item-label">Capacidad</div><div class="info-item-val">${s.capacity||'—'}</div></div>
@@ -7036,7 +7037,12 @@ function csfAddressLine(f){
    display name. `name`/`city` already exist as plain supplier-signup
    columns; this is just the first time they're editable after the fact. */
 function supplierCompanySection(s){
-  if(!STATE.ui.supplierCompanyDrafts[s.id]) STATE.ui.supplierCompanyDrafts[s.id] = { name: s.name||'', city: s.city||'' };
+  // fix194: operators/areaM2 ya existían como datos del proveedor (se veían
+  // en su ficha, ROUTES['innous/supplier']) pero no había ningún formulario
+  // real donde ponerlos — ni al crear la cuenta (ROUTES['innous/new-supplier']
+  // no los pide) ni aquí. Se agregan aquí, junto a Nombre/Ubicación, que es
+  // donde vive el resto de "Datos de la Empresa" editable.
+  if(!STATE.ui.supplierCompanyDrafts[s.id]) STATE.ui.supplierCompanyDrafts[s.id] = { name: s.name||'', city: s.city||'', operators: s.operators||'', areaM2: s.areaM2||'' };
   const d = STATE.ui.supplierCompanyDrafts[s.id];
   const upd = (field)=>`App.updateSupplierCompanyDraft('${s.id}','${field}',this.value)`;
   return `
@@ -7045,6 +7051,10 @@ function supplierCompanySection(s){
     <div class="form-row" style="margin-top:12px;">
       <div class="form-group"><label class="field-label">Nombre de la Empresa</label><input type="text" value="${escAttr(d.name)}" oninput="${upd('name')}"></div>
       <div class="form-group"><label class="field-label">Ubicación</label><input type="text" value="${escAttr(d.city)}" placeholder="Ciudad, estado" oninput="${upd('city')}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="field-label">Cantidad de Operadores</label><input type="number" min="0" value="${escAttr(d.operators)}" oninput="${upd('operators')}"></div>
+      <div class="form-group"><label class="field-label">Área del Taller (m²)</label><input type="number" min="0" value="${escAttr(d.areaM2)}" oninput="${upd('areaM2')}"></div>
     </div>
   </div>`;
 }
@@ -10662,6 +10672,8 @@ const App = {
     // supplier already logging in fine never silently loses their username.
     const next = {
       name: (cd.name||'').trim()||s.name, city: (cd.city||'').trim(),
+      operators: cd.operators!==undefined && cd.operators!=='' ? parseInt(cd.operators,10)||0 : (s.operators||0),
+      areaM2: cd.areaM2!==undefined && cd.areaM2!=='' ? parseInt(cd.areaM2,10)||0 : (s.areaM2||0),
       contactName: (kd.contactName||'').trim(), position: (kd.position||'').trim(), phone: (kd.phone||'').trim(), email: (kd.email||'').trim(),
       username: (kd.username||'').trim().toLowerCase()||s.username||'',
       capabilities: pd.capabilities!==undefined ? pd.capabilities : (s.capabilities||[]),
@@ -10673,7 +10685,7 @@ const App = {
     if(next.username && !/^[a-z0-9._-]{3,32}$/.test(next.username)){ showToast('El nombre de usuario debe tener 3-32 caracteres: letras, números, puntos, guiones o guion bajo, sin espacios.'); return; }
     if(isRealAccountId(id)){
       const { error } = await sb.from('suppliers').update({
-        name: next.name, city: next.city, contact_name: next.contactName, position: next.position,
+        name: next.name, city: next.city, operators: next.operators, area_m2: next.areaM2, contact_name: next.contactName, position: next.position,
         phone: next.phone, email: next.email, username: next.username||null, capabilities: next.capabilities, certs: next.certs,
         machines: next.machines, legal_name: next.legalName, rfc: next.rfc, address: next.address, photo_url: next.photo,
       }).eq('user_id', id);
