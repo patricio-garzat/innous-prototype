@@ -3029,7 +3029,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsTopMonth:'' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD', analyticsCurrency:'MXN', analyticsTopMonth:'', rfqSortKey:'createdAt', rfqSortDir:'desc', quotesSortKey:'submittedAt', quotesSortDir:'desc', projectsSortKey:'createdAt', projectsSortDir:'desc' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -6046,9 +6046,43 @@ function innousRfqMiniTable(list){
   </tbody></table>`;
 }
 
+// fix199: ordenar-por-columna, reutilizado por las tablas de RFQs,
+// Cotizaciones y Proyectos (INNOUS). `getters` mapea cada sort key a una
+// función que saca el valor comparable de un renglón (string/number/Date);
+// el estado vive en STATE.ui[`${table}SortKey`]/[`${table}SortDir`],
+// tocado únicamente por App.setSort. null/undefined siempre se va al final
+// sin importar la dirección, para que un campo vacío no se cuele arriba al
+// ordenar descendente.
+function sortRows(list, key, dir, getters){
+  const getter = getters[key]; if(!getter) return list;
+  const mul = dir==='asc' ? 1 : -1;
+  return [...list].sort((a,b)=>{
+    let va=getter(a), vb=getter(b);
+    if(va instanceof Date) va = isNaN(va) ? null : va.getTime();
+    if(vb instanceof Date) vb = isNaN(vb) ? null : vb.getTime();
+    if(va==null && vb==null) return 0;
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    if(typeof va==='string') return va.localeCompare(vb)*mul;
+    return (va-vb)*mul;
+  });
+}
+function sortTh(label, key, sortKey, sortDir, table){
+  const active = sortKey===key;
+  const icon = active ? (sortDir==='asc'?'chevron-up':'chevron-down') : 'chevrons-up-down';
+  return `<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="App.setSort('${table}','${key}')">${label}<i data-lucide="${icon}" style="width:11px;height:11px;display:inline-block;vertical-align:-1px;margin-left:3px;opacity:${active?'1':'0.35'};"></i></th>`;
+}
 /* ---- INNOUS RFQ List ---- */
 ROUTES['innous/rfqs'] = function(){
-  const sorted = [...PROJECTS].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const rfqGetters = {
+    id: p=>p.id, customer: p=>customerName(p.customerId), project: p=>p.projectName, process: p=>p.process,
+    quantity: p=>p.quantity, invited: p=>p.invitedSupplierIds.length,
+    quotes: p=>p.supplierQuotes.filter(q=>q.status==='submitted').length,
+    status: p=>(RFQ_STATUS_META[p.status]||{label:p.status}).label, responsibility: p=>responsibilityLabel(p),
+    createdAt: p=>new Date(p.createdAt),
+  };
+  const rfqSortKey = STATE.ui.rfqSortKey||'createdAt', rfqSortDir = STATE.ui.rfqSortDir||'desc';
+  const sorted = sortRows(PROJECTS, rfqSortKey, rfqSortDir, rfqGetters);
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">RFQs</div><div class="page-subtitle">${PROJECTS.length} solicitudes en total en la plataforma</div></div>
@@ -6060,7 +6094,7 @@ ROUTES['innous/rfqs'] = function(){
     <div class="card">
       <div class="table-wrap"><table class="data-table data-table-fixed" id="rfq-table">
         <colgroup><col style="width:10%"><col style="width:12%"><col style="width:19%"><col style="width:10%"><col style="width:5%"><col style="width:6%"><col style="width:6%"><col style="width:12%"><col style="width:12%"><col style="width:8%"></colgroup>
-        <thead><tr><th>RFQ</th><th>Cliente</th><th>Proyecto</th><th>Proceso</th><th>Cant.</th><th>Invitados</th><th>Cotizaciones</th><th>Estatus</th><th>Turno</th><th>Creado</th></tr></thead><tbody>
+        <thead><tr>${sortTh('RFQ','id',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Cliente','customer',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Proyecto','project',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Proceso','process',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Cant.','quantity',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Invitados','invited',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Cotizaciones','quotes',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Estatus','status',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Turno','responsibility',rfqSortKey,rfqSortDir,'rfq')}${sortTh('Creado','createdAt',rfqSortKey,rfqSortDir,'rfq')}</tr></thead><tbody>
         ${sorted.map(p=>{
           const submitted = p.supplierQuotes.filter(q=>q.status==='submitted').length;
           return `<tr class="row-link" data-status="${p.status}" data-search="${(p.id+' '+customerName(p.customerId)+' '+p.projectName).toLowerCase()}" onclick="navigate('#/innous/rfq/${p.id}')">
@@ -7284,13 +7318,20 @@ function innousQuoteStatusBadge(p, q){
 }
 ROUTES['innous/quotes'] = function(){
   const rows = PROJECTS.flatMap(p=>p.supplierQuotes.filter(q=>q.status==='submitted').map(q=>({p,q})));
-  rows.sort((a,b)=>new Date(b.q.submittedAt)-new Date(a.q.submittedAt));
+  const quotesGetters = {
+    rfq: r=>r.p.id, customer: r=>customerName(r.p.customerId), supplier: r=>supplierName(r.q.supplierId),
+    total: r=>r.q.quotedTotal, leadTime: r=>r.q.leadTimeDays, submittedAt: r=>new Date(r.q.submittedAt),
+    shortlist: r=>r.p.targetPriceSupplierBudgetMxn ? 'Target Price' : (r.p.shortlist.find(s=>s.supplierId===r.q.supplierId)?'Sí':'No'),
+    status: r=>innousQuoteStatusBadge(r.p,r.q).replace(/<[^>]+>/g,''),
+  };
+  const quotesSortKey = STATE.ui.quotesSortKey||'submittedAt', quotesSortDir = STATE.ui.quotesSortDir||'desc';
+  const sortedRows = sortRows(rows, quotesSortKey, quotesSortDir, quotesGetters);
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Cotizaciones</div><div class="page-subtitle">${rows.length} cotizaciones de proveedores enviadas en todos los RFQs</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportQuotes()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>RFQ</th><th>Cliente</th><th>Proveedor</th><th>Costo Total (MXN)</th><th>Tiempo de Entrega</th><th>Enviada</th><th>En Shortlist</th><th>Estatus</th></tr></thead><tbody>
-      ${rows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr>${sortTh('RFQ','rfq',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Cliente','customer',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Proveedor','supplier',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Costo Total (MXN)','total',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Tiempo de Entrega','leadTime',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Enviada','submittedAt',quotesSortKey,quotesSortDir,'quotes')}${sortTh('En Shortlist','shortlist',quotesSortKey,quotesSortDir,'quotes')}${sortTh('Estatus','status',quotesSortKey,quotesSortDir,'quotes')}</tr></thead><tbody>
+      ${sortedRows.map(({p,q})=>`<tr class="row-link" onclick="navigate('#/innous/quote/${p.id}/${q.supplierId}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(q.supplierId)}</td><td>${fmtMXN(q.quotedTotal)}</td><td>${q.leadTimeDays} días</td><td class="td-sub">${fmtDate(q.submittedAt)}</td>
         <td>${p.targetPriceSupplierBudgetMxn ? '<span class="badge badge-blue">Target Price</span>' : p.shortlist.find(s=>s.supplierId===q.supplierId)?'<span class="badge badge-green">Sí</span>':'<span class="badge badge-gray">No</span>'}</td>
         <td>${innousQuoteStatusBadge(p,q)}</td>
@@ -7386,12 +7427,19 @@ ROUTES['innous/quote'] = function(pid, sid){
 
 /* ---- INNOUS Orders List ---- */
 ROUTES['innous/orders'] = function(){
-  const orders = PROJECTS.filter(p=>p.order).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const ordersGetters = {
+    id: p=>p.id, customer: p=>customerName(p.customerId), supplier: p=>supplierName(p.selectedSupplierId),
+    supplierCost: p=>p.order.supplierCostMxn||p.order.supplierCost, customerPrice: p=>p.order.customerPrice,
+    margin: p=>p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0),
+    status: p=>orderStatusLabelFor(p, p.order.status, true), createdAt: p=>new Date(p.createdAt),
+  };
+  const ordersSortKey = STATE.ui.projectsSortKey||'createdAt', ordersSortDir = STATE.ui.projectsSortDir||'desc';
+  const orders = sortRows(PROJECTS.filter(p=>p.order), ordersSortKey, ordersSortDir, ordersGetters);
   return `
   <div class="content-inner">
     <div class="page-header"><div><div class="page-title">Proyectos</div><div class="page-subtitle">${orders.length} proyectos — activos y completados</div></div>
       <div class="page-actions"><button class="btn btn-secondary" onclick="App.exportOrders()"><i data-lucide="download"></i>Exportar Excel</button></div></div>
-    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr><th>Proyecto</th><th>Cliente</th><th>Proveedor</th><th>Costo del Proveedor</th><th>Precio al Cliente</th><th>Margen</th><th>Producción</th></tr></thead><tbody>
+    <div class="card"><div class="table-wrap"><table class="data-table"><thead><tr>${sortTh('Proyecto','id',ordersSortKey,ordersSortDir,'projects')}${sortTh('Cliente','customer',ordersSortKey,ordersSortDir,'projects')}${sortTh('Proveedor','supplier',ordersSortKey,ordersSortDir,'projects')}${sortTh('Costo del Proveedor','supplierCost',ordersSortKey,ordersSortDir,'projects')}${sortTh('Precio al Cliente','customerPrice',ordersSortKey,ordersSortDir,'projects')}${sortTh('Margen','margin',ordersSortKey,ordersSortDir,'projects')}${sortTh('Producción','status',ordersSortKey,ordersSortDir,'projects')}</tr></thead><tbody>
       ${orders.map(p=>`<tr class="row-link" onclick="navigate('#/innous/order/${p.id}')">
         <td class="td-strong mono">${p.id}</td><td>${customerName(p.customerId)}</td><td>${supplierName(p.selectedSupplierId)}</td>
         <td>${p.order.supplierCostMxn?fmtMXN(p.order.supplierCostMxn):fmtMoney(p.order.supplierCost)}</td><td>${fmtMoney(p.order.customerPrice)}</td><td class="td-strong" style="color:var(--success);">${fmtMoney(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))}</td>
@@ -9847,6 +9895,29 @@ const App = {
   // vista local, nada que persistir.
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
+  // fix199: ordenar por columna en RFQs/Cotizaciones/Proyectos — clic en la
+  // misma columna invierte la dirección, clic en otra empieza en ascendente.
+  // Un sort dispara route() (hay que reordenar los <tr> de verdad, no solo
+  // esconderlos), así que para RFQs se guarda y se repone lo que hubiera en
+  // el buscador/filtro de estatus — si no, cada clic en un encabezado
+  // borraría lo que se hubiera escrito ahí (son inputs de DOM puro, ver
+  // App.filterRfqTable, no viven en STATE).
+  setSort(table, key){
+    const keyProp = table+'SortKey', dirProp = table+'SortDir';
+    if(STATE.ui[keyProp]===key) STATE.ui[dirProp] = STATE.ui[dirProp]==='asc' ? 'desc' : 'asc';
+    else { STATE.ui[keyProp] = key; STATE.ui[dirProp] = 'asc'; }
+    let searchVal, statusVal;
+    if(table==='rfq'){
+      searchVal = document.getElementById('rfq-search')?.value;
+      statusVal = document.getElementById('rfq-status-filter')?.value;
+    }
+    route();
+    if(table==='rfq' && (searchVal || statusVal)){
+      const si = document.getElementById('rfq-search'); if(si && searchVal) si.value = searchVal;
+      const sf = document.getElementById('rfq-status-filter'); if(sf && statusVal) sf.value = statusVal;
+      App.filterRfqTable();
+    }
+  },
   setAnalyticsCurrency(val){ STATE.ui.analyticsCurrency = val; route(); },
   setAnalyticsTopMonth(val){ STATE.ui.analyticsTopMonth = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
