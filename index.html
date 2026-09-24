@@ -3029,7 +3029,7 @@ const STATE = {
   authView: 'landing', // 'landing' | 'role-pick' | 'signup' | 'login'
   signupRole: null,
   settings: null, // populated just below, once DEFAULT_SETTINGS/loadSettings are defined
-  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active' },
+  ui: { selectedInviteSuppliers: [], markupDrafts:{}, exchangeRateDrafts:{}, freightDrafts:{}, activeChatKey:null, chatFileDrafts:{}, newRfqDraft:null, newRfqFiles:[], accountDraft:null, cropState:null, tourStep:0, settingsDraft:null, redactState:null, quoteDetailsDrafts:{}, supplierQuoteDrafts:{}, poDetailsDrafts:{}, customerBillingDrafts:{}, supplierBillingDrafts:{}, customerContactDrafts:{}, supplierContactDrafts:{}, customerCompanyDrafts:{}, supplierCompanyDrafts:{}, supplierCapabilitiesDrafts:{}, rejectRfqReason:'', accountInfoModal:null, settingsOpenSection:null, newSupplierDraft:null, chatJustSent:false, chatJustReceived:false, typingPeers:{}, typingTimers:{}, clientRatingDrafts:{}, innousRatingDrafts:{}, teamChatPeerId:null, authLang: loadAuthLang(), customerPhotoDrafts:{}, supplierPhotoDrafts:{}, targetCounterDrafts:{}, clientCounterDrafts:{}, innousCounterReviewDrafts:{}, selectedOrderDocs:{}, supplierOrdersFilter:'active', overviewCurrency:'USD' },
 };
 const INNOUS_USER = { name:'Ops Team', photo:null, username:'', email:'' };
 // fix96: Google's official 4-color "G" mark, inline so the login/account
@@ -5990,12 +5990,19 @@ ROUTES['innous/overview'] = function(){
   const activeOrders = PROJECTS.filter(p=>['awarded','in_production'].includes(p.status));
   const completedOrders = PROJECTS.filter(p=>p.status==='completed');
   const allOrders = [...activeOrders, ...completedOrders];
-  const revenue = allOrders.reduce((s,p)=>s+p.order.customerPrice,0);
+  // fix195: toggle USD/MXN — cada pedido convierte con SU PROPIO tipo de
+  // cambio (el que de verdad se usó al seleccionarse la cotización, en
+  // p.order.exchangeRate), nunca uno "de hoy" aplicado a pedidos viejos.
+  // Mismo patrón que ya usa Analítica (ver rateFor ahí).
+  const cur = STATE.ui.overviewCurrency==='MXN' ? 'MXN' : 'USD';
+  const rateFor = p => p.order.exchangeRate || STATE.settings.defaultExchangeRate || DEFAULT_SETTINGS.defaultExchangeRate;
   // Shipping passed through to the customer (fix41) isn't margin — it's
   // baked into customerPrice for display, but subtracted back out here so
   // "Gross Margin" doesn't overstate profit by whatever was charged for
   // freight.
-  const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0)),0);
+  const revenue = allOrders.reduce((s,p)=>s+p.order.customerPrice*(cur==='MXN'?rateFor(p):1),0);
+  const margin = allOrders.reduce((s,p)=>s+(p.order.customerPrice-p.order.supplierCost-(p.order.freightUsd||0))*(cur==='MXN'?rateFor(p):1),0);
+  const fmtCur = cur==='MXN' ? fmtMXN : fmtMoney;
   const recent = PROJECTS.flatMap(p=>p.activity.map(a=>({...a,projId:p.id,projName:p.projectName}))).sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,7);
   const pending = pendingItems();
 
@@ -6008,12 +6015,17 @@ ROUTES['innous/overview'] = function(){
       ${kpiCard('RFQs Activos', active.length, 'en todo el proceso','file-text')}
       ${kpiCard('Esperando Cotizaciones', awaitingQuotes.length, 'buscando proveedores','send')}
       ${kpiCard('Listo para Cliente', readyForCustomer.length, 'cotizaciones por armar en shortlist','file-diff')}
-      ${kpiCard('Pedidos Activos', activeOrders.length, 'en producción','package')}
+      ${kpiCard('Proyectos Activos', activeOrders.length, 'en producción','package')}
     </div>
-    <div class="grid grid-3" style="margin-bottom:24px;">
-      ${kpiCard('Ingresos (Portafolio)', fmtMoney(revenue), 'entre pedidos activos y completados','dollar-sign')}
-      ${kpiCard('Margen Bruto', fmtMoney(margin), (margin/revenue*100).toFixed(1)+'% margen promedio','trending-up')}
+    <div class="markup-chip-row" style="margin-bottom:10px;">
+      <button type="button" class="markup-chip ${cur==='USD'?'active':''}" onclick="App.setOverviewCurrency('USD')">USD</button>
+      <button type="button" class="markup-chip ${cur==='MXN'?'active':''}" onclick="App.setOverviewCurrency('MXN')">MXN</button>
+    </div>
+    <div class="grid grid-4" style="margin-bottom:24px;">
+      ${kpiCard('Ingresos (Portafolio)', fmtCur(revenue), 'entre pedidos activos y completados','dollar-sign')}
+      ${kpiCard('Margen Bruto', fmtCur(margin), (margin/revenue*100).toFixed(1)+'% margen promedio','trending-up')}
       ${kpiCard('Red de Proveedores', SUPPLIERS.length, 'socios de manufactura verificados','factory')}
+      ${kpiCard('Clientes Registrados', CUSTOMERS.length, 'cuentas de cliente en la plataforma','building-2')}
     </div>
     <div class="grid grid-2">
       <div class="card">
@@ -9827,6 +9839,7 @@ const App = {
   // fix177: Activos/Completados/Todos en "Mis Proyectos" — puro estado de
   // vista local, nada que persistir.
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
+  setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
   // fix174: borrar un documento cargado por accidente — confirm() nativo
   // ("¿estás seguro?") antes de borrar de verdad, mismo patrón que
   // App.deleteSupplierCsf. Quita el archivo real de Storage Y la entrada
