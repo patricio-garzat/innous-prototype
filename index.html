@@ -1111,6 +1111,95 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   .auth-topbar-actions span{display:none;}
   .auth-card{padding:28px 22px 24px;border-radius:14px;}
 }
+/* ============ fix201: celular ============
+   Causa raíz de lo que se cortaba: los hijos de un grid/flex tienen
+   min-width:auto por default, así que una tarjeta con una tabla adentro
+   se estiraba al ancho de la tabla (600+px) en vez de encogerse al de la
+   pantalla, y .content (overflow-x:hidden) cortaba todo lo que sobraba.
+   min-width:0 + columnas minmax(0,1fr) hacen que la tarjeta se ajuste y
+   que la tabla scrollee DENTRO de ella (que es para lo que es .table-wrap). */
+.grid>*,.page-header>*,.card,.kpi-card,.quote-card,.supplier-card,.stage-banner>*,.info-grid>*,.form-row>*{min-width:0;}
+@media(max-width:900px){
+  .content{padding:16px 14px 44px;}
+  .page-header{margin-bottom:16px;gap:12px;}
+  .page-title{font-size:21px;}
+  .page-subtitle{font-size:13px;}
+  .page-actions{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  .page-actions>.btn,.page-actions>a.btn{justify-content:center;text-align:center;line-height:1.25;white-space:normal;}
+  .page-actions>.btn-primary,.page-actions>.badge{grid-column:1/-1;}
+  .page-actions>.badge{justify-self:start;}
+  .page-actions>.btn:only-child,.page-actions>.btn:last-child:nth-child(odd){grid-column:1/-1;}
+  .grid{gap:12px;}
+  .grid-2,.grid-3{grid-template-columns:minmax(0,1fr);}
+  .grid-4,.grid-5{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .stage-banner{flex-wrap:wrap;padding:12px 14px;}
+  .stage-banner span{flex:1 1 180px;}
+  .stage-banner .btn{margin-left:auto;}
+  .card-header{padding:14px 16px;gap:8px;}
+  .card-pad{padding:16px;}
+  table.data-table th{padding:10px 12px;}
+  table.data-table td{padding:12px;}
+  /* pista visual: sombra en el borde cuando la tabla todavía tiene más para scrollear */
+  .table-wrap{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+    background:
+      linear-gradient(to right,var(--surface),var(--surface)) left center/20px 100% no-repeat local,
+      linear-gradient(to left,var(--surface),var(--surface)) right center/20px 100% no-repeat local,
+      linear-gradient(to right,rgba(24,24,27,.14),transparent) left center/10px 100% no-repeat scroll,
+      linear-gradient(to left,rgba(24,24,27,.14),transparent) right center/10px 100% no-repeat scroll;}
+  .filter-bar{gap:8px;}
+  .filter-bar .search-bar{max-width:none!important;flex:1 1 100%;}
+  .filter-bar select{flex:1 1 140px;}
+  .modal-overlay{padding:0;align-items:flex-end;}
+  .modal,.modal.modal-wide{max-width:100%;max-height:92vh;border-radius:16px 16px 0 0;}
+  .modal.modal-xwide{max-width:100%;height:94vh;border-radius:16px 16px 0 0;}
+  .modal-header{padding:16px 18px;}
+  .modal-body{padding:18px;}
+  .modal-footer{padding:12px 18px;flex-wrap:wrap;}
+  .modal-footer .btn{flex:1 1 auto;justify-content:center;}
+  .toast-container{left:12px;right:12px;bottom:12px;}
+  .toast{min-width:0;width:100%;}
+  .kpi-card{padding:14px;}
+  .kpi-value{font-size:22px;}
+  .kpi-label{font-size:10.5px;letter-spacing:.3px;}
+  .kpi-sub{font-size:11.5px;}
+  .pricing-row{gap:12px;}
+  .pricing-row>span:last-child{text-align:right;}
+  .btn{min-height:40px;}
+  .btn-sm{min-height:34px;}
+  input,select,textarea{font-size:16px;}
+}
+@media(max-width:480px){
+  .topbar{padding:0 10px;gap:6px;}
+  .topbar-left{gap:6px;min-width:0;}
+  .logo-svg{height:34px;}
+  #logout-btn #logout-btn-text{display:none;}
+  #logout-btn{padding:7px 9px;}
+  .user-chip{flex:0 0 auto;}
+  .data-table-fixed{table-layout:auto;}
+  .landing-grid{grid-template-columns:minmax(0,1fr);}
+}
+@media(max-width:640px){
+  /* línea de tiempo en vertical: 6 pasos horizontales no caben en 375px y se cortaban/scrolleaban */
+  .timeline{flex-direction:column;overflow:visible;padding:4px 0;}
+  .timeline-step{flex-direction:row;align-items:center;justify-content:flex-start;gap:14px;min-width:0;flex:none;padding:8px 0;}
+  .timeline-line{top:auto;bottom:50%;left:12px;width:2px;height:100%;}
+  .timeline-line-fill{width:100%!important;height:var(--fill,0%);}
+  .timeline-label{text-align:left;margin-top:0;padding:0;font-size:13px;}
+}
+@media(max-width:900px){
+  /* tablas en celular: scrollean dentro de su tarjeta, con la primera columna (id) fija para no perder contexto */
+  table.data-table-fixed{table-layout:auto;min-width:860px;}
+  table.data-table-fixed colgroup{display:none;}
+  table.data-table-fixed th,table.data-table-fixed td{overflow:visible;text-overflow:clip;white-space:nowrap;}
+  table.data-table th:first-child,table.data-table td:first-child{position:sticky;left:0;z-index:2;}
+  table.data-table td:first-child{background:var(--surface);box-shadow:1px 0 0 var(--border);}
+  table.data-table th:first-child{background:var(--bg);box-shadow:1px 0 0 var(--border-strong);}
+}
+@media(max-width:640px){
+  /* pantallas de acceso en celular: scrollea TODA la pantalla (antes el footer azul fijo se comía ~140px y la tarjeta de login quedaba cortada en un scroll chiquito) */
+  .auth-shell{height:auto;min-height:100vh;min-height:100dvh;overflow:hidden;}
+  .auth-main{overflow:visible;flex:1 0 auto;padding-bottom:28px;}
+}
 </style>
 </head>
 <body>
@@ -4121,7 +4210,7 @@ function timelineComp(steps, currentIdx){
     // progreso) — así se lee "ya llegué aquí, y voy a la mitad de camino
     // al siguiente".
     const fillPct = i===0 ? 0 : (done(i-1) ? 100 : (i-1===currentIdx ? 50 : 0));
-    return `<div class="timeline-step ${cls}"><div class="timeline-line"><div class="timeline-line-fill" style="width:${fillPct}%;"></div></div><div class="timeline-dot">${d?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':(i+1)}</div><div class="timeline-label">${label}</div></div>`;
+    return `<div class="timeline-step ${cls}"><div class="timeline-line"><div class="timeline-line-fill" style="width:${fillPct}%;--fill:${fillPct}%;"></div></div><div class="timeline-dot">${d?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':(i+1)}</div><div class="timeline-label">${label}</div></div>`;
   }).join('')}</div>`;
 }
 function timeAgo(d){
