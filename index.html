@@ -1200,6 +1200,54 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
   .auth-shell{height:auto;min-height:100vh;min-height:100dvh;overflow:hidden;}
   .auth-main{overflow:visible;flex:1 0 auto;padding-bottom:28px;}
 }
+/* ============ fix202: animaciones del chat ============ */
+/* mensaje recibido: entra deslizándose desde la izquierda (el enviado sigue con su "pop") */
+@keyframes bubbleSlideInLeft{
+  0%{transform:translateX(-18px) scale(.94);opacity:0;}
+  100%{transform:none;opacity:1;}
+}
+.chat-bubble.in.bubble-pop-in{animation:bubbleSlideInLeft .34s cubic-bezier(.22,1,.36,1) both;}
+/* ícono de enviar: sale disparado y regresa */
+@keyframes sendFly{
+  0%{transform:translate(0,0) scale(1);opacity:1;}
+  45%{transform:translate(12px,-12px) scale(.7);opacity:0;}
+  46%{transform:translate(-12px,12px) scale(.7);opacity:0;}
+  100%{transform:none;opacity:1;}
+}
+.chat-input-row .btn-primary.send-fx svg{animation:sendFly .5s cubic-bezier(.4,0,.2,1) both;}
+.chat-input-row .btn{transition:transform .12s ease,box-shadow .15s ease,background .15s ease;}
+.chat-input-row .btn:active{transform:scale(.9);}
+.chat-input-row input[type=text]{transition:border-color .15s ease,box-shadow .2s ease;}
+.chat-input-row input[type=text]:focus{box-shadow:0 0 0 3px var(--accent-soft);}
+/* "está escribiendo…" aparece suave */
+@keyframes typingIn{from{opacity:0;transform:translateY(6px) scale(.92);}to{opacity:1;transform:none;}}
+#chat-typing-bubble .chat-bubble{animation:typingIn .22s ease both;transform-origin:bottom left;}
+.chat-list-item{transition:background .15s ease,transform .12s ease;}
+.chat-list-item:active{background:var(--accent-soft);transform:scale(.985);}
+@media(max-width:768px){
+  @keyframes chatSlideInRight{from{transform:translateX(100%);}to{transform:none;}}
+  @keyframes chatSlideOutRight{from{transform:none;}to{transform:translateX(100%);}}
+  @keyframes chatListInLeft{from{transform:translateX(-26%);opacity:.35;}to{transform:none;opacity:1;}}
+  @keyframes chatItemIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+  .chat-panel{position:relative;overflow:hidden;}
+  /* abrir una conversación: entra deslizándose desde la derecha */
+  .chat-panel.anim-open .chat-thread{animation:chatSlideInRight .36s cubic-bezier(.22,1,.36,1) both;}
+  /* volver a la lista (con el botón de atrás o el del sistema): la lista regresa desde la izquierda */
+  .chat-panel.anim-close .chat-list{animation:chatListInLeft .32s cubic-bezier(.22,1,.36,1) both;}
+  /* llegar a la lista: las conversaciones aparecen escalonadas */
+  .chat-panel.anim-list .chat-list-item{animation:chatItemIn .38s cubic-bezier(.22,1,.36,1) both;}
+  .chat-panel.anim-list .chat-list-item:nth-child(2){animation-delay:.04s;}
+  .chat-panel.anim-list .chat-list-item:nth-child(3){animation-delay:.08s;}
+  .chat-panel.anim-list .chat-list-item:nth-child(4){animation-delay:.12s;}
+  .chat-panel.anim-list .chat-list-item:nth-child(5){animation-delay:.16s;}
+  .chat-panel.anim-list .chat-list-item:nth-child(n+6){animation-delay:.2s;}
+  /* cerrar (App.chatBack): la conversación se desliza hacia afuera dejando ver la lista que está debajo */
+  .chat-panel.closing .chat-list{display:flex!important;position:absolute;inset:0;z-index:0;}
+  .chat-panel.closing .chat-thread{display:flex!important;position:absolute;inset:0;z-index:1;background:var(--surface);animation:chatSlideOutRight .22s cubic-bezier(.4,0,1,1) both;box-shadow:-12px 0 24px -12px rgba(0,0,0,.18);}
+}
+@media(prefers-reduced-motion:reduce){
+  .chat-panel *,.chat-bubble,.chat-input-row .btn,#chat-typing-bubble .chat-bubble{animation:none!important;transition:none!important;}
+}
 </style>
 </head>
 <body>
@@ -5300,6 +5348,7 @@ function route(){
   const key = role+'/'+page;
   const el = document.getElementById('app-content');
   const samePage = (hash === lastRoutedHash);
+  const prevHashForAnim = lastRoutedHash;
   const prevScroll = el.scrollTop;
   const isChatKey = (key==='innous/messages' || key==='client/messages' || key==='supplier/messages' || key==='innous/team-chat');
   // Captured BEFORE the innerHTML swap below destroys this node — route()
@@ -5325,9 +5374,39 @@ function route(){
   // bottom, same as any real chat app — but NOT on a background refresh
   // while they're mid-scroll reading history, where it should stay put.
   if(isChatKey){
+    // fix202: animación de entrada/salida de la conversación en celular —
+    // solo cuando de verdad se CAMBIÓ de pantalla (samePage=false), nunca en
+    // los re-render del poll de 12s ni de realtime, que reconstruyen el DOM
+    // de la misma conversación y la animarían de nuevo cada vez. El CSS de
+    // estas clases vive dentro del @media(max-width:768px), así que en
+    // escritorio no hace nada.
+    // navigate() renderiza al instante Y el evento 'hashchange' vuelve a
+    // renderizar la misma ruta un tick después (samePage=true) — ese segundo
+    // render destruiría la animación recién empezada, así que se reaplica la
+    // misma clase si llega pegado (<250ms) al primero.
+    const panel = el.querySelector('.chat-panel');
+    if(panel){
+      let animCls = null;
+      if(!samePage){
+        const detailOf = h => { const q=(h||'').replace('#/','').split('/'); return (q[1]==='messages'||q[1]==='team-chat') && q.length>2; };
+        const nowD = detailOf(hash), prevD = detailOf(prevHashForAnim);
+        if(nowD && !prevD) animCls = 'anim-open';
+        else if(!nowD && prevD) animCls = 'anim-close';
+        else if(!nowD) animCls = 'anim-list';
+        window.__chatAnim = animCls ? { hash, cls: animCls, at: Date.now() } : null;
+      } else if(window.__chatAnim && window.__chatAnim.hash===hash && Date.now()-window.__chatAnim.at < 250){
+        animCls = window.__chatAnim.cls;
+      }
+      if(animCls) panel.classList.add(animCls);
+    }
     const cm = el.querySelector('.chat-messages');
     if(cm){
-      if(!samePage || chatWasAtBottom) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
+      if(!samePage || !oldChatMessages) cm.scrollTop = cm.scrollHeight; // reading scrollHeight forces the layout it needs — no rAF wait required
+      else if(chatWasAtBottom){
+        // mensaje nuevo estando ya al final: baja suave en vez de saltar
+        cm.scrollTop = chatPrevScroll;
+        if(cm.scrollHeight - chatPrevScroll - cm.clientHeight > 4) cm.scrollTo({top:cm.scrollHeight, behavior:'smooth'});
+      }
       else cm.scrollTop = chatPrevScroll;
     }
     loadChatImagePreviews();
@@ -5900,6 +5979,7 @@ function chatMessagesHtml(msgs, mineFrom, emptyText){
   const justReceived = STATE.ui.chatJustReceived;
   STATE.ui.chatJustSent = false;
   STATE.ui.chatJustReceived = false;
+  STATE.ui.chatSendFx = !!justSent; // lo consume chatComposeRowHtml (el ícono de enviar "sale volando")
   const rows = msgs.map((m,i)=>{
     const mine = m.from===mineFrom;
     let attachmentHtml = '';
@@ -6060,13 +6140,14 @@ function chatCardHtml(m){
 function chatComposeRowHtml(key, inputId, fileInputId, placeholder){
   const staged = STATE.ui.chatFileDrafts[key];
   const stagedHtml = staged ? `<div class="chat-staged-file"><i data-lucide="paperclip" style="width:13px;height:13px;"></i><span>${escAttr(staged.name)}</span><button type="button" onclick="App.removeStagedChatFile('${key}')" title="Remove"><i data-lucide="x"></i></button></div>` : '';
+  const sendFx = STATE.ui.chatSendFx; STATE.ui.chatSendFx = false;
   return `${stagedHtml}
     <div class="chat-input-row">
       <input type="file" id="${fileInputId}" style="display:none;" onchange="App.stageChatFile('${key}', this)">
       <button type="button" class="btn btn-secondary" onclick="App.openShareCardModal('${key}')" title="Share an RFQ, Quote, or Purchase Order"><i data-lucide="plus"></i></button>
       <button type="button" class="btn btn-secondary" onclick="App.pickChatFile('${key}')" title="Attach a file"><i data-lucide="paperclip"></i></button>
       <input type="text" id="${inputId}" placeholder="${placeholder}" oninput="App.notifyTyping('${key}')" onkeydown="if(event.key==='Enter')App.sendChatMessage('${key}')">
-      <button class="btn btn-primary" onclick="App.sendChatMessage('${key}')"><i data-lucide="send"></i></button>
+      <button class="btn btn-primary${sendFx?' send-fx':''}" onclick="App.sendChatMessage('${key}')" aria-label="Enviar"><i data-lucide="send"></i></button>
     </div>`;
 }
 /* ---- Client Messages — the client can have several named chats going
@@ -6105,7 +6186,7 @@ ROUTES['client/messages'] = function(threadNameRaw){
         ${activeName ? `
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-            <button class="chat-back-btn" onclick="navigate('#/client/messages')" title="Back" aria-label="Back"><i data-lucide="chevron-left"></i></button>
+            <button class="chat-back-btn" onclick="App.chatBack(\'#/client/messages\')" title="Back" aria-label="Back"><i data-lucide="chevron-left"></i></button>
             ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--accent)', 34)}
             <div style="min-width:0;"><div style="font-weight:700;">INNOUS Project Team <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Everything discussed in this chat, in one place</div></div>
           </div>
@@ -7791,7 +7872,7 @@ ROUTES['innous/messages'] = function(type, id, threadNameRaw){
         ${active? `
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-            <button class="chat-back-btn" onclick="navigate('#/innous/messages')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            <button class="chat-back-btn" onclick="App.chatBack(\'#/innous/messages\')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
             ${avatarHtml(owner.photo, initials(active.personName), active.type==='client'?'var(--accent)':'var(--ink)', 40)}
             <div style="min-width:0;">
               <div style="font-weight:700;">${escAttr(active.personName)} <span class="td-sub" style="font-weight:400;">· ${escAttr(active.threadName)}</span></div>
@@ -7856,7 +7937,7 @@ ROUTES['innous/team-chat'] = function(peerId){
         ${active ? `
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-            <button class="chat-back-btn" onclick="navigate('#/innous/team-chat')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            <button class="chat-back-btn" onclick="App.chatBack(\'#/innous/team-chat\')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
             ${avatarHtml(active.photo, initials(active.name), 'var(--navy)', 40)}
             <div style="min-width:0;"><div style="font-weight:700;">${escAttr(active.name)}</div><div class="td-sub">${escAttr(active.email||active.username||'')}</div></div>
           </div>
@@ -8708,7 +8789,7 @@ ROUTES['supplier/messages'] = function(threadNameRaw){
         ${activeName ? `
         <div class="chat-thread-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-            <button class="chat-back-btn" onclick="navigate('#/supplier/messages')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
+            <button class="chat-back-btn" onclick="App.chatBack(\'#/supplier/messages\')" title="Atrás" aria-label="Atrás"><i data-lucide="chevron-left"></i></button>
             ${avatarHtml(STATE.settings.logoUrl, 'IN', 'var(--ink)', 34)}
             <div style="min-width:0;"><div style="font-weight:700;">Equipo de Sourcing INNOUS <span class="td-sub" style="font-weight:400;">· ${escAttr(activeName)}</span></div><div class="td-sub">Todo lo hablado en este chat, en un solo lugar</div></div>
           </div>
@@ -10094,6 +10175,19 @@ const App = {
   // vista local, nada que persistir.
   setSupplierOrdersFilter(val){ STATE.ui.supplierOrdersFilter = val; route(); },
   setOverviewCurrency(val){ STATE.ui.overviewCurrency = val; route(); },
+  // fix202: "Atrás" de una conversación en celular — la conversación se
+  // desliza hacia la derecha y deja ver la lista de abajo, y hasta que
+  // termina se navega. En escritorio (o con "reducir movimiento") navega
+  // directo, igual que antes.
+  chatBack(url){
+    const panel = document.querySelector('.chat-panel');
+    const mobile = window.matchMedia && window.matchMedia('(max-width:768px)').matches;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+    if(!panel || !mobile || reduce || panel.classList.contains('closing')){ navigate(url); return; }
+    panel.classList.remove('anim-open');
+    panel.classList.add('closing');
+    setTimeout(()=>navigate(url), 220);
+  },
   // fix199: ordenar por columna en RFQs/Cotizaciones/Proyectos — clic en la
   // misma columna invierte la dirección, clic en otra empieza en ascendente.
   // Un sort dispara route() (hay que reordenar los <tr> de verdad, no solo
