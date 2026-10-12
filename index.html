@@ -12343,6 +12343,9 @@ function hideBootLoading(){ hideAppLoader(1400); }
 // promesa para que quien la llame espere a que termine.
 const LoginIntro = (() => {
   const K = 78.8 / 236.4, BASE = 389.1, TAG_FLOOR = 582, BLUE = '#00a3e0', L = 0.64, DUR = 5;
+  // fix206: la intro dura ~4s en total (animación 3.2s + 0.25s con el logo completo + 0.5s de fade): se reproduce a 1.2x
+  // y se corta en TEND (el segundo destello y el final del zoom de cámara, que pasaban de 3.84s, ya no hacen falta).
+  const SPEED = 1.2, TEND = 3.84;
   const I_START = 0.3, I_DUR = 0.55, I_LAND = 0.45;
   const PAN0 = 1.25, PAN_D = 1.05, LOCK = 2.3;
   const SHEEN0 = 2.4, SHEEN_D = 0.75, SHEEN2 = 4.0, SHEEN2_D = 0.85, REG_T = 2.55, TAG0 = 2.75, TAG_STEP = 0.025, TAG_D = 0.5;
@@ -12556,7 +12559,7 @@ const LoginIntro = (() => {
     freqs.forEach(f => [-7, 7].forEach(dt => { const o = osc('sawtooth', f); o.detune.value = dt; o.connect(lp); o.start(t1); o.stop(t2 + 0.05); }));
   }
   function schedule(base){
-    const T = x => base + x, END = DUR + 0.6;
+    const T = x => base + x / SPEED, END = TEND + 0.5;
     pad(T(0.05), T(END), [146.83, 220, 293.66, 329.63], 0.03, [[T(0.05), 450], [T(LOCK), 800], [T(3.6), 950], [T(END), 520]], 0.6, 1.4);
   }
   // Desbloquea el audio dentro del gesto del usuario (clic en "Iniciar Sesión"), ANTES de cualquier await.
@@ -12572,7 +12575,7 @@ const LoginIntro = (() => {
     // logo discreto: ~25% del ancho en escritorio y ~44% en celular vertical
     S = (W < H) ? W / 2200 : Math.min(W / 1920, H / 1080) * 0.5;
     OX = (W - 1920 * S) / 2; OY = (H - 1080 * S) / 2;
-    if(!running) render(DUR);
+    if(!running) render(TEND);
   }
 
   // Reproduce la intro y regresa una promesa que se resuelve al terminar (o al saltarla).
@@ -12617,13 +12620,13 @@ const LoginIntro = (() => {
       finishFn = finish;
       const loop = () => {
         if(done) return;
-        const t = nowT();
-        if(t >= DUR){
-          render(DUR); progEl.style.transform = 'scaleX(1)';
-          holdTimer = setTimeout(() => finish(false), 350);   // se queda un instante con el logo completo
+        const t = nowT() * SPEED;
+        if(t >= TEND){
+          render(TEND); progEl.style.transform = 'scaleX(1)';
+          holdTimer = setTimeout(() => finish(false), 250);   // se queda un instante con el logo completo
           return;
         }
-        render(Math.max(0, t)); progEl.style.transform = `scaleX(${Math.max(0, t) / DUR})`;
+        render(Math.max(0, t)); progEl.style.transform = `scaleX(${Math.max(0, t) / TEND})`;
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
