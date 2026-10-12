@@ -1248,6 +1248,22 @@ hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0;}
 @media(prefers-reduced-motion:reduce){
   .chat-panel *,.chat-bubble,.chat-input-row .btn,#chat-typing-bubble .chat-bubble{animation:none!important;transition:none!important;}
 }
+/* ============ fix204: intro de logotipo al iniciar sesión ============ */
+#intro-overlay{position:fixed;inset:0;z-index:10000;background:#fff;opacity:0;transition:opacity .4s ease;}
+#intro-overlay.on{opacity:1;}
+#intro-overlay canvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+.intro-btn{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom,0px));height:38px;border-radius:12px;border:1px solid rgba(0,15,25,.12);background:rgba(255,255,255,.75);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:#000f19;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;font:600 13px/1 'Inter',sans-serif;letter-spacing:.2px;
+  opacity:0;animation:introBtnIn .5s ease 1.2s forwards;transition:border-color .2s,background .2s;}
+.intro-btn:hover{border-color:rgba(0,163,224,.6);background:rgba(0,163,224,.12);}
+.intro-skip{left:18px;padding:0 14px;}
+.intro-mute{right:18px;width:38px;}
+@keyframes introBtnIn{to{opacity:1;}}
+.intro-prog{position:absolute;left:0;bottom:0;height:2px;width:100%;background:#00a3e0;transform-origin:0 50%;transform:scaleX(0);}
+/* botón de iniciar sesión mientras se verifican las credenciales */
+.btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:btnSpin .7s linear infinite;margin-right:8px;vertical-align:-2px;}
+@keyframes btnSpin{to{transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.intro-btn{animation:none;opacity:1;}}
 </style>
 </head>
 <body>
@@ -4776,6 +4792,7 @@ const AUTH_I18N = {
     signupClientSub:'Start sourcing verified manufacturing partners in Mexico.',
     industry:'Industry', selectIndustry:'Select your industry',
     copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. All rights reserved.`,
+    loggingIn:'Signing in…',
     reportBug:'Report a Bug', reportBugTitle:'Report a Bug',
     reportBugSub:"Found something broken, a glitch, or anything that just doesn't look right? Tell us — it goes straight to the INNOUS team.",
     reportBugNamePh:'Your name (optional)', reportBugEmailPh:'Your email (optional, so we can follow up)',
@@ -4814,6 +4831,7 @@ const AUTH_I18N = {
     signupClientSub:'Empieza a buscar proveedores de manufactura verificados en México.',
     industry:'Industria', selectIndustry:'Selecciona tu industria',
     copyrightLine:(year)=>`© ${year} Grupo Industrial Innous de México. Todos los derechos reservados.`,
+    loggingIn:'Iniciando…',
     reportBug:'Reportar un Problema', reportBugTitle:'Reportar un Problema',
     reportBugSub:'¿Encontraste algo roto, un glitch, o algo que simplemente no se ve bien? Cuéntanos — le llega directo al equipo de INNOUS.',
     reportBugNamePh:'Tu nombre (opcional)', reportBugEmailPh:'Tu correo (opcional, para poder darte seguimiento)',
@@ -9237,9 +9255,12 @@ const App = {
     const raw = f.get('login').trim();
     const password = f.get('password');
     const viaEmail = raw.includes('@');
-    const submitBtn = e.target.querySelector('button[type=submit]'); if(submitBtn) submitBtn.disabled = true;
-    let loginOk = false;
-    showAppLoader(); // fix203
+    // fix204: desbloquea el audio de la intro AQUÍ, dentro del gesto del usuario y antes de cualquier await
+    LoginIntro.prime();
+    const submitBtn = e.target.querySelector('button[type=submit]');
+    const submitBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if(submitBtn){ submitBtn.disabled = true; submitBtn.innerHTML = '<span class="btn-spinner"></span>'+at('loggingIn'); }
+    let introActive = false;
     try{
       let email;
       if(viaEmail){
@@ -9270,16 +9291,25 @@ const App = {
           return false;
         }
       }
+      // Credenciales aceptadas: arranca la intro (cubre la pantalla) mientras la app termina de cargar detrás
+      const introP = LoginIntro.play();
+      introActive = true;
       await withTimeout(enterAppAsUser(data.user), 15000, 'enterApp');
-      loginOk = true;
-      showToast('Welcome back', 'success');
+      const entered = document.getElementById('app-shell').style.display !== 'none';
+      if(entered){
+        await introP;                       // espera a que termine (o a que la salten)
+        await LoginIntro.hide();
+        introActive = false;
+        showToast('Welcome back', 'success');
+      }
     }catch(err){
       console.error('submitLogin failed', err);
       showToast('No se pudo conectar. Intenta de nuevo.');
       if(submitBtn) submitBtn.disabled = false;
     }finally{
-      // éxito: se queda lo suficiente para ver el logo completo; error: sale rápido para mostrar el mensaje
-      hideAppLoader(loginOk ? 1500 : 350);
+      // si entrar a la app falló (sesión activa en otro lado, perfil faltante…) se corta la intro para mostrar el mensaje
+      if(introActive) await LoginIntro.abort();
+      if(submitBtn){ submitBtn.disabled = false; submitBtn.innerHTML = submitBtnHtml; }
     }
     return false;
   },
@@ -9357,11 +9387,14 @@ const App = {
   // this and land in the app — nobody can self-provision an account this
   // way, only attach Google to one that already exists.
   async signInWithGoogle(){
+    // fix204: al regresar de Google la página recarga y boot() la ve como "sesión ya abierta" —
+    // esta bandera (con hora, caduca a los 5 min) le avisa que fue un inicio de sesión real y hay que mostrar la intro.
+    try{ localStorage.setItem('innous_play_intro', String(Date.now())); }catch(e){}
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin + window.location.pathname },
     });
-    if(error) showToast(error.message);
+    if(error){ try{ localStorage.removeItem('innous_play_intro'); }catch(e){} showToast(error.message); }
     // No further code runs on success — signInWithOAuth navigates the
     // whole page away to Google, and coming back reloads index.html fresh
     // (boot() below picks up the new session same as any page load).
@@ -12308,6 +12341,334 @@ function hideAppLoader(minMs){
   }, wait);
 }
 function hideBootLoading(){ hideAppLoader(1400); }
+// fix204: animación de logotipo (5s, con sonido) que se reproduce SOLO al iniciar
+// sesión — ver App.submitLogin y, para el regreso de Google, boot(). Es la pieza
+// "Innous Intro" tal cual (canvas 2D con la geometría del SVG oficial + sonido
+// sintetizado con Web Audio), adaptada a overlay: sin botón de play (el clic de
+// "Iniciar Sesión" ya es el gesto del usuario — prime() desbloquea el audio ahí
+// mismo, antes de cualquier await, porque Safari no deja crear/reanudar el
+// AudioContext después), con "Saltar" y silenciar discretos, y devolviendo una
+// promesa para que quien la llame espere a que termine.
+const LoginIntro = (() => {
+  const K = 78.8 / 236.4, BASE = 389.1, TAG_FLOOR = 582, BLUE = '#00a3e0', L = 0.64, DUR = 5;
+  const I_START = 0.3, I_DUR = 0.55, I_LAND = 0.45;
+  const PAN0 = 1.25, PAN_D = 1.05, LOCK = 2.3;
+  const SHEEN0 = 2.4, SHEEN_D = 0.75, SHEEN2 = 4.0, SHEEN2_D = 0.85, REG_T = 2.55, TAG0 = 2.75, TAG_STEP = 0.025, TAG_D = 0.5;
+  const LETTER_D = [
+    'M407.7 152.7L328.9 389.1L250 389.1L328.8 152.7Z',
+    'M655.6,224.9c0,7.5-1.2,14.7-3.3,21.5-.4,1.1-.7,2.2-1.1,3.4l-46.4,139.3h-78.8l32.1-96.3,10.2-30.6c.4-1.1.8-2.2,1.2-3.4v-.3c.6-2.5,1-5.2,1-7.9,0-17.6-14.2-31.7-31.7-31.7h-34.9l-56.8,170.3h-78.8l56.8-170.3,22-66.1h140.6c5.6.3,11,1.3,16.1,2.9,28.1,8.3,49,33.1,51.5,63.2.2,2,.3,4.1.3,6.2v-.2Z',
+    'M931.7,224.9c0,7.5-1.2,14.7-3.3,21.5-.4,1.1-.7,2.2-1.1,3.4l-46.4,139.3h-78.8l32.1-96.3,10.2-30.6c.4-1.1.8-2.2,1.2-3.4v-.3c.6-2.5,1-5.2,1-7.9,0-17.6-14.2-31.7-31.7-31.7h-34.9l-56.8,170.3h-78.8l56.8-170.3,22-66.1h140.6c5.6.3,11,1.3,16.1,2.9,28.1,8.3,49,33.1,51.5,63.2.2,2,.3,4.1.3,6.2v-.2Z',
+    'M1188.6,170.7c-10.9-9.2-27.6-14.7-50.2-16.7-13.9-1.1-27.7-1.2-41.3-.5-55.9,2-98.2,25.6-127.1,70.8-22.2,40.6-28.1,77.3-17.9,110.1,4.5,15.1,12.2,27,22.9,35.8,10.8,8.8,27.4,14.7,49.9,17.8,14.7,1.2,27.9,1.5,39.6.7,57.6-2.3,100.7-26.2,129.5-71.5,22.2-40.5,28.1-77.2,17.9-110.1-4.7-15.1-12.5-27.2-23.4-36.3h0ZM1137.3,276.5c-4.8,13.2-13.4,24.2-25.7,33-11.8,8.5-30.9,12.4-57.3,11.8-32.1-2.6-41.3-21.4-27.6-56.3,4.8-13.1,13.4-24.1,25.7-33,15.6-9.5,34.7-13.5,57.3-11.8,17.4,1.5,27.9,6.9,31.6,16.2,3.7,9.2,2.3,22.6-4,40.2h0Z',
+    'M1513.5,152.6h0c0,.1-56.7,170.3-56.7,170.3l-22.1,66.2h-136.1c-7.1,0-14-1-20.6-3-28.1-8.3-49-33.1-51.5-63.2-.2-2-.3-4.1-.3-6.2,0-7.5,1.2-14.7,3.3-21.5.4-1.1.7-2.2,1.1-3.4l46.4-139.2h78.8l-32.1,96.2-10.2,30.6c-.4,1.1-.8,2.2-1.2,3.4v.3c-.6,2.5-1,5.2-1,7.9,0,17.5,14.2,31.7,31.7,31.7h34.9l56.7-170.2h0c0-.1,78.8-.1,78.8-.1v.2Z',
+    'M1600.7,228.2c0,.8,0,1.5.3,2.1h0c0,.5.2.8.3,1.1,0,.3.3.7.4,1,1.5,3.3,4.9,5.6,8.8,5.6h57.6c25.4,0,35.8,10.5,42.5,23.5.7,1.3,1.3,2.7,1.9,4.1,4.3,10.5,5.7,23.2,3.9,38.2-.7,5.9-1.9,12.3-3.6,18.9,0,.2,0,.4-.2.6-2.2,7.3-4.9,14-8,20.1-15.3,29.3-42.5,44.5-81.3,45.6h-148.6l21.9-65.7h141c5.4,0,9.8-4.4,9.8-9.8s-4-9.4-9.1-9.7h0l-57.6-4.8c-2.9-.2-5.7-.4-8.4-.9-16.8-2.6-29.7-9.9-38.6-21.7-6.8-9-10.3-20.1-10.3-33.2s1.3-17.8,4.1-28c3.9-10,8.5-18.7,14-26.1,8.2-11.2,18.3-19.5,30.9-25.4,14.9-6.9,33.2-10.4,55.9-11h122.1l-21.9,65.7h-117.7c-5.4,0-9.8,4.4-9.8,9.8h-.3Z'
+  ];
+  const REG_D = [
+    'M1729,361.1c2.5,0,4.5.5,5.8,1.4,1.4.9,2,2.3,2,4.2s-.3,2.2-.8,2.9c-.5.7-1.3,1.3-2.4,1.7.3.4.7.9,1.1,1.5.4.5.7,1.1,1.1,1.7s.7,1.2,1.1,1.9c.3.6.7,1.3,1,1.9h-4.3c-.3-.6-.6-1.1-.9-1.7s-.6-1.1-1-1.7-.7-1-1-1.5-.7-.9-1-1.3h-1.9v6.2h-3.8v-16.7c.8-.2,1.7-.3,2.6-.3h2.4v-.2ZM1729.2,364.4h-1.3v4.6h1.1c1.4,0,2.5-.2,3.1-.5.6-.4.9-1,.9-1.8s-.3-1.4-.9-1.8-1.6-.5-2.8-.5h0Z',
+    'M1730.3,349.6c-10.9,0-19.7,8.8-19.7,19.7s8.8,19.7,19.7,19.7,19.7-8.8,19.7-19.7-8.8-19.7-19.7-19.7ZM1730.3,383.2c-7.7,0-13.8-6.2-13.8-13.8s6.2-13.8,13.8-13.8,13.8,6.2,13.8,13.8-6.2,13.8-13.8,13.8Z'
+  ];
+  const TAG_D_LIST = [
+    ['M321,476.2c-1.8-2.2-4.2-4.2-7-5.5-3-1.3-7.3-1.9-10.4-1.9s-6.3.4-9.2,1.5c-3,.9-5.5,2.1-7.9,3.4h0l13.3-39.4-14,2.2-35.7,104.9c1.2.7,2.5,1.5,4.2,1.9,1.6.6,3.3,1,4.9,1.5,1.8.4,3.4.6,5.1.7,1.6,0-3.9,0,4.6,0s16.3-1.5,23-4.3c6.7-3,12.4-6.7,17.2-11.5,4.8-4.8,8.5-10.1,11.2-16.3,2.7-6.1,4.3-12.4,5.1-18.9s.3-7.2-.4-10.3c-.7-3.3-1.8-6-3.6-8.4v.2h-.4ZM307.9,510.6c-2.1,4.6-4.9,8.7-8.2,12.2-3.4,3.6-7.3,6.4-11.9,8.5s-9.5,3.1-14.9,3.1-2.4,0-3.7-.3c-1.2,0-2.2-.3-3.1-.6l16.3-48c2.7-1.8,5.4-3.1,8.2-4.2,2.8-1,5.8-1.5,8.5-1.5h0c2.8,0,5.2.4,6.9,1.3,1.8.9,3.1,2.1,4,3.6s1.5,3.3,1.8,5.2c.3,1.9.4,1,0,6.1s-1.8,9.8-3.9,14.3h.1v.3Z'],
+    ['M383.7,529.9c-.6.4-1.6.9-3,1.5-1.5.4-3,1-4.9,1.5-1.8.6-3.7.9-5.7,1.3-1.9.3-1.6.4-5.7.4s-7.3-.4-9.7-1.3c-2.4-.7-4.3-1.9-5.5-3.4-1.300-1.5-2.1-3.1-2.4-5.1s-.4-4-.1-6.1v-1.2c.1-.4.3-1,.4-1.8,3.6,0,7.2-.4,11.2-.6,4-.3,7.9-.7,11.8-1.3,3.9-.7,7.6-1.5,11.3-2.7,3.7-1,6.9-2.7,9.8-4.8,2.8-2.1,5.2-4.6,7.2-7.8,1.9-3.1,3.1-6.9,3.6-11.3.4-4.5,0-4.6-.6-6.9-.6-2.2-1.8-4.2-3.3-5.8-1.6-1.6-3.7-3-6.4-4-2.7-1-3.1-1.5-9.8-1.5s-12.8,1.3-18.3,4.2c-5.5,2.8-10.4,6.6-14.6,11.3-4.2,4.8-7.6,10.1-10.1,16.3-2.7,6.1-4.2,12.5-4.9,19.1-.7,6.6,0,7,.7,10.1.9,3.3,2.2,6,4.5,8.5,2.1,2.4,4.8,4.3,8.2,5.7,3.3,1.3,7.5,2.1,12.2,2.1h0c5.7,0,10.6-.6,14.9-1.8s7.5-2.2,9.5-3.3v-11.2h-.3ZM349.8,505.6c1.2-3.4,2.8-6.7,4.6-9.7,1.9-3,4.2-5.8,6.6-8.1,2.5-2.2,5.2-4.2,8.2-5.7s6.3-2.1,9.5-2.1,3.7.3,5.2.7c1.3.4,2.4,1.2,3.1,1.9s1.2,1.6,1.5,2.7c.1.9.6-.7.1,2.7-.4,3.4-1.6,6.3-3.6,8.5-2.1,2.2-4.8,3.9-8.2,5.2-3.4,1.3-7.5,2.2-12.1,2.7s-9.7.9-15.2,1h.1l.2.2Z'],
+    ['M459.6,481.8c-1.9,4.6-4.3,9.8-7.2,15.4-2.7,5.7-6,11.5-9.4,17.6-3.6,6.1-7.5,11.9-11.5,17.6h0c-.7-5.1-1.5-10.3-1.9-15.8s-.7-10.9-.9-16.4c-.1-5.5-.1-10.7,0-15.8,0-5.1.3-9.7.7-14h-13.4c-.9,13-.7,25.8.1,38.5.9,12.7,2.7,24.8,4.9,36.1-3.9,4.3-7.8,7.8-11.9,10.4-4.2,2.7-8.8,4-14.3,4s-3.7-.3-5.4-.7c-1.6-.4-2.7-1.2-3.6-1.9l-5.7,10.7c.9.7,2.5,1.5,4.8,2.1,2.2.7,2.1,1,7.3,1s10-.7,14.3-2.5c4.3-1.6,8.4-3.9,12.1-6.9,3.7-2.8,7.3-6.3,10.7-10.1,3.4-3.9,6.9-8.1,10.3-12.5,4.5-6,8.8-12.2,12.8-18.6,4-6.4,7.6-12.8,10.9-18.9s6.1-11.9,8.7-17.3c2.4-5.4,4.3-9.8,5.8-13.4h-13.7c-.9,2.8-2.4,6.6-4.3,11.3l-.3.3v-.2Z'],
+    ['M522.5,468.9c-7.6,0-14.3,1.6-20,4.9-5.8,3.3-10.6,7.6-14.5,12.7s-7,10.7-9.1,16.7-3.3,9.2-4,17.3.7,14.3,4.8,18.9c3.9,4.6,9.7,6.9,17.5,6.9s14.3-1.6,20-4.9c5.7-3.3,10.6-7.6,14.5-12.7,3.9-5.1,7-10.7,9.1-16.7s3.3-9.2,4-17.3c.7-8.1-.7-14.3-4.8-18.9-3.9-4.6-9.8-6.9-17.5-6.9h0ZM528.2,509.1c-1.6,4.6-3.9,8.8-6.6,12.7-2.7,3.9-5.8,7-9.4,9.4-3.6,2.4-7.5,3.7-11.8,3.7h0c-5.1,0-8.5-1.5-10.3-4.3s-2.4-7.2-1.9-11.5c.4-4.3,1.5-8.8,3.1-13.4s3.9-8.8,6.6-12.7c2.7-3.7,5.8-7,9.4-9.4s6.7-3.7,11.8-3.7,8.5,1.5,10.3,4.2c1.8,2.8,2.4,7.2,1.9,11.5-.4,4.3-1.5,8.8-3.1,13.4h0Z'],
+    ['M617.7,475.7c-1.6-2.1-4-3.6-7-4.8-3-1.2-6.9-1.8-10.9-1.8s-8.5.4-13.7,1.2c-5.1.7-10,1.9-14.5,3.1l-24.2,70.9h13.1l21.3-62.4c1.5-.4,3.6-.9,5.8-1.2,2.2-.3,1.3-.4,7-.4s9.4,1.3,11.3,3.7c1.8,2.5,2.5,5.7,2.1,9.4-.4,3.7-.9,5.1-1.6,7.8-.9,2.7-1.8,5.4-2.7,8.1l-11.8,34.9h13.1l12.8-37.7c.9-2.5,1.5-4.9,2.1-7.3s.9-3.4,1.2-6.9c.3-3.4,0-6.6-.4-9.4s-1.8-5.4-3.4-7.5l.3.3h.1Z'],
+    ['M690.4,517.3l28.3-82.9-14,2.2-11.3,33.1c-1-.1-2.2-.3-3.3-.4-1,0,5.4,0-3.1,0s-16,1.5-22.5,4.3c-6.7,2.8-12.2,6.7-17,11.5-4.6,4.8-8.4,10.1-11.2,16.1-2.7,6-4.5,12.2-5.1,18.5s-.3,7.5.3,10.7c.6,3.3,1.8,6.1,3.6,8.4,1.8,2.4,4,4.2,7,5.5h0c2.8,1.2,5.4,1.8,10.4,1.8s7.9-.6,11-1.8c.7-.3,1.5-.6,2.1-.9,3.7-1.9,6.7-3.7,9-5.7.3,2.5.7,4.8,1.3,6.7,0,.3,0,.6.3.9l6-.9,5.8-.9c-.7-2.5-1.2-4.9-1.3-7.2v-6.6h0c0-2.1.6-4.2,1.2-6.1.6-1.9,1.2-4,1.9-6.3l.6-.2v.2ZM677.7,516.2c-.7,2.1-1.2,4-1.6,5.7-.4,1.8-.7,3.4-.9,4.9-2.4,2.1-4.9,4-7.9,5.7-3,1.6-6.4,2.5-10.3,2.5h0c-2.5,0-4.6-.4-6.3-1.3-1.6-.9-3-2.2-3.700-3.7-.9-1.5-1.5-3.3-1.8-5.4s-.6-1.2,0-6.3,1.8-9.8,3.9-14.5c2.1-4.6,4.9-8.7,8.4-12.1,3.4-3.4,7.5-6.3,11.9-8.4,4.5-2.1,9.5-3.1,14.9-3.1s1.9,0,3,0,1.9.1,2.8.3l-12.1,35.5-.3.2h0Z'],
+    ['M799.1,470.7h-24.6l2.1-6.3c1-2.8,1.9-5.4,3.1-7.6,1.2-2.2,2.5-4.2,4.2-5.8,1.6-1.6,3.6-2.8,6-3.7,2.2-.9,4.5-1.3,8.1-1.3s6.3.3,8.1.9,3,1,3.7,1.5l6.3-10.4c-1.5-.7-3.6-1.5-6.6-2.1-3-.7-4.2-1-9.2-1s-9.5.7-13.4,1.9c-3.9,1.3-7.2,3.3-10.1,5.7-3,2.5-5.5,5.7-7.6,9.2-2.1,3.7-4,7.9-5.5,12.7l-22.4,65.8c-1.8,5.5-3.4,10-4.5,13.4,0,.4-.3.7-.4,1.2h13.3c.3-1,.7-1.9,1-3,1.2-3.7,2.7-8.1,4.3-13l16-46.8h24.8l3.6-11h0l-.3-.3Z'],
+    ['M849.8,470.5c-1.2-.3-2.4-.4-3.7-.7-1.3-.3-2.7-.4-4.2-.6-1.3,0-2.7-.1-3.7-.1h0c-4.3,0-8.8.4-13.1,1.3-4.5.7-8.7,1.8-12.5,3.1l-24,70.9h13.1l21.2-62.4c1.5-.4,3.1-.9,5.2-1.2,1.9-.3,3.6-.4,6-.4s4.6.1,7,.6c2.4.4,4.5.9,6.4,1.6l4.9-11.5c-.4-.3-1.3-.6-2.4-.7h-.2Z'],
+    ['M894,468.9c-7.6,0-14.3,1.6-20,4.9-5.8,3.3-10.6,7.6-14.5,12.7s-7,10.7-9.1,16.7-3.3,9.2-4,17.3.7,14.3,4.8,18.9c1.9,2.2,4.2,3.9,7,5.1,2.2.9,4.8,1.5,7.6,1.8h3c7.6,0,14.3-1.6,20-4.9,5.8-3.3,10.6-7.6,14.5-12.7,3.9-5.1,7-10.7,9.1-16.7s3.3-9.2,4-17.3c.7-8.1-.7-14.3-4.8-18.9-3.9-4.6-9.8-6.9-17.5-6.9h0ZM899.7,509.1c-1.6,4.6-3.9,8.8-6.6,12.7-2.7,3.9-5.8,7-9.4,9.4-3.6,2.4-7.5,3.7-11.8,3.7h0c-5.1,0-8.5-1.5-10.3-4.3s-2.4-7.2-1.9-11.5,1.5-8.8,3.1-13.4,3.9-8.8,6.6-12.7c2.7-3.7,5.8-7,9.4-9.4,3.6-2.4,6.7-3.7,11.8-3.7s8.5,1.5,10.3,4.2c1.8,2.8,2.4,7.2,1.9,11.5-.4,4.3-1.5,8.8-3.1,13.4h0Z'],
+    ['M989.2,475.7c-1.6-2.1-4-3.6-7-4.8-3-1.2-6.9-1.8-10.9-1.8s-8.5.4-13.7,1.2c-5.1.7-10,1.9-14.5,3.1l-24.2,70.9h13.1l21.3-62.4c1.5-.4,3.6-.9,5.8-1.2,2.2-.3,1.3-.4,7-.4s9.4,1.3,11.3,3.7c1.8,2.5,2.5,5.7,2.1,9.4-.4,3.7-.9,5.1-1.6,7.8-.9,2.7-1.8,5.4-2.7,8.1l-11.8,34.9h13.1l12.8-37.7c.9-2.5,1.5-4.9,2.1-7.3s.9-3.4,1.2-6.9c.3-3.4,0-6.6-.4-9.4-.6-2.8-1.8-5.4-3.4-7.5l.3.3h.1Z'],
+    ['M1030.9,481.5h25.1l3.9-11h-25.1l7.8-22.8-14,2.2-21.5,63.1c-1.9,6.1-2.8,9-3.4,14.9-.6,6,.6,10.6,3.6,13.6,3,3.1,8.1,4.6,15.1,4.6h0c4.3,0,8.2-.4,11.8-1.5,3.6-1,6-1.9,7.5-2.8v-11.2c-1.3.7-3.4,1.5-6.3,2.5-2.7.9-4.2,1.3-8.2,1.3s-6.7-.7-8.4-2.1c-1.6-1.3-2.2-3.4-1.9-6.7s1.3-7.2,2.8-11.6l11-32.7h.3v.2Z'],
+    ['M1052.4 544.3L1065.5 544.3L1090.8 470.7L1077.5 470.7Z', 'M1093,440.1c-2.4,0-4.6.9-6.7,2.7-2.1,1.8-3.3,4.8-3.6,7.2s.3,4.2,1.6,5.5c1.3,1.3,3.1,1.9,5.2,1.9s4.5-.9,6.7-2.7c2.2-1.8,3.4-4.5,3.7-6.9.3-2.4-.3-4.3-1.6-5.7-1.3-1.3-3-2.1-5.4-2.1h.1Z'],
+    ['M1157.9,474.4c-1.6-1.6-3.7-3-6.4-4-2.7-1-3.1-1.5-9.8-1.5s-12.8,1.3-18.3,4.2c-5.5,2.8-10.4,6.6-14.6,11.3-4.2,4.8-7.5,10.1-10.1,16.3-2.5,6.1-4.2,12.5-4.9,19.1-.7,6.6,0,7,.7,10.1.9,3.3,2.2,6,4.5,8.5,2.1,2.4,4.8,4.3,8.2,5.7,3.3,1.3,7.5,2.1,12.2,2.1h0c5.7,0,10.6-.6,14.9-1.8s7.5-2.2,9.5-3.3v-11.2c-.6.4-1.6.9-3.1,1.5-1.5.4-3,1-4.9,1.5-1.8.6-3.7.9-5.7,1.3-1.9.3-1.6.4-5.7.4s-7.3-.4-9.7-1.3c-2.4-.7-4.2-1.9-5.5-3.4s-2.1-3.1-2.4-5.1c-.3-1.9-.4-4,0-6.1v-1.2c0-.4.3-1,.4-1.8,3.6,0,7.2-.4,11.2-.6,4-.3,7.9-.7,11.8-1.3,3.9-.7,7.6-1.5,11.3-2.7,3.7-1,6.9-2.7,9.8-4.8,2.8-2.1,5.2-4.6,7.2-7.8,1.9-3.1,3.1-6.9,3.6-11.3.4-4.5,0-4.6-.6-6.9-.6-2.2-1.8-4.2-3.3-5.8h-.2ZM1145.2,496.8c-2.1,2.2-4.8,3.9-8.2,5.2-3.4,1.3-7.5,2.2-12.1,2.7-4.6.4-9.7.9-15.1,1h0c1.2-3.4,2.8-6.7,4.6-9.7,1.9-3,4.2-5.8,6.6-8.1,2.5-2.2,5.2-4.2,8.2-5.7s6.3-2.1,9.5-2.1,3.7.3,5.2.7c1.3.4,2.4,1.2,3.1,1.9s1.2,1.6,1.5,2.7c0,.9.6-.7,0,2.7-.4,3.4-1.6,6.3-3.6,8.5l.2.2Z'],
+    ['M1225,471.3c-.6-.3-1.3-.6-2.5-.7-1.2-.3-2.4-.4-3.7-.7-1.3-.3-2.7-.4-4.2-.4s-2.7-.1-3.7-.1h0c-4.3,0-8.8.4-13.1,1.3-4.5.7-8.7,1.900-12.5,3.1l-24.2,70.9h13.1l21.3-62.4c1.5-.4,3.1-.9,5.2-1.2,1.9-.3,3.7-.4,6-.4s4.6.1,7,.6c2.4.4,4.5.9,6.4,1.6l4.9-11.5h0Z'],
+    ['M1245.4,482.1c1.5-.9,3.3-1.5,5.1-1.9,1.8-.3,1.9-.6,5.5-.6s6.9.4,9.7,1.3c2.8.9,4.9,1.6,6.1,2.4l6.1-10.7c-1.2-.7-3.6-1.5-6.9-2.5-3.3-.9-2.1-1.3-11.8-1.3s-17.5,2.1-23,6.4-8.7,10-9.4,17.2,0,5.1.4,7c.6,1.9,1.5,3.6,2.7,5.1s2.7,2.7,4.3,3.7c1.6,1,3.6,2.1,5.7,3.1,2.1,1.2,3.9,2.1,5.4,3.1,1.5.9,2.7,1.8,3.6,2.8.9.9,1.6,1.9,1.9,3.1.3,1,.6,1.6.3,3.7s-.9,4-2.1,5.5-2.5,2.7-4.2,3.4c-1.6.9-3.6,1.5-5.5,1.8-2.1.3-4.2.6-6.1.6h0c-2.2,0-4.2,0-6.1-.6-1.9-.4-3.7-.9-5.4-1.5-1.6-.6-3-1.2-4-1.6-1.2-.6-1.9-1-2.7-1.5l-6.1,10.7c.6.3,1.5.9,2.7,1.5s2.7,1.2,4.6,1.8c1.8.6,4.2,1,6.7,1.5,2.5.4,4.3.6,8.7.6s8.4-.4,12.2-1.5c3.9-1,7.2-2.5,10-4.5,2.8-1.9,5.2-4.5,7-7.5s3-6.6,3.3-10.4c.3-3.9,0-5.1-.3-7s-1.3-3.7-2.5-5.2-2.7-2.8-4.6-4c-1.8-1.2-3.9-2.2-6.3-3.4-3.7-1.8-6.6-3.4-8.4-5.2-1.8-1.8-2.5-4.3-2.4-6.3,0-1.9.9-3.9,1.9-5.4s2.4-2.7,3.9-3.6h0,.1Z']
+  ];
+
+  let ready = false, LETTERS, REG, TAG, WORD, BOUNDS, SEQ, N_LAND;
+  let AC = null, master = null, verb = null, noiseBuf = null, bus = null;
+  let muted = false; try{ muted = localStorage.getItem('innous_intro_muted')==='1'; }catch(e){}
+  let overlay = null, cv = null, ctx = null, W = 0, H = 0, S = 1, OX = 0, OY = 0;
+  let raf = 0, t0 = 0, pt0 = 0, lat = 0, running = false, finishFn = null, onResize = null, onKey = null, holdTimer = 0;
+
+  const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+  const prog = (t, a, d) => clamp01((t - a) / d);
+  const eOutExpo = x => x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
+  const eOutCubic = x => 1 - Math.pow(1 - x, 3);
+  const eInOutCubic = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  const eInOutSine = x => -(Math.cos(Math.PI * x) - 1) / 2;
+  const pulse = (t, a, d) => { const x = (t - a) / d; return x < 0 || x > 1 ? 0 : Math.pow(1 - x, 2.2) * Math.min(1, x * 25); };
+
+  function slantBounds(path){
+    const w = 1000, h = 330, c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    x.setTransform(0.5, 0, 0.5 * K, 0.5, -0.5 * K * BASE, 0);
+    x.fill(path);
+    const a = x.getImageData(0, 0, w, h).data;
+    let mn = 1e9, mx = -1e9;
+    for(let yy = 0; yy < h; yy++) for(let xx = 0; xx < w; xx++){
+      if(a[(yy * w + xx) * 4 + 3] > 8){ if(xx < mn) mn = xx; if(xx > mx) mx = xx; }
+    }
+    return { min: mn * 2, max: mx * 2 + 2 };
+  }
+  function build(){
+    if(ready) return;
+    LETTERS = LETTER_D.map(d => new Path2D(d));
+    REG = REG_D.map(d => new Path2D(d));
+    TAG = TAG_D_LIST.map(parts => { const p = new Path2D(); parts.forEach(d => p.addPath(new Path2D(d))); return p; });
+    WORD = new Path2D(); LETTERS.forEach(p => WORD.addPath(p));
+    BOUNDS = LETTERS.map(slantBounds);
+    SEQ = [
+      { k: 1, start: 0.8, dur: 0.6 }, { k: 2, start: 1.34, dur: 0.62 }, { k: 3, start: 1.47, dur: 0.62 },
+      { k: 4, start: 1.6, dur: 0.62 }, { k: 5, start: 1.73, dur: 0.62 }
+    ];
+    SEQ.forEach(s => { s.edge = BOUNDS[s.k - 1].max + 0.5; s.dx0 = s.edge - BOUNDS[s.k].max - 6; s.land = s.start + 0.14; });
+    N_LAND = SEQ[0].land;
+    ready = true;
+  }
+
+  function cam(t){
+    const p = eInOutCubic(prog(t, PAN0, PAN_D));
+    const zIn = 1.5 + 0.05 * eInOutSine(clamp01(t / PAN0));
+    const zOut = 1 + 0.025 * eInOutSine(prog(t, LOCK, DUR - LOCK));
+    return { p, z: zIn + (zOut - zIn) * p, fx: 452.5 + (1000 - 452.5) * p, fy: 271 + (349 - 271) * p };
+  }
+  const iOffset = t => { const h = 245 * (1 - eOutExpo(prog(t, I_START, I_DUR))); return [-K * h, h]; };
+  const seqDX = (s, t) => s.dx0 * (1 - eOutExpo(prog(t, s.start, s.dur)));
+
+  function stageXf(){ ctx.setTransform(S, 0, 0, S, OX, OY); }
+  function camXf(c){ stageXf(); ctx.translate(960, 540); ctx.scale(L * c.z, L * c.z); ctx.translate(-c.fx, -c.fy); }
+  function drawBG(){ ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
+  function paint(path, ox, oy, sk){
+    ctx.save(); ctx.translate(ox, oy);
+    if(sk) ctx.transform(1, 0, -sk, 1, sk * BASE, 0);
+    ctx.fill(path); ctx.restore();
+  }
+  function clipRightOf(u){
+    ctx.beginPath();
+    ctx.moveTo(u - 700 * K, BASE + 700); ctx.lineTo(u + 900 * K, BASE - 900);
+    ctx.lineTo(6000, BASE - 900); ctx.lineTo(6000, BASE + 700);
+    ctx.closePath(); ctx.clip();
+  }
+  const glowAt = t => 0.14 + 0.1 * pulse(t, I_LAND, 0.7) + 0.06 * pulse(t, N_LAND, 0.5) + 0.12 * pulse(t, LOCK, 1.0);
+
+  function drawLetters(t, c){
+    const blur = 26 * S * Math.sqrt(c.z), glow = glowAt(t);
+    ctx.shadowOffsetY = 10 * S * Math.sqrt(c.z);
+    if(t >= I_START){
+      const settled = t >= I_START + I_DUR;
+      ctx.save();
+      if(!settled){ ctx.beginPath(); ctx.rect(-3000, -3000, 9000, 3000 + BASE + 0.6); ctx.clip(); }
+      for(let j = 4; j >= 1; j--){
+        const tj = t - j * 0.022; if(tj < I_START) continue;
+        const [gx, gy] = iOffset(tj);
+        ctx.fillStyle = `rgba(0,163,224,${0.14 * (1 - j / 5)})`; paint(LETTERS[0], gx, gy, 0);
+      }
+      const [ox, oy] = iOffset(t);
+      ctx.fillStyle = BLUE; ctx.shadowColor = `rgba(0,50,85,${glow})`; ctx.shadowBlur = blur;
+      paint(LETTERS[0], ox, oy, 0);
+      ctx.shadowBlur = 0; ctx.shadowColor = 'rgba(0,0,0,0)';
+      const f = 0.35 * pulse(t, I_LAND, 0.45);
+      if(f > 0.002){ ctx.fillStyle = `rgba(235,250,255,${f})`; paint(LETTERS[0], ox, oy, 0); }
+      ctx.restore();
+    }
+    for(const s of SEQ){
+      if(t < s.start) continue;
+      const path = LETTERS[s.k], settled = t >= s.start + s.dur, dx = seqDX(s, t);
+      const v = (dx - seqDX(s, t - 1 / 60)) * 60, sk = Math.min(0.1, Math.max(0, v / 18000));
+      ctx.save();
+      if(!settled) clipRightOf(s.edge);
+      for(let j = 4; j >= 1; j--){
+        const tj = t - j * 0.018; if(tj < s.start) continue;
+        ctx.fillStyle = `rgba(0,163,224,${0.14 * (1 - j / 5)})`; paint(path, seqDX(s, tj), 0, sk * (1 - j / 5));
+      }
+      ctx.fillStyle = BLUE; ctx.shadowColor = `rgba(0,50,85,${glow})`; ctx.shadowBlur = blur;
+      paint(path, dx, 0, sk);
+      ctx.shadowBlur = 0; ctx.shadowColor = 'rgba(0,0,0,0)';
+      const f = 0.28 * pulse(t, s.land, 0.4);
+      if(f > 0.002){ ctx.fillStyle = `rgba(235,250,255,${f})`; paint(path, dx, 0, sk); }
+      ctx.restore();
+    }
+    ctx.shadowOffsetY = 0;
+  }
+  function drawSheen(t){
+    const lockF = 0.25 * pulse(t, LOCK, 0.45);
+    const s1 = prog(t, SHEEN0, SHEEN_D), s2 = prog(t, SHEEN2, SHEEN2_D);
+    const on1 = s1 > 0 && s1 < 1, on2 = s2 > 0 && s2 < 1;
+    if(lockF < 0.002 && !on1 && !on2) return;
+    ctx.save(); ctx.clip(WORD);
+    if(lockF > 0.002){ ctx.fillStyle = `rgba(255,255,255,${lockF})`; ctx.fillRect(200, 100, 1600, 340); }
+    const band = (sp, peak) => {
+      const px = -150 + 2100 * eInOutSine(sp), py = 270, nl = Math.hypot(1, K), nx = 1 / nl, ny = K / nl, Wd = 120;
+      const g = ctx.createLinearGradient(px - nx * Wd, py - ny * Wd, px + nx * Wd, py + ny * Wd);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.38, `rgba(220,245,255,${peak * 0.2})`);
+      g.addColorStop(0.5, `rgba(255,255,255,${peak})`); g.addColorStop(0.62, `rgba(220,245,255,${peak * 0.2})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(200, 100, 1600, 340);
+    };
+    if(on1) band(s1, 0.6);
+    if(on2) band(s2, 0.4);
+    ctx.restore();
+  }
+  function drawReg(t){
+    const p = prog(t, REG_T, 0.45); if(p <= 0) return;
+    const s = 0.85 + 0.15 * eOutCubic(p);
+    ctx.save(); ctx.globalAlpha = eOutCubic(p);
+    ctx.translate(1730.3, 369.3); ctx.scale(s, s); ctx.translate(-1730.3, -369.3);
+    ctx.fillStyle = BLUE; REG.forEach(r => ctx.fill(r)); ctx.restore();
+  }
+  function drawTag(t){
+    if(t < TAG0) return;
+    ctx.save(); ctx.beginPath(); ctx.rect(-3000, -3000, 9000, 3000 + TAG_FLOOR); ctx.clip();
+    TAG.forEach((g, i) => {
+      const p = eOutExpo(prog(t, TAG0 + i * TAG_STEP, TAG_D)); if(p <= 0) return;
+      const h = 175 * (1 - p);
+      ctx.fillStyle = `rgba(0,15,25,${Math.min(1, p * 1.4)})`; paint(g, -K * h, h, 0);
+    });
+    ctx.restore();
+  }
+  function render(t){ const c = cam(t); drawBG(); camXf(c); drawLetters(t, c); drawSheen(t); drawReg(t); drawTag(t); }
+
+  // ── sonido (Web Audio sintetizado, en el mismo reloj que la imagen) ──
+  function initAudio(){
+    if(AC) return AC;
+    const C = window.AudioContext || window.webkitAudioContext; if(!C) return null;
+    try{ AC = new C({ latencyHint: 'playback' }); }catch(e){ try{ AC = new C(); }catch(e2){ return null; } }
+    const comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = 0.004; comp.release.value = 0.25;
+    const limiter = AC.createDynamicsCompressor();
+    limiter.threshold.value = -2; limiter.knee.value = 2; limiter.ratio.value = 12; limiter.attack.value = 0.005; limiter.release.value = 0.3;
+    master = AC.createGain(); master.gain.value = muted ? 0 : 0.8;
+    master.connect(comp); comp.connect(limiter); limiter.connect(AC.destination);
+    const sr = AC.sampleRate, len = Math.floor(sr * 2.8), ir = AC.createBuffer(2, len, sr);
+    for(let ch = 0; ch < 2; ch++){ const d = ir.getChannelData(ch); for(let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+    verb = AC.createConvolver(); verb.buffer = ir; verb.connect(master);
+    noiseBuf = AC.createBuffer(1, sr * 2, sr);
+    const nd = noiseBuf.getChannelData(0); for(let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    return AC;
+  }
+  function newBus(){
+    if(bus){ const old = bus, n = AC.currentTime; old.dry.gain.setTargetAtTime(0, n, 0.03); old.wet.gain.setTargetAtTime(0, n, 0.03); setTimeout(() => { try{ old.dry.disconnect(); old.wet.disconnect(); }catch(e){} }, 500); }
+    const dry = AC.createGain(), wet = AC.createGain(); dry.connect(master); wet.connect(verb); bus = { dry, wet };
+  }
+  const aOut = (node, wet) => { node.connect(bus.dry); if(wet){ const s = AC.createGain(); s.gain.value = wet; node.connect(s); s.connect(bus.wet); } };
+  const gainNode = () => { const g = AC.createGain(); g.gain.value = 0; return g; };
+  const osc = (type, f) => { const o = AC.createOscillator(); o.type = type; o.frequency.value = f; return o; };
+  const filt = (type, f, q) => { const b = AC.createBiquadFilter(); b.type = type; b.frequency.value = f; if(q != null) b.Q.value = q; return b; };
+  function pad(t1, t2, freqs, amp, cut, atk, rel){
+    const lp = filt('lowpass', cut[0][1], 0.6), g = gainNode();
+    cut.forEach(([tt, f], i) => i === 0 ? lp.frequency.setValueAtTime(f, tt) : lp.frequency.exponentialRampToValueAtTime(f, tt));
+    g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(amp, t1 + atk);
+    g.gain.setValueAtTime(amp, t2 - rel); g.gain.linearRampToValueAtTime(0, t2);
+    lp.connect(g); aOut(g, 0.45);
+    freqs.forEach(f => [-7, 7].forEach(dt => { const o = osc('sawtooth', f); o.detune.value = dt; o.connect(lp); o.start(t1); o.stop(t2 + 0.05); }));
+  }
+  function schedule(base){
+    const T = x => base + x, END = DUR + 0.6;
+    pad(T(0.05), T(END), [146.83, 220, 293.66, 329.63], 0.03, [[T(0.05), 450], [T(LOCK), 800], [T(3.6), 950], [T(END), 520]], 0.6, 1.4);
+  }
+  function setMuted(m){
+    muted = m; try{ localStorage.setItem('innous_intro_muted', m ? '1' : '0'); }catch(e){}
+    if(AC && master) master.gain.setTargetAtTime(m ? 0 : 0.8, AC.currentTime, 0.03);
+    const b = overlay && overlay.querySelector('.intro-mute');
+    if(b){ b.setAttribute('aria-pressed', String(m)); b.querySelector('.on').style.display = m ? 'none' : ''; b.querySelector('.off').style.display = m ? '' : 'none'; }
+  }
+
+  // Desbloquea el audio dentro del gesto del usuario (clic en "Iniciar Sesión"), ANTES de cualquier await.
+  function prime(){
+    try{ build(); const a = initAudio(); if(a && a.state !== 'running') a.resume().catch(() => {}); }catch(e){ console.warn('LoginIntro.prime', e); }
+  }
+  const nowT = () => (AC && AC.state === 'running') ? (AC.currentTime - t0 - lat) : (performance.now() - pt0) / 1000;
+
+  function resize(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(1, Math.round(innerWidth * dpr)); H = Math.max(1, Math.round(innerHeight * dpr));
+    cv.width = W; cv.height = H;
+    // en vertical (celular) el escenario 16:9 dejaba el logo diminuto: se escala para que ocupe ~80% del ancho
+    S = (W < H) ? W / 1200 : Math.min(W / 1920, H / 1080);
+    OX = (W - 1920 * S) / 2; OY = (H - 1080 * S) / 2;
+    if(!running) render(DUR);
+  }
+
+  // Reproduce la intro y regresa una promesa que se resuelve al terminar (o al saltarla).
+  // opts.instant: aparece de golpe, sin fade-in (regreso de Google, donde la app ya está detrás).
+  function play(opts){
+    opts = opts || {};
+    if(running) return Promise.resolve();
+    try{
+      if(window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches) return Promise.resolve();
+      build();
+    }catch(e){ console.warn('LoginIntro.play', e); return Promise.resolve(); }
+    running = true;
+    overlay = document.createElement('div');
+    overlay.id = 'intro-overlay';
+    if(opts.instant) overlay.style.transition = 'none';
+    overlay.innerHTML = `
+      <canvas aria-label="Animación del logotipo INNOUS"></canvas>
+      <button type="button" class="intro-btn intro-skip" aria-label="Saltar animación">Saltar <span aria-hidden="true">›</span></button>
+      <button type="button" class="intro-btn intro-mute" aria-label="Silenciar" aria-pressed="${muted}">
+        <svg class="on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${muted?' style="display:none"':''}><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <svg class="off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${muted?'':' style="display:none"'}><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/></svg>
+      </button>
+      <div class="intro-prog"></div>`;
+    document.body.appendChild(overlay);
+    cv = overlay.querySelector('canvas'); ctx = cv.getContext('2d');
+    const progEl = overlay.querySelector('.intro-prog');
+    resize();
+    onResize = resize; window.addEventListener('resize', onResize);
+    requestAnimationFrame(() => overlay && overlay.classList.add('on'));
+
+    initAudio();
+    if(AC){
+      if(AC.state !== 'running') AC.resume().catch(() => {});
+      newBus(); t0 = AC.currentTime + 0.15; lat = AC.outputLatency || AC.baseLatency || 0; schedule(t0);
+    }
+    pt0 = performance.now() + 150;
+
+    return new Promise(resolve => {
+      let done = false;
+      const finish = (skipped) => {
+        if(done) return; done = true; running = false;
+        cancelAnimationFrame(raf); clearTimeout(holdTimer);
+        window.removeEventListener('resize', onResize); window.removeEventListener('keydown', onKey);
+        if(bus && AC){ const n = AC.currentTime; bus.dry.gain.setTargetAtTime(0, n, skipped ? 0.05 : 0.2); bus.wet.gain.setTargetAtTime(0, n, skipped ? 0.05 : 0.2); }
+        resolve(skipped);
+      };
+      finishFn = finish;
+      overlay.querySelector('.intro-skip').addEventListener('click', e => { e.stopPropagation(); finish(true); });
+      overlay.querySelector('.intro-mute').addEventListener('click', e => { e.stopPropagation(); setMuted(!muted); });
+      onKey = e => { if(e.key === 'Escape' || e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); finish(true); } else if(e.key === 'm' || e.key === 'M') setMuted(!muted); };
+      window.addEventListener('keydown', onKey);
+      const loop = () => {
+        if(done) return;
+        const t = nowT();
+        if(t >= DUR){
+          render(DUR); progEl.style.transform = 'scaleX(1)';
+          holdTimer = setTimeout(() => finish(false), 350);   // se queda un instante con el logo completo
+          return;
+        }
+        render(Math.max(0, t)); progEl.style.transform = `scaleX(${Math.max(0, t) / DUR})`;
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    });
+  }
+
+  // Quita el overlay con fade. Se llama cuando la app ya está lista detrás.
+  function hide(){
+    const el = overlay; if(!el) return Promise.resolve();
+    overlay = null;
+    return new Promise(res => {
+      el.style.transition = '';
+      el.classList.remove('on');
+      setTimeout(() => { el.remove(); res(); }, 520);
+    });
+  }
+  // Corta de inmediato (p. ej. si entrar a la app falló y hay que mostrar el error).
+  function abort(){ if(finishFn) finishFn(true); return hide(); }
+  return { prime, play, hide, abort, isPlaying: () => running };
+})();
+
 function showBootError(msg){
   const el = document.getElementById('boot-loading'); if(!el) return;
   el.innerHTML = `
@@ -12328,6 +12689,8 @@ async function boot(){
   // invitado (ambos casos de abajo); enterAppAsUser hace lo mismo por
   // su cuenta para cuando sí hay sesión, así que esto no le estorba.
   try{ if(localStorage.getItem('innous_dark_mode')==='1') document.body.setAttribute('data-theme','dark'); }catch(e){}
+  let playIntro = false;
+  try{ const v = localStorage.getItem('innous_play_intro'); localStorage.removeItem('innous_play_intro'); playIntro = !!v && (Date.now()-parseInt(v,10)) < 300000; }catch(e){}
   const slowTimer = setTimeout(()=>{ const t=document.getElementById('boot-loading-text'); if(t) t.textContent='Esto está tardando más de lo normal…'; }, 4000);
   try{
     const { data: { session } } = await withTimeout(sb.auth.getSession(), 10000, 'session');
@@ -12341,6 +12704,11 @@ async function boot(){
       renderAuthRoot();
     } else if(session && session.user){
       await withTimeout(enterAppAsUser(session.user), 15000, 'enterApp');
+      // fix204: regreso de Google → intro de logotipo (la app ya está detrás; entra de golpe, sin fade-in)
+      if(playIntro && document.getElementById('app-shell').style.display !== 'none'){
+        document.getElementById('boot-loading')?.remove();
+        LoginIntro.play({instant:true}).then(()=>LoginIntro.hide());
+      }
     } else {
       document.getElementById('app-shell').style.display = 'none';
       document.getElementById('auth-root').style.display = '';
